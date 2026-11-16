@@ -64,7 +64,19 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        shell: bash
+        run: |
+          set +e
+          cargo clippy --workspace --all-targets -- -D warnings > clippy.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            head -n 40 clippy.log | while IFS= read -r line; do
+              line="${line//$'\r'/}"
+              printf '::error title=Clippy::%s\n' "$line"
+            done
+          fi
+          tail -n 80 clippy.log
+          exit "$status"
 
       - name: Rust tests
         run: cargo test --workspace

@@ -4,7 +4,7 @@
 
 ## 已实现
 
-- **协议核心**（`crates/modbus-core`）：PDU 编解码、CRC16/LRC、RTU/ASCII/MBAP、异常码、INT8/16/32/64、UINT、FLOAT32/64、HEX/BIN/ASCII、ABCD/DCBA/BADC/CDAB、从站模拟引擎；39 个单元与属性测试
+- **协议核心**：PDU 编解码、CRC16/LRC、RTU/ASCII/MBAP、异常码、INT8/16/32/64、UINT、FLOAT32/64、HEX/BIN/ASCII、ABCD/DCBA/BADC/CDAB、从站模拟引擎
 - **主站引擎**：TCP / UDP / 串口；RTU / ASCII / MBAP；周期轮询、单次读、FC05/06/0F/10 写、读重试、写不自动重试、自动重连、跨事务 ID 校验、t3.5 串口排空
 - **定义编辑**：FC01–04、从站 ID、地址/数量、数据类型、字节/字序、轮询周期、启停；保存后即时生效；列表内直接删除定义，别名在列表中双击维护；新建会话不再自动生成 1–16 读取定义
 - **会话管理**：新建、切换、关闭删除（含定义与缓存清理）；串口为默认链路，默认 9600 8N1 / RTU

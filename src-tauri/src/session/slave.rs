@@ -524,15 +524,13 @@ fn serial_loop(
                 break;
             }
             let function = buffer[1];
-            let total = match function {
-                0x01..=0x06 => 8,
-                0x0F | 0x10 => {
-                    if buffer.len() < 7 {
-                        break;
-                    }
-                    9 + buffer[6] as usize
+            let total = if matches!(function, 0x0F | 0x10) {
+                if buffer.len() < 7 {
+                    break;
                 }
-                _ => 8,
+                9 + buffer[6] as usize
+            } else {
+                8
             };
             if total > MAX_RTU_ADU_LEN {
                 buffer.clear();
