@@ -20,7 +20,7 @@ use crate::model::{
 };
 use crate::transport::{Transport, TransportError};
 
-use super::slave::SlaveServer;
+use super::slave::{self, SlaveServer};
 
 pub enum SessionCommand {
     Connect {
@@ -269,8 +269,7 @@ impl Actor {
             )
         };
         if role == SessionRole::Slave {
-            return match SlaveServer::start(self.state.clone(), self.bus.clone(), self.seq.clone())
-                .await
+            return match slave::start(self.state.clone(), self.bus.clone(), self.seq.clone()).await
             {
                 Ok(server) => {
                     self.slave = Some(server);

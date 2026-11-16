@@ -1,6 +1,6 @@
 //! Slave simulator servers for TCP and serial links.
 
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Read};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

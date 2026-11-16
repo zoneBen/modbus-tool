@@ -172,22 +172,22 @@ pub async fn session_disconnect(
 }
 
 #[tauri::command]
-pub async fn scan_slave_ids(input: SlaveIdScanInput, state: State<'_, AppState>) -> String {
+pub fn scan_slave_ids(input: SlaveIdScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_slave_scan(input)
 }
 
 #[tauri::command]
-pub async fn scan_addresses(input: AddressScanInput, state: State<'_, AppState>) -> String {
+pub fn scan_addresses(input: AddressScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_address_scan(input)
 }
 
 #[tauri::command]
-pub async fn scan_baud_rates(input: BaudScanInput, state: State<'_, AppState>) -> String {
+pub fn scan_baud_rates(input: BaudScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_baud_scan(input)
 }
 
 #[tauri::command]
-pub async fn scan_network(input: NetworkScanInput, state: State<'_, AppState>) -> String {
+pub fn scan_network(input: NetworkScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_network_scan(input)
 }
 
