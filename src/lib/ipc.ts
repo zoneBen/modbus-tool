@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { save } from "@tauri-apps/plugin-dialog";
 import type { AppEventMap, AppEventName, IpcApi } from "@/types/commands";
 import type {
   AddressScanInput,
@@ -12,6 +13,8 @@ import type {
   SerialPortInfo,
   Session,
   SlaveIdScanInput,
+  SlaveValueInput,
+  UpdateSessionInput,
   WorkspaceSnapshot,
 } from "@/types/models";
 import { createDemoBridge } from "./demo-bridge";
@@ -23,6 +26,21 @@ function createTauriBridge(): IpcApi {
     listSerialPorts: () => invoke<SerialPortInfo[]>("list_serial_ports"),
     createSession: (input: NewSessionInput) => invoke<Session>("session_create", { input }),
     deleteSession: (sessionId: string) => invoke<void>("session_delete", { sessionId }),
+    connectSession: (sessionId: string) => invoke<void>("session_connect", { sessionId }),
+    disconnectSession: (sessionId: string) => invoke<void>("session_disconnect", { sessionId }),
+    updateSession: (sessionId: string, input: UpdateSessionInput) =>
+      invoke<void>("session_update", { sessionId, input }),
+    writeSlaveValue: (sessionId: string, input: SlaveValueInput) =>
+      invoke<number>("slave_write_value", { sessionId, input }),
+    saveTextFile: async (suggestedName: string, contents: string) => {
+      const path = await save({
+        defaultPath: suggestedName,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (!path) return false;
+      await invoke<void>("save_text_file", { path, contents });
+      return true;
+    },
     setPolling: (sessionId: string, enabled: boolean) =>
       invoke<void>("session_set_polling", { sessionId, enabled }),
     readOnce: (sessionId: string, definitionId: string) =>

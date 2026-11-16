@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::event::{AppEvent, EventBus, emit};
 use crate::model::{
     CustomWriteInput, DefinitionDto, DefinitionInput, NewSessionInput, SessionDto, SessionState,
-    WorkspaceSnapshotDto,
+    SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
 };
 
 use actor::{Actor, SessionCommand};
@@ -87,6 +87,43 @@ impl SessionManager {
                 Err("连接超时".to_owned())
             }
         }
+    }
+
+    pub async fn connect(&self, session_id: &str) -> Result<(), String> {
+        let result = self
+            .ask(session_id, |reply| SessionCommand::Connect { reply })
+            .await;
+        if result.is_ok() {
+            self.emit_workspace().await;
+        }
+        result
+    }
+
+    pub async fn update_session(
+        &self,
+        session_id: &str,
+        input: UpdateSessionInput,
+    ) -> Result<(), String> {
+        let result = self
+            .ask(session_id, |reply| SessionCommand::UpdateConfig {
+                input,
+                reply,
+            })
+            .await;
+        self.emit_workspace().await;
+        result
+    }
+
+    pub async fn slave_write_value(
+        &self,
+        session_id: &str,
+        input: SlaveValueInput,
+    ) -> Result<u16, String> {
+        self.ask(session_id, |reply| SessionCommand::SlaveWriteValue {
+            input,
+            reply,
+        })
+        .await
     }
 
     pub async fn workspace(&self) -> WorkspaceSnapshotDto {

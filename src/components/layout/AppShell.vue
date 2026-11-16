@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { toast } from "vue-sonner";
+import AboutOverlay from "@/components/about/AboutOverlay.vue";
 import TrendOverlay from "@/components/chart/TrendOverlay.vue";
 import ActivityRail from "@/components/layout/ActivityRail.vue";
 import SessionSidebar from "@/components/layout/SessionSidebar.vue";
@@ -12,6 +13,7 @@ import RegisterGrid from "@/components/grid/RegisterGrid.vue";
 import InspectorPanel from "@/components/inspector/InspectorPanel.vue";
 import FrameMonitor from "@/components/monitor/FrameMonitor.vue";
 import ScanDialog from "@/components/scan/ScanDialog.vue";
+import EditSessionDialog from "@/components/session/EditSessionDialog.vue";
 import NewSessionDialog from "@/components/session/NewSessionDialog.vue";
 import SettingsDialog from "@/components/settings/SettingsDialog.vue";
 import { useRealtimeEvents } from "@/composables/useRealtimeEvents";
@@ -31,6 +33,8 @@ const scanOpen = ref(initialDialog === "scan");
 const writeOpen = ref(false);
 const writeTarget = ref<WriteTarget | null>(null);
 const trendOpen = ref(false);
+const editSessionOpen = ref(false);
+const aboutOpen = ref(false);
 
 const monitorStyle = computed(() => ({
   height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
@@ -101,12 +105,20 @@ function startResize(event: PointerEvent): void {
     />
 
     <div class="relative flex min-h-0 flex-1">
-      <ActivityRail @open-settings="settingsOpen = true" @open-scan="scanOpen = true" />
+      <ActivityRail
+        @open-settings="settingsOpen = true"
+        @open-scan="scanOpen = true"
+        @open-about="aboutOpen = true"
+      />
       <SessionSidebar @new-session="newSessionOpen = true" />
 
       <main class="flex min-w-0 flex-1 flex-col">
         <SessionTabs />
-        <SessionToolbar @write="openWriteFromToolbar" @open-settings="settingsOpen = true" />
+        <SessionToolbar
+          @write="openWriteFromToolbar"
+          @edit-session="editSessionOpen = true"
+          @open-settings="settingsOpen = true"
+        />
 
         <div class="flex min-h-0 flex-1">
           <RegisterGrid
@@ -141,9 +153,11 @@ function startResize(event: PointerEvent): void {
     </div>
 
     <NewSessionDialog v-model:open="newSessionOpen" />
+    <EditSessionDialog v-model:open="editSessionOpen" />
     <SettingsDialog v-model:open="settingsOpen" />
     <ScanDialog v-model:open="scanOpen" />
     <WriteDialog v-model:open="writeOpen" :target="writeTarget" />
     <TrendOverlay v-model:open="trendOpen" />
+    <AboutOverlay v-model:open="aboutOpen" />
   </div>
 </template>

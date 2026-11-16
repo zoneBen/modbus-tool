@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   FlaskConical,
+  Info,
   LayoutDashboard,
   Moon,
   ScanLine,
@@ -19,6 +20,7 @@ import { useSettingsStore } from "@/stores/settings";
 const emit = defineEmits<{
   (event: "open-settings"): void;
   (event: "open-scan"): void;
+  (event: "open-about"): void;
 }>();
 
 const sessions = useSessionsStore();
@@ -143,6 +145,20 @@ function openSimulator(): void {
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">{{ t("dialog.reduceEffects") }}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
+              aria-label="关于"
+              @click="emit('open-about')"
+            >
+              <Info class="size-[18px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">关于作者与定制服务</TooltipContent>
         </Tooltip>
 
         <Tooltip>

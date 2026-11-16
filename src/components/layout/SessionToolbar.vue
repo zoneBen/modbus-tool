@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { Gauge, Pause, PencilLine, Play, RefreshCw, Settings2 } from "@lucide/vue";
+import {
+  Gauge,
+  Pause,
+  PencilLine,
+  Play,
+  Power,
+  RefreshCw,
+  Settings2,
+  SlidersHorizontal,
+} from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -16,6 +26,7 @@ import { useSettingsStore } from "@/stores/settings";
 
 const emit = defineEmits<{
   (event: "write"): void;
+  (event: "edit-session"): void;
   (event: "open-settings"): void;
 }>();
 
@@ -28,6 +39,21 @@ const definition = computed(() => sessions.activeDefinition);
 const isSlave = computed(() => session.value?.role === "slave");
 const lastUpdate = computed(() => sessions.activeSnapshot?.timestamp ?? sessions.lastUpdate);
 const addressBases = [0, 1] as const;
+const connected = computed(() => session.value?.status === "connected");
+const connecting = computed(() => session.value?.status === "connecting");
+
+async function toggleConnection(): Promise<void> {
+  const current = session.value;
+  if (!current) return;
+  try {
+    if (connected.value) await sessions.disconnectSession(current.id);
+    else await sessions.connectSession(current.id);
+  } catch (error: unknown) {
+    toast.error(connected.value ? "停止会话失败" : "启动会话失败", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 </script>
 
 <template>
@@ -111,10 +137,43 @@ const addressBases = [0, 1] as const;
       <Tooltip>
         <TooltipTrigger as-child>
           <Button
+            variant="ghost"
+            size="icon-sm"
+            class="rounded-lg"
+            :class="connected ? 'text-signal' : 'text-muted-foreground hover:text-foreground'"
+            :disabled="!session || connecting"
+            :aria-label="connected ? '停止会话' : '启动会话'"
+            @click="toggleConnection"
+          >
+            <Power class="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {{ connected ? "停止会话链路" : "启动会话链路" }}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            class="rounded-lg text-muted-foreground hover:text-foreground"
+            :disabled="!session"
+            aria-label="编辑会话参数"
+            @click="emit('edit-session')"
+          >
+            <SlidersHorizontal class="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">编辑会话参数</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <Button
             variant="outline"
             size="sm"
             class="h-8 gap-1.5 border-hairline-strong bg-overlay-1 text-[12px]"
-            :disabled="!definition || isSlave"
+            :disabled="!definition || isSlave || !connected"
             @click="emit('write')"
           >
             <PencilLine class="size-3.5" />
@@ -129,7 +188,7 @@ const addressBases = [0, 1] as const;
             variant="outline"
             size="sm"
             class="h-8 gap-1.5 border-hairline-strong bg-overlay-1 text-[12px]"
-            :disabled="!definition || isSlave"
+            :disabled="!definition || isSlave || !connected"
             @click="sessions.readOnce()"
           >
             <RefreshCw class="size-3.5" />
@@ -147,8 +206,8 @@ const addressBases = [0, 1] as const;
       class="h-8 gap-1.5 border-sim/25 bg-sim/10 text-[12px] text-sim"
       disabled
     >
-      <span class="status-dot status-dot-live" />
-      {{ t("toolbar.listening") }}
+      <span class="status-dot" :class="connected ? 'status-dot-live' : 'opacity-40'" />
+      {{ connected ? t("toolbar.listening") : "已停止" }}
     </Button>
     <Button
       v-else
@@ -156,7 +215,7 @@ const addressBases = [0, 1] as const;
       class="h-8 gap-1.5 text-[12px]"
       :variant="session?.polling ? 'default' : 'outline'"
       :class="session?.polling ? 'glow-signal' : 'border-hairline-strong bg-overlay-1'"
-      :disabled="!session"
+      :disabled="!session || !connected"
       @click="sessions.togglePolling()"
     >
       <Pause v-if="session?.polling" class="size-3.5" />

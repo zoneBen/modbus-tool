@@ -6,6 +6,7 @@ import { toast } from "vue-sonner";
 import EmptyState from "@/components/common/EmptyState.vue";
 import AliasDialog from "@/components/definition/AliasDialog.vue";
 import FormatDialog from "@/components/definition/FormatDialog.vue";
+import SlaveValueDialog from "@/components/definition/SlaveValueDialog.vue";
 import Sparkline from "@/components/grid/Sparkline.vue";
 import { Button } from "@/components/ui/button";
 import { formatAddress, formatHexBytes, formatLatency, formatWord, historyKey } from "@/lib/format";
@@ -28,6 +29,8 @@ const selectedAddress = ref<number | null>(null);
 const aliasOpen = ref(false);
 const aliasRow = ref<GridRow | null>(null);
 const formatOpen = ref(false);
+const slaveValueOpen = ref(false);
+const slaveValueRow = ref<GridRow | null>(null);
 const flashMap = ref<Record<number, boolean>>({});
 let previousValues = new Map<number, string>();
 
@@ -62,11 +65,16 @@ const sparkTone = computed(() => {
   return "var(--signal)";
 });
 
-const gridClass = computed(() =>
-  settings.showRawColumn
+const gridClass = computed(() => {
+  if (isSlave.value) {
+    return settings.showRawColumn
+      ? "grid-cols-[72px_minmax(130px,1.2fr)_110px_minmax(110px,0.9fr)_58px_26px]"
+      : "grid-cols-[72px_minmax(130px,1.2fr)_minmax(110px,0.9fr)_58px_26px]";
+  }
+  return settings.showRawColumn
     ? "grid-cols-[72px_minmax(130px,1.2fr)_110px_minmax(110px,0.9fr)_92px_58px_26px]"
-    : "grid-cols-[72px_minmax(130px,1.2fr)_minmax(110px,0.9fr)_92px_58px_26px]",
-);
+    : "grid-cols-[72px_minmax(130px,1.2fr)_minmax(110px,0.9fr)_92px_58px_26px]";
+});
 
 const rowHeightClass = computed(() => (settings.compactRows ? "h-8" : "h-[34px]"));
 
@@ -137,6 +145,21 @@ function openAlias(row: GridRow): void {
 function openFormat(): void {
   if (definition.value && !isSlave.value) formatOpen.value = true;
 }
+
+function openSlaveValue(row: GridRow): void {
+  slaveValueRow.value = row;
+  slaveValueOpen.value = true;
+}
+
+function openValue(row: GridRow): void {
+  if (isSlave.value) openSlaveValue(row);
+  else openTrend();
+}
+
+function openFormatCell(row: GridRow): void {
+  if (isSlave.value) openSlaveValue(row);
+  else openFormat();
+}
 </script>
 
 <template>
@@ -180,7 +203,7 @@ function openFormat(): void {
             <span class="label-caps">别名 / 点位</span>
             <span v-if="settings.showRawColumn" class="label-caps">原始 HEX</span>
             <span class="label-caps text-right">数值</span>
-            <span class="label-caps text-center">趋势</span>
+            <span v-if="!isSlave" class="label-caps text-center">趋势</span>
             <span class="label-caps text-center">格式</span>
             <span class="label-caps text-center">状态</span>
           </div>
@@ -229,8 +252,8 @@ function openFormat(): void {
               <span
                 v-if="settings.showRawColumn"
                 class="numeric cursor-pointer truncate text-[11px] text-muted-foreground"
-                title="双击打开趋势大图"
-                @dblclick.stop="openTrend"
+                :title="isSlave ? '双击修改模拟值' : '双击打开趋势大图'"
+                @dblclick.stop="openValue(row)"
               >
                 {{ row.words.length ? formatWord(row.words[0] ?? 0) : "—" }}
                 <span v-if="row.words.length > 1" class="text-muted-foreground/70">
@@ -239,8 +262,8 @@ function openFormat(): void {
               </span>
               <div
                 class="flex cursor-pointer justify-end"
-                title="双击打开趋势大图"
-                @dblclick.stop="openTrend"
+                :title="isSlave ? '双击修改模拟值' : '双击打开趋势大图'"
+                @dblclick.stop="openValue(row)"
               >
                 <span
                   class="numeric rounded px-1.5 py-0.5 text-[14px] font-medium tracking-tight"
@@ -253,6 +276,7 @@ function openFormat(): void {
                 </span>
               </div>
               <div
+                v-if="!isSlave"
                 class="flex cursor-pointer justify-center"
                 title="双击打开趋势大图"
                 @dblclick.stop="openTrend"
@@ -261,8 +285,8 @@ function openFormat(): void {
               </div>
               <div
                 class="flex cursor-pointer justify-center"
-                title="双击修改数据类型 / 字节序"
-                @dblclick.stop="openFormat"
+                :title="isSlave ? '双击修改模拟值与格式' : '双击修改数据类型 / 字节序'"
+                @dblclick.stop="openFormatCell(row)"
               >
                 <span
                   class="numeric rounded border px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide"
@@ -340,5 +364,11 @@ function openFormat(): void {
       :current-alias="aliasRow?.alias ?? ''"
     />
     <FormatDialog v-model:open="formatOpen" :definition="definition" />
+    <SlaveValueDialog
+      v-model:open="slaveValueOpen"
+      :definition="definition"
+      :address="slaveValueRow?.address ?? 0"
+      :current="slaveValueRow?.formatted ?? ''"
+    />
   </section>
 </template>

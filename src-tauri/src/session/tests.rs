@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 use crate::event::{AppEvent, event_bus};
 use crate::model::{
-    CustomWriteInput, DefinitionInput, NewSessionInput, SessionRole, TransportKind,
+    CustomWriteInput, DefinitionInput, NewSessionInput, SessionRole, SlaveValueInput, TransportKind,
 };
 use crate::session::SessionManager;
 
@@ -301,6 +301,48 @@ async fn tcp_slave_serves_modbus_requests() {
         PduResponse::ReadRegisters {
             function_code: 3,
             values: vec![1000, 1001]
+        }
+    );
+
+    let written = manager
+        .slave_write_value(
+            &session.id,
+            SlaveValueInput {
+                address: 0,
+                data_type: DataType::U16,
+                byte_order: OrderPreset::Abcd,
+                value: "4660".to_owned(),
+            },
+        )
+        .await
+        .expect("write simulated value");
+    assert_eq!(written, 1);
+
+    let mut header = [0u8; 6];
+    let request_frame = frame::encode(Framing::Mbap, 1, Some(8), &pdu).expect("request frame");
+    socket
+        .write_all(&request_frame)
+        .await
+        .expect("write second request");
+    tokio::time::timeout(Duration::from_secs(2), socket.read_exact(&mut header))
+        .await
+        .expect("header timeout")
+        .expect("read second header");
+    let length = usize::from(u16::from_be_bytes([header[4], header[5]]));
+    let mut response = header.to_vec();
+    response.resize(6 + length, 0);
+    let body = socket.read_exact(&mut response[6..]);
+    tokio::time::timeout(Duration::from_secs(2), body)
+        .await
+        .expect("body timeout")
+        .expect("read second body");
+    let adu = frame::decode(Framing::Mbap, &response).expect("decode second response");
+    let decoded = PduResponse::decode_for_request(&read, &adu.pdu).expect("second response pdu");
+    assert_eq!(
+        decoded,
+        PduResponse::ReadRegisters {
+            function_code: 3,
+            values: vec![4660, 1001]
         }
     );
 

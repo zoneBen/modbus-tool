@@ -9,11 +9,13 @@ export const useFramesStore = defineStore("frames", () => {
   const frames = ref<Frame[]>([]);
   const direction = ref<"all" | "tx" | "rx">("all");
   const search = ref("");
+  const sessionId = ref<string | null>(null);
   const selectedSeq = ref<number | null>(null);
 
   const filteredFrames = computed(() => {
     const query = search.value.trim().toLowerCase();
     return frames.value.filter((frame) => {
+      if (sessionId.value && frame.sessionId !== sessionId.value) return false;
       if (direction.value !== "all" && frame.direction !== direction.value) return false;
       if (!query) return true;
       const haystack =
@@ -23,8 +25,13 @@ export const useFramesStore = defineStore("frames", () => {
   });
 
   const selectedFrame = computed<Frame | null>(() => {
-    if (selectedSeq.value === null) return filteredFrames.value.at(-1) ?? null;
-    return frames.value.find((frame) => frame.seq === selectedSeq.value) ?? null;
+    const visible = filteredFrames.value;
+    if (!visible.length) return null;
+    if (selectedSeq.value !== null) {
+      const found = visible.find((frame) => frame.seq === selectedSeq.value);
+      if (found) return found;
+    }
+    return visible.at(-1) ?? null;
   });
 
   const stats = computed(() => {
@@ -56,10 +63,16 @@ export const useFramesStore = defineStore("frames", () => {
     selectedSeq.value = seq;
   }
 
+  function setSessionFilter(id: string | null): void {
+    sessionId.value = id;
+    selectedSeq.value = null;
+  }
+
   return {
     frames,
     direction,
     search,
+    sessionId,
     selectedSeq,
     filteredFrames,
     selectedFrame,
@@ -67,5 +80,6 @@ export const useFramesStore = defineStore("frames", () => {
     appendFrames,
     clearFrames,
     selectFrame,
+    setSessionFilter,
   };
 });

@@ -10,6 +10,8 @@ import type {
   NewSessionInput,
   Session,
   SessionStatusEvent,
+  SlaveValueInput,
+  UpdateSessionInput,
   WorkspaceSnapshot,
 } from "@/types/models";
 import { historyKey, snapshotKey } from "@/lib/format";
@@ -298,6 +300,42 @@ export const useSessionsStore = defineStore("sessions", () => {
     history.value = nextHistory;
   }
 
+  async function connectSession(sessionId: string): Promise<void> {
+    refreshSessions((session) =>
+      session.id === sessionId ? { ...session, status: "connecting" } : session,
+    );
+    await ipc.connectSession(sessionId);
+  }
+
+  async function disconnectSession(sessionId: string): Promise<void> {
+    await ipc.disconnectSession(sessionId);
+    refreshSessions((session) =>
+      session.id === sessionId ? { ...session, status: "disconnected", polling: false } : session,
+    );
+  }
+
+  async function updateSession(sessionId: string, input: UpdateSessionInput): Promise<void> {
+    await ipc.updateSession(sessionId, input);
+    refreshSessions((session) =>
+      session.id === sessionId
+        ? {
+            ...session,
+            name: input.name.trim() || session.name,
+            transport: input.transport,
+            framing: input.framing,
+            endpoint: input.endpoint,
+          }
+        : session,
+    );
+  }
+
+  async function writeSlaveValue(input: SlaveValueInput): Promise<number> {
+    const session = activeSession.value;
+    if (!session) throw new Error("未选择会话");
+    if (session.role !== "slave") throw new Error("仅从站模拟会话支持修改模拟值");
+    return ipc.writeSlaveValue(session.id, input);
+  }
+
   async function writeRegister(address: number, value: string): Promise<void> {
     const session = activeSession.value;
     const definition = activeDefinition.value;
@@ -346,6 +384,10 @@ export const useSessionsStore = defineStore("sessions", () => {
     deleteDefinition,
     createSession,
     deleteSession,
+    connectSession,
+    disconnectSession,
+    updateSession,
+    writeSlaveValue,
     writeRegister,
     writeCustom,
   };

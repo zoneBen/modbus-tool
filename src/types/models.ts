@@ -68,6 +68,17 @@ export interface Session {
   definitions: Definition[];
   stats: SessionStats;
   startedAt: number;
+  host?: string;
+  port?: number;
+  serialPort?: string;
+  baudRate?: number;
+  dataBits?: number;
+  parity?: "none" | "even" | "odd";
+  stopBits?: number;
+  timeoutMs?: number;
+  retries?: number;
+  interFrameDelayMs?: number;
+  autoReconnect?: boolean;
 }
 
 export interface RegisterValue {
@@ -150,6 +161,31 @@ export interface NewSessionInput {
   interFrameDelayMs?: number;
   autoReconnect?: boolean;
   slaveId?: number;
+}
+
+export interface UpdateSessionInput {
+  name: string;
+  transport: TransportKind;
+  framing: Framing;
+  endpoint: string;
+  host?: string;
+  port?: number;
+  serialPort?: string;
+  baudRate?: number;
+  dataBits?: number;
+  parity?: "none" | "even" | "odd";
+  stopBits?: number;
+  timeoutMs?: number;
+  retries?: number;
+  interFrameDelayMs?: number;
+  autoReconnect?: boolean;
+}
+
+export interface SlaveValueInput {
+  address: number;
+  dataType: DataType;
+  byteOrder: ByteOrder;
+  value: string;
 }
 
 export interface SessionStatusEvent {

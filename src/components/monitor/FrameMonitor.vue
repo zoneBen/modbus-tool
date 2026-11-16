@@ -20,6 +20,7 @@ import FrameDetail from "@/components/monitor/FrameDetail.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatHexBytes, formatLatency, formatTime } from "@/lib/format";
+import { ipc } from "@/lib/ipc";
 import { useFramesStore } from "@/stores/frames";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
@@ -76,6 +77,14 @@ watch(
     if (follow) void scrollToEnd();
   },
 );
+watch(
+  () => sessions.activeSessionId,
+  (sessionId) => {
+    frames.setSessionFilter(sessionId);
+    void scrollToEnd();
+  },
+  { immediate: true },
+);
 
 onMounted(scrollToEnd);
 
@@ -87,8 +96,56 @@ function openTab(tab: "frames" | "chart" | "log"): void {
   activeTab.value = tab;
 }
 
-function exportFrames(): void {
-  toast.info("报文导出将在 P6 阶段启用。");
+function csvCell(value: unknown): string {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+async function exportFrames(): Promise<void> {
+  const rows = frames.filteredFrames;
+  if (!rows.length) {
+    toast.info("当前会话暂无可导出的报文");
+    return;
+  }
+  const header = [
+    "seq",
+    "time",
+    "session",
+    "direction",
+    "status",
+    "latencyMs",
+    "summary",
+    "rawHex",
+  ];
+  const lines = [header.map(csvCell).join(",")];
+  for (const frame of rows) {
+    lines.push(
+      [
+        frame.seq,
+        new Date(frame.timestamp).toISOString(),
+        sessions.sessionName(frame.sessionId),
+        frame.direction,
+        frame.status,
+        frame.latencyMs ?? "",
+        frame.summary,
+        formatHexBytes(frame.raw),
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const scope = (sessions.activeSession?.name ?? "all-sessions").replace(/[\\/:*?"<>|\s]+/g, "_");
+  try {
+    const saved = await ipc.saveTextFile(
+      `modbus-frames-${scope}-${stamp}.csv`,
+      `${String.fromCharCode(0xfeff)}${lines.join("\r\n")}`,
+    );
+    if (saved) toast.success(`已导出 ${rows.length} 条报文`);
+  } catch (error: unknown) {
+    toast.error("导出报文失败", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 </script>
 
@@ -106,6 +163,12 @@ function exportFrames(): void {
         {{ t("monitor.title") }}
         <span class="numeric rounded bg-overlay-3 px-1 py-0.5 text-[11px] text-muted-foreground">
           {{ count }}
+        </span>
+        <span
+          v-if="sessions.activeSession"
+          class="max-w-[150px] truncate text-[11px] text-muted-foreground"
+        >
+          {{ sessions.activeSession.name }}
         </span>
         <span
           v-if="activeTab === 'frames'"

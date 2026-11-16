@@ -54,6 +54,7 @@ pub async fn start(
     state: Arc<RwLock<SessionState>>,
     bus: EventBus,
     seq: Arc<AtomicU64>,
+    simulator: Arc<Mutex<Simulator>>,
 ) -> Result<SlaveServer, String> {
     let (definition, link, framing, session_id) = {
         let state = state.read().await;
@@ -70,7 +71,6 @@ pub async fn start(
             state.config.id.clone(),
         )
     };
-    let simulator = Arc::new(Mutex::new(build_simulator(definition.slave_id)));
     let stop_flag = Arc::new(AtomicBool::new(false));
     let (stop_tx, stop_rx) = watch::channel(false);
 
@@ -129,7 +129,7 @@ pub async fn start(
     }
 }
 
-fn build_simulator(unit_id: u8) -> Simulator {
+pub fn build_simulator(unit_id: u8) -> Simulator {
     let mut unit = SlaveUnit::new(unit_id);
     for address in 0..MAP_QUANTITY {
         unit.set_holding(address, 1000 + address);
@@ -362,7 +362,7 @@ fn process_request(
     })
 }
 
-fn build_snapshot(
+pub fn build_snapshot(
     session_id: &str,
     definition: &DefinitionDto,
     simulator: &Arc<Mutex<Simulator>>,

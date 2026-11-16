@@ -1,22 +1,24 @@
 //! Per-session actor: owns one link and serializes all transactions.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tokio::time::{Instant, sleep, sleep_until};
 
 use modbus_core::frame;
+use modbus_core::simulator::Simulator;
 use modbus_core::value::{decode_words, encode_value};
-use modbus_core::{DataType, ExceptionCode, Framing, PduRequest, PduResponse};
+use modbus_core::{BytePos, DataType, ExceptionCode, Framing, PduRequest, PduResponse, ValueRule};
 
 use crate::event::{AppEvent, EventBus, emit};
 use crate::frames::{FrameInfo, build_frame};
 use crate::model::{
     CustomWriteInput, DefinitionDto, DefinitionInput, DefinitionSnapshotDto, FrameDto, LinkConfig,
-    RegisterValueDto, SessionRole, SessionState, SessionStatus, now_ms,
+    RegisterValueDto, SessionRole, SessionState, SessionStatus, SlaveValueInput,
+    UpdateSessionInput, now_ms,
 };
 use crate::transport::{Transport, TransportError};
 
@@ -66,6 +68,14 @@ pub enum SessionCommand {
         input: CustomWriteInput,
         reply: oneshot::Sender<Result<(), String>>,
     },
+    UpdateConfig {
+        input: UpdateSessionInput,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    SlaveWriteValue {
+        input: SlaveValueInput,
+        reply: oneshot::Sender<Result<u16, String>>,
+    },
     Shutdown,
 }
 
@@ -111,6 +121,7 @@ pub struct Actor {
     seq: Arc<AtomicU64>,
     transport: Option<Transport>,
     slave: Option<SlaveServer>,
+    slave_map: Option<Arc<StdMutex<Simulator>>>,
     next_tid: u16,
     last_run: HashMap<String, Instant>,
 }
@@ -129,6 +140,7 @@ impl Actor {
             seq,
             transport: None,
             slave: None,
+            slave_map: None,
             next_tid: 0,
             last_run: HashMap::new(),
         }
@@ -157,6 +169,7 @@ impl Actor {
             }
         }
         self.slave = None;
+        self.slave_map = None;
         self.transport = None;
     }
 
@@ -249,6 +262,16 @@ impl Actor {
                 let _ = reply.send(result.map_err(TransactionError::message));
                 true
             }
+            SessionCommand::UpdateConfig { input, reply } => {
+                let result = self.update_config(input).await;
+                let _ = reply.send(result);
+                true
+            }
+            SessionCommand::SlaveWriteValue { input, reply } => {
+                let result = self.slave_write_value(input).await;
+                let _ = reply.send(result);
+                true
+            }
             SessionCommand::Shutdown => false,
         }
     }
@@ -269,10 +292,30 @@ impl Actor {
             )
         };
         if role == SessionRole::Slave {
-            return match slave::start(self.state.clone(), self.bus.clone(), self.seq.clone()).await
+            let unit_id = {
+                let state = self.state.read().await;
+                state
+                    .config
+                    .definitions
+                    .first()
+                    .map(|definition| definition.slave_id)
+                    .unwrap_or(1)
+            };
+            let simulator = self
+                .slave_map
+                .clone()
+                .unwrap_or_else(|| Arc::new(StdMutex::new(slave::build_simulator(unit_id))));
+            return match slave::start(
+                self.state.clone(),
+                self.bus.clone(),
+                self.seq.clone(),
+                simulator.clone(),
+            )
+            .await
             {
                 Ok(server) => {
                     self.slave = Some(server);
+                    self.slave_map = Some(simulator);
                     self.last_run.clear();
                     Ok(())
                 }
@@ -563,6 +606,72 @@ impl Actor {
             }
             _ => Err(TransactionError::Protocol("写入响应类型不匹配".to_owned())),
         }
+    }
+
+    async fn update_config(&mut self, input: UpdateSessionInput) -> Result<(), String> {
+        let was_connected = self.state.read().await.status == SessionStatus::Connected;
+        {
+            let mut state = self.state.write().await;
+            input.apply_to(&mut state.config)?;
+        }
+        self.last_run.clear();
+        if was_connected {
+            self.disconnect().await;
+            self.connect().await?;
+        } else {
+            self.emit_status(None).await;
+        }
+        Ok(())
+    }
+
+    async fn slave_write_value(&self, input: SlaveValueInput) -> Result<u16, String> {
+        let (session_id, definition) = {
+            let state = self.state.read().await;
+            if state.config.role != SessionRole::Slave {
+                return Err("仅从站模拟会话支持修改模拟值".to_owned());
+            }
+            let definition = state
+                .config
+                .definitions
+                .first()
+                .cloned()
+                .ok_or_else(|| "从站映射定义缺失".to_owned())?;
+            (state.config.id.clone(), definition)
+        };
+        let simulator = self
+            .slave_map
+            .as_ref()
+            .ok_or_else(|| "从站模拟器尚未初始化，请先启动会话".to_owned())?;
+        let (byte_order, word_order) = input.byte_order.parts();
+        let rule = ValueRule {
+            data_type: input.data_type,
+            byte_pos: Some(BytePos::Low),
+            byte_order,
+            word_order,
+        };
+        let words = encode_value(&rule, &input.value).map_err(|error| error.to_string())?;
+        if words.is_empty() {
+            return Err("写入值为空".to_owned());
+        }
+        let word_count =
+            u16::try_from(words.len()).map_err(|_| "编码结果超出寄存器数量限制".to_owned())?;
+        if u32::from(input.address) + u32::from(word_count) > 0x1_0000 {
+            return Err("写入地址范围超出 65535".to_owned());
+        }
+        {
+            let mut simulator = simulator
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            let unit = simulator
+                .unit_mut(definition.slave_id)
+                .ok_or_else(|| "模拟从站不存在".to_owned())?;
+            for (offset, word) in words.iter().enumerate() {
+                unit.set_holding(input.address.wrapping_add(offset as u16), *word);
+            }
+        }
+        let snapshot = slave::build_snapshot(&session_id, &definition, simulator);
+        emit(&self.bus, AppEvent::SessionData(snapshot));
+        Ok(word_count)
     }
 
     async fn create_definition(&mut self, input: DefinitionInput) -> Result<DefinitionDto, String> {

@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "Industrial bus console",
-    version: "v0.1.4",
+    version: "v0.1.5",
   },
   nav: {
     workspace: "Workspace",

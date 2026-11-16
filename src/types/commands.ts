@@ -15,6 +15,8 @@ import type {
   Session,
   SessionStatusEvent,
   SlaveIdScanInput,
+  SlaveValueInput,
+  UpdateSessionInput,
   WorkspaceSnapshot,
 } from "./models";
 
@@ -43,6 +45,11 @@ export interface IpcApi {
   listSerialPorts(): Promise<SerialPortInfo[]>;
   createSession(input: NewSessionInput): Promise<Session>;
   deleteSession(sessionId: string): Promise<void>;
+  connectSession(sessionId: string): Promise<void>;
+  disconnectSession(sessionId: string): Promise<void>;
+  updateSession(sessionId: string, input: UpdateSessionInput): Promise<void>;
+  writeSlaveValue(sessionId: string, input: SlaveValueInput): Promise<number>;
+  saveTextFile(suggestedName: string, contents: string): Promise<boolean>;
   setPolling(sessionId: string, enabled: boolean): Promise<void>;
   readOnce(sessionId: string, definitionId: string): Promise<void>;
   setDefinitionEnabled(sessionId: string, definitionId: string, enabled: boolean): Promise<void>;

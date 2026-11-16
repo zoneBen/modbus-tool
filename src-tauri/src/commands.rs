@@ -6,7 +6,7 @@ use tauri::State;
 use crate::model::{
     AddressScanInput, BaudScanInput, CustomWriteInput, DefinitionDto, DefinitionInput,
     NetworkScanInput, NewSessionInput, SerialPortInfoDto, SessionDto, SlaveIdScanInput,
-    WorkspaceSnapshotDto,
+    SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
 };
 use crate::state::AppState;
 
@@ -17,6 +17,11 @@ pub struct AppInfo {
     pub version: String,
     pub protocol: String,
     pub function_codes: Vec<u8>,
+}
+
+#[tauri::command]
+pub fn save_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|error| format!("写入文件失败：{error}"))
 }
 
 #[tauri::command]
@@ -164,11 +169,34 @@ pub async fn write_custom(
 }
 
 #[tauri::command]
+pub async fn session_connect(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.manager.connect(&session_id).await
+}
+
+#[tauri::command]
 pub async fn session_disconnect(
     session_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     state.manager.disconnect(&session_id).await
+}
+
+#[tauri::command]
+pub async fn session_update(
+    session_id: String,
+    input: UpdateSessionInput,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.manager.update_session(&session_id, input).await
+}
+
+#[tauri::command]
+pub async fn slave_write_value(
+    session_id: String,
+    input: SlaveValueInput,
+    state: State<'_, AppState>,
+) -> Result<u16, String> {
+    state.manager.slave_write_value(&session_id, input).await
 }
 
 #[tauri::command]

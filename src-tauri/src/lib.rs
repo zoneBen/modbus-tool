@@ -92,6 +92,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::save_text_file,
             commands::workspace_get,
             commands::list_serial_ports,
             commands::session_create,
@@ -103,8 +104,11 @@ pub fn run() {
             commands::definition_delete,
             commands::write_register,
             commands::write_custom,
+            commands::session_connect,
             commands::session_disconnect,
+            commands::session_update,
             commands::session_delete,
+            commands::slave_write_value,
             commands::scan_slave_ids,
             commands::scan_addresses,
             commands::scan_baud_rates,

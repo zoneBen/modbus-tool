@@ -20,9 +20,12 @@ import type {
   SessionAccent,
   SessionStatusEvent,
   SlaveIdScanInput,
+  SlaveValueInput,
+  UpdateSessionInput,
   WorkspaceSnapshot,
 } from "@/types/models";
 import {
+  applyByteOrder,
   buildDecodedFrame,
   floatToWords,
   mbapFrame,
@@ -72,6 +75,95 @@ function parseDemoRegister(text: string): number {
     throw new Error(`无法解析寄存器值「${text}」，请输入 0–65535 或 0x0000–0xFFFF`);
   }
   return value;
+}
+
+function encodeSlaveWords(input: SlaveValueInput): number[] {
+  const order = input.byteOrder;
+  const text = input.value.trim();
+  if (!text) throw new Error("请输入写入值");
+  const numeric = Number(text.replace(/,/g, ""));
+  const bytesToWords = (bytes: number[]): number[] => {
+    const padded = bytes.length % 2 === 0 ? bytes : [...bytes, 0];
+    const words: number[] = [];
+    for (let index = 0; index < padded.length; index += 2) {
+      words.push(((padded[index] ?? 0) << 8) | (padded[index + 1] ?? 0));
+    }
+    return applyByteOrder(words, order);
+  };
+  const integer = (min: number, max: number): number => {
+    if (!Number.isInteger(numeric) || numeric < min || numeric > max) {
+      throw new Error(`值需为 ${min}–${max} 的整数`);
+    }
+    return numeric;
+  };
+
+  switch (input.dataType) {
+    case "bool":
+      return [parseDemoCoil(text) ? 1 : 0];
+    case "u8":
+      return bytesToWords([integer(0, 0xff)]);
+    case "i8":
+      return bytesToWords([integer(-128, 127) & 0xff]);
+    case "u16":
+    case "i16":
+      return uint16Words(
+        integer(input.dataType === "u16" ? 0 : -32768, input.dataType === "u16" ? 0xffff : 32767),
+        order,
+      );
+    case "u32":
+    case "i32": {
+      const value = integer(
+        input.dataType === "u32" ? 0 : -2147483648,
+        input.dataType === "u32" ? 4294967295 : 2147483647,
+      );
+      const buffer = new ArrayBuffer(4);
+      const view = new DataView(buffer);
+      if (input.dataType === "u32") view.setUint32(0, value, false);
+      else view.setInt32(0, value, false);
+      return bytesToWords(Array.from(new Uint8Array(buffer)));
+    }
+    case "f32":
+      if (!Number.isFinite(numeric)) throw new Error("请输入有效数字");
+      return floatToWords(numeric, order);
+    case "u64":
+    case "i64": {
+      const big = BigInt(integer(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER));
+      const buffer = new ArrayBuffer(8);
+      const view = new DataView(buffer);
+      if (input.dataType === "u64") view.setBigUint64(0, big, false);
+      else view.setBigInt64(0, big, false);
+      return bytesToWords(Array.from(new Uint8Array(buffer)));
+    }
+    case "f64": {
+      if (!Number.isFinite(numeric)) throw new Error("请输入有效数字");
+      const buffer = new ArrayBuffer(8);
+      new DataView(buffer).setFloat64(0, numeric, false);
+      return bytesToWords(Array.from(new Uint8Array(buffer)));
+    }
+    case "hex": {
+      const hex = text.replace(/^0x/i, "").replace(/[^0-9a-f]/gi, "");
+      if (!hex.length) throw new Error("请输入十六进制字节");
+      const padded = hex.length % 2 === 0 ? hex : `0${hex}`;
+      const bytes = Array.from({ length: padded.length / 2 }, (_, index) =>
+        Number.parseInt(padded.slice(index * 2, index * 2 + 2), 16),
+      );
+      return bytesToWords(bytes);
+    }
+    case "bin": {
+      const bits = text.replace(/[^01]/g, "");
+      if (!bits.length) throw new Error("请输入二进制位");
+      const bytes: number[] = [];
+      for (let index = 0; index < bits.length; index += 8) {
+        const chunk = bits.slice(index, index + 8).padEnd(8, "0");
+        bytes.push(Number.parseInt(chunk, 2));
+      }
+      return bytesToWords(bytes);
+    }
+    case "ascii":
+      return bytesToWords(Array.from(new TextEncoder().encode(text)));
+    default:
+      throw new Error("不支持的数据类型");
+  }
 }
 
 function parseDemoCoil(text: string): boolean {
@@ -510,6 +602,17 @@ export function createDemoBridge(): IpcApi {
     return { sessions: clone(sessions), version: 1, demo: true };
   }
 
+  async function saveTextFile(suggestedName: string, contents: string): Promise<boolean> {
+    const blob = new Blob([contents], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = suggestedName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  }
+
   async function listSerialPorts(): Promise<SerialPortInfo[]> {
     return [
       { path: "COM3", label: "USB-SERIAL CH340 (COM3)", manufacturer: "wch.cn" },
@@ -550,6 +653,17 @@ export function createDemoBridge(): IpcApi {
       stats: { tx: 0, rx: 0, errors: 0, latencyMs: input.transport === "serial" ? 18 : 6 },
       startedAt: Date.now(),
       definitions: definition ? [definition] : [],
+      host: input.host,
+      port: input.port,
+      serialPort: input.serialPort,
+      baudRate: input.baudRate,
+      dataBits: input.dataBits,
+      parity: input.parity,
+      stopBits: input.stopBits,
+      timeoutMs: input.timeoutMs,
+      retries: input.retries,
+      interFrameDelayMs: input.interFrameDelayMs,
+      autoReconnect: input.autoReconnect,
     };
     sessions.push(session);
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
@@ -573,6 +687,80 @@ export function createDemoBridge(): IpcApi {
       if (key.startsWith(`${sessionId}:`)) latestSnapshots.delete(key);
     }
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
+  }
+
+  async function connectSession(sessionId: string): Promise<void> {
+    const session = sessionById(sessionId);
+    session.status = "connected";
+    session.polling = session.role === "master";
+    emit("session:status", statusPayload(session));
+    emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
+    if (session.role === "master") {
+      setTimeout(() => runSessionTick(session, tick), 120);
+    }
+  }
+
+  async function disconnectSession(sessionId: string): Promise<void> {
+    const session = sessionById(sessionId);
+    session.status = "disconnected";
+    session.polling = false;
+    emit("session:status", statusPayload(session));
+    emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
+  }
+
+  async function updateSession(sessionId: string, input: UpdateSessionInput): Promise<void> {
+    const session = sessionById(sessionId);
+    session.name = input.name.trim() || session.name;
+    session.transport = input.transport;
+    session.framing = input.framing;
+    session.endpoint = input.endpoint;
+    session.host = input.host;
+    session.port = input.port;
+    session.serialPort = input.serialPort;
+    session.baudRate = input.baudRate;
+    session.dataBits = input.dataBits;
+    session.parity = input.parity;
+    session.stopBits = input.stopBits;
+    session.timeoutMs = input.timeoutMs;
+    session.retries = input.retries;
+    session.interFrameDelayMs = input.interFrameDelayMs;
+    session.autoReconnect = input.autoReconnect;
+    emit("session:status", statusPayload(session));
+    emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
+  }
+
+  async function writeSlaveValue(sessionId: string, input: SlaveValueInput): Promise<number> {
+    const session = sessionById(sessionId);
+    if (session.role !== "slave") throw new Error("仅从站模拟会话支持修改模拟值");
+    const definition = session.definitions[0];
+    if (!definition) throw new Error("从站映射定义缺失");
+    const words = encodeSlaveWords(input);
+    if (!words.length) throw new Error("写入值为空");
+    if (input.address + words.length > 0x10000) {
+      throw new Error("写入地址范围超出 65535");
+    }
+    const snapshot = latestSnapshots.get(snapshotKey(sessionId, definition.id));
+    if (!snapshot) return words.length;
+    const next = {
+      ...snapshot,
+      timestamp: Date.now(),
+      values: snapshot.values.map((entry) => {
+        const offset = entry.address - input.address;
+        if (offset < 0 || offset >= words.length) return entry;
+        const word = words[offset] ?? 0;
+        return {
+          ...entry,
+          words: [word],
+          formatted: formatNumber(word),
+          numeric: word,
+          stale: false,
+          error: undefined,
+        };
+      }),
+    };
+    storeSnapshot(next);
+    emit("session:data", next);
+    return words.length;
   }
 
   async function setPolling(sessionId: string, enabled: boolean): Promise<void> {
@@ -1051,6 +1239,11 @@ export function createDemoBridge(): IpcApi {
     listSerialPorts,
     createSession,
     deleteSession,
+    connectSession,
+    disconnectSession,
+    updateSession,
+    writeSlaveValue,
+    saveTextFile,
     setPolling,
     readOnce,
     setDefinitionEnabled,

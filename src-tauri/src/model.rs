@@ -247,6 +247,28 @@ pub struct SessionDto {
     pub definitions: Vec<DefinitionDto>,
     pub stats: SessionStatsDto,
     pub started_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serial_port: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baud_rate: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_bits: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_bits: Option<u8>,
+    #[serde(default)]
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub retries: u32,
+    #[serde(default)]
+    pub inter_frame_delay_ms: u64,
+    #[serde(default)]
+    pub auto_reconnect: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -384,6 +406,27 @@ impl SessionState {
     }
 
     pub fn to_dto(&self) -> SessionDto {
+        let (host, port, serial_port, baud_rate, data_bits, parity, stop_bits) =
+            match &self.config.link {
+                LinkConfig::Serial(serial) => (
+                    None,
+                    None,
+                    Some(serial.port.clone()),
+                    Some(serial.baud_rate),
+                    Some(serial.data_bits),
+                    Some(parity_name(serial.parity).to_owned()),
+                    Some(serial.stop_bits),
+                ),
+                LinkConfig::Tcp(network) | LinkConfig::Udp(network) => (
+                    Some(network.host.clone()),
+                    Some(network.port),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            };
         SessionDto {
             id: self.config.id.clone(),
             name: self.config.name.clone(),
@@ -397,6 +440,17 @@ impl SessionState {
             definitions: self.config.definitions.clone(),
             stats: self.stats.clone(),
             started_at: self.config.started_at,
+            host,
+            port,
+            serial_port,
+            baud_rate,
+            data_bits,
+            parity,
+            stop_bits,
+            timeout_ms: self.config.timeout_ms,
+            retries: self.config.retries,
+            inter_frame_delay_ms: self.config.inter_frame_delay_ms,
+            auto_reconnect: self.config.auto_reconnect,
         }
     }
 
@@ -465,18 +519,7 @@ impl NewSessionInput {
         )?;
 
         let endpoint = if self.endpoint.trim().is_empty() {
-            match &link {
-                LinkConfig::Serial(serial) => format!(
-                    "{} · {} {}{}{}",
-                    serial.port,
-                    serial.baud_rate,
-                    serial.data_bits,
-                    parity_letter(serial.parity),
-                    serial.stop_bits
-                ),
-                LinkConfig::Tcp(network) => format!("{}:{}", network.host, network.port),
-                LinkConfig::Udp(network) => format!("{}:{}", network.host, network.port),
-            }
+            endpoint_from_link(&link)
         } else {
             self.endpoint.clone()
         };
@@ -511,6 +554,105 @@ impl NewSessionInput {
             started_at: now_ms(),
         })
     }
+}
+
+fn endpoint_from_link(link: &LinkConfig) -> String {
+    match link {
+        LinkConfig::Serial(serial) => format!(
+            "{} · {} {}{}{}",
+            serial.port,
+            serial.baud_rate,
+            serial.data_bits,
+            parity_letter(serial.parity),
+            serial.stop_bits
+        ),
+        LinkConfig::Tcp(network) | LinkConfig::Udp(network) => {
+            format!("{}:{}", network.host, network.port)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSessionInput {
+    pub name: String,
+    pub transport: TransportKind,
+    pub framing: Framing,
+    pub endpoint: String,
+    #[serde(default)]
+    pub host: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub serial_port: Option<String>,
+    #[serde(default)]
+    pub baud_rate: Option<u32>,
+    #[serde(default)]
+    pub data_bits: Option<u8>,
+    #[serde(default)]
+    pub parity: Option<String>,
+    #[serde(default)]
+    pub stop_bits: Option<u8>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub retries: Option<u32>,
+    #[serde(default)]
+    pub inter_frame_delay_ms: Option<u64>,
+    #[serde(default)]
+    pub auto_reconnect: Option<bool>,
+}
+
+impl UpdateSessionInput {
+    pub fn apply_to(self, config: &mut SessionConfig) -> Result<(), String> {
+        if config.role == SessionRole::Slave && self.transport == TransportKind::Udp {
+            return Err("从站模拟暂不支持 UDP，请使用 TCP 或串口".to_owned());
+        }
+        let link = build_link(
+            self.transport,
+            self.framing,
+            self.host,
+            self.port,
+            self.serial_port,
+            self.baud_rate,
+            self.data_bits,
+            self.parity.as_deref(),
+            self.stop_bits,
+            &self.endpoint,
+        )?;
+        let endpoint = if self.endpoint.trim().is_empty() {
+            endpoint_from_link(&link)
+        } else {
+            self.endpoint.clone()
+        };
+        let name = self.name.trim();
+        if !name.is_empty() {
+            config.name = name.to_owned();
+        }
+        config.link = link;
+        config.framing = self.framing;
+        config.endpoint = endpoint;
+        config.timeout_ms = self
+            .timeout_ms
+            .unwrap_or(config.timeout_ms)
+            .clamp(50, 60_000);
+        config.retries = self.retries.unwrap_or(config.retries).min(10);
+        config.inter_frame_delay_ms = self
+            .inter_frame_delay_ms
+            .unwrap_or(config.inter_frame_delay_ms)
+            .min(60_000);
+        config.auto_reconnect = self.auto_reconnect.unwrap_or(config.auto_reconnect);
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlaveValueInput {
+    pub address: u16,
+    pub data_type: DataType,
+    pub byte_order: OrderPreset,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -809,6 +951,14 @@ fn split_endpoint(endpoint: &str) -> (Option<String>, Option<u16>) {
             port.parse::<u16>().ok(),
         ),
         None => (Some(trimmed.to_owned()), None),
+    }
+}
+
+fn parity_name(parity: SerialParity) -> &'static str {
+    match parity {
+        SerialParity::None => "none",
+        SerialParity::Even => "even",
+        SerialParity::Odd => "odd",
     }
 }
 
