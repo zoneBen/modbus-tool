@@ -1,6 +1,7 @@
 //! Session lifecycle and command routing.
 
 pub mod actor;
+pub mod slave;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,7 +13,8 @@ use uuid::Uuid;
 
 use crate::event::{AppEvent, EventBus, emit};
 use crate::model::{
-    DefinitionDto, DefinitionInput, NewSessionInput, SessionDto, SessionState, WorkspaceSnapshotDto,
+    CustomWriteInput, DefinitionDto, DefinitionInput, NewSessionInput, SessionDto, SessionState,
+    WorkspaceSnapshotDto,
 };
 
 use actor::{Actor, SessionCommand};
@@ -196,6 +198,20 @@ impl SessionManager {
             definition_id: definition_id.to_owned(),
             address,
             value: value.to_owned(),
+            reply,
+        })
+        .await
+    }
+
+    pub async fn write_custom(
+        &self,
+        session_id: &str,
+        definition_id: Option<&str>,
+        input: CustomWriteInput,
+    ) -> Result<(), String> {
+        self.ask(session_id, |reply| SessionCommand::WriteCustom {
+            definition_id: definition_id.map(str::to_owned),
+            input,
             reply,
         })
         .await

@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { Plus, X } from "@lucide/vue";
-import { computed, ref } from "vue";
+import { X } from "@lucide/vue";
+import { ref } from "vue";
 import { toast } from "vue-sonner";
 import StatusPill from "@/components/common/StatusPill.vue";
 import TransportGlyph from "@/components/common/TransportGlyph.vue";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -15,39 +14,42 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSessionsStore } from "@/stores/sessions";
 import type { Session } from "@/types/models";
 
-const emit = defineEmits<{
-  (event: "new-session"): void;
-}>();
-
 const sessions = useSessionsStore();
 const pendingDelete = ref<Session | null>(null);
-const deleteOpen = computed({
-  get: () => pendingDelete.value !== null,
-  set: (open: boolean) => {
-    if (!open) pendingDelete.value = null;
-  },
-});
+const deleteOpen = ref(false);
+const deleting = ref(false);
 
 function select(sessionId: string): void {
   sessions.setActiveSession(sessionId);
 }
 
+function requestDelete(session: Session): void {
+  pendingDelete.value = session;
+  deleteOpen.value = true;
+}
+
+function closeDelete(): void {
+  deleteOpen.value = false;
+  pendingDelete.value = null;
+}
+
 async function confirmDelete(): Promise<void> {
   const target = pendingDelete.value;
-  if (!target) return;
+  if (!target || deleting.value) return;
+  deleting.value = true;
   try {
     await sessions.deleteSession(target.id);
     toast.success(`已删除会话「${target.name}」`);
+    closeDelete();
   } catch (error: unknown) {
     toast.error("删除会话失败", {
       description: error instanceof Error ? error.message : String(error),
     });
   } finally {
-    pendingDelete.value = null;
+    deleting.value = false;
   }
 }
 </script>
@@ -90,7 +92,7 @@ async function confirmDelete(): Promise<void> {
           class="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-overlay-3 hover:text-foreground group-hover:opacity-100"
           :class="{ 'opacity-100': session.id === sessions.activeSessionId }"
           :aria-label="`删除会话 ${session.name}`"
-          @click.stop="pendingDelete = session"
+          @click.stop="requestDelete(session)"
         >
           <X class="size-3" />
         </button>
@@ -102,22 +104,6 @@ async function confirmDelete(): Promise<void> {
     </div>
 
     <div class="flex shrink-0 items-center gap-1.5 border-l border-hairline px-2.5">
-      <TooltipProvider :delay-duration="180">
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class="rounded-lg text-muted-foreground hover:text-foreground"
-              aria-label="新建会话"
-              @click="emit('new-session')"
-            >
-              <Plus class="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">新建会话</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
       <StatusPill
         v-if="sessions.activeSession"
         :status="sessions.activeSession.status"
@@ -126,7 +112,14 @@ async function confirmDelete(): Promise<void> {
       />
     </div>
 
-    <AlertDialog v-model:open="deleteOpen">
+    <AlertDialog
+      :open="deleteOpen"
+      @update:open="
+        (open) => {
+          if (!open) closeDelete();
+        }
+      "
+    >
       <AlertDialogContent
         class="border-glass-border bg-[color:var(--glass-strong)] backdrop-blur-2xl"
       >
@@ -137,13 +130,15 @@ async function confirmDelete(): Promise<void> {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>取消</AlertDialogCancel>
-          <AlertDialogAction
-            class="bg-destructive text-white hover:bg-destructive/90"
+          <AlertDialogCancel :disabled="deleting">取消</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            class="text-white"
+            :disabled="deleting"
             @click="confirmDelete"
           >
-            删除会话
-          </AlertDialogAction>
+            {{ deleting ? "删除中…" : "删除会话" }}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

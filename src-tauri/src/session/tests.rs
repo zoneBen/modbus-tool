@@ -10,7 +10,9 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
 use crate::event::{AppEvent, event_bus};
-use crate::model::{DefinitionInput, NewSessionInput, SessionRole, TransportKind};
+use crate::model::{
+    CustomWriteInput, DefinitionInput, NewSessionInput, SessionRole, TransportKind,
+};
 use crate::session::SessionManager;
 
 async fn mock_tcp_slave(listener: TcpListener, simulator: Arc<Mutex<Simulator>>) {
@@ -88,6 +90,7 @@ fn input(port: u16) -> NewSessionInput {
         retries: Some(0),
         inter_frame_delay_ms: Some(0),
         auto_reconnect: Some(false),
+        slave_id: None,
     }
 }
 
@@ -95,8 +98,11 @@ fn input(port: u16) -> NewSessionInput {
 async fn reads_and_writes_over_real_tcp() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
+    let mut read_only = SlaveUnit::new(2).with_holding_registers([(0, 0)]);
+    read_only.write_enabled = false;
     let simulator = Arc::new(Mutex::new(Simulator::new([
-        SlaveUnit::new(1).with_holding_registers([(0, 0x1234), (1, 0xABCD)])
+        SlaveUnit::new(1).with_holding_registers([(0, 0x1234), (1, 0xABCD)]),
+        read_only,
     ])));
     let server = tokio::spawn(mock_tcp_slave(listener, simulator.clone()));
 
@@ -104,7 +110,18 @@ async fn reads_and_writes_over_real_tcp() {
     let mut events = bus.subscribe();
     let manager = SessionManager::new(bus);
     let session = manager.create_session(input(port)).await.expect("create");
-    let definition_id = session.definitions[0].id.clone();
+    assert!(
+        session.definitions.is_empty(),
+        "new sessions must not seed read definitions"
+    );
+    let mut read_input = definition_input("读取定义");
+    read_input.start_address = 0;
+    read_input.quantity = 2;
+    let definition = manager
+        .create_definition(&session.id, read_input)
+        .await
+        .expect("create read definition");
+    let definition_id = definition.id.clone();
 
     manager
         .read_once(&session.id, &definition_id)
@@ -134,6 +151,76 @@ async fn reads_and_writes_over_real_tcp() {
         .expect("write");
     let written = simulator.lock().await.unit(1).expect("unit").holding(1);
     assert_eq!(written, 1234);
+
+    manager
+        .write_custom(
+            &session.id,
+            Some(&definition_id),
+            CustomWriteInput {
+                slave_id: 1,
+                function_code: 0x10,
+                address: 0,
+                values: vec!["111".to_owned(), "0x00DE".to_owned()],
+            },
+        )
+        .await
+        .expect("custom write");
+    assert_eq!(simulator.lock().await.unit(1).expect("unit").holding(0), 111);
+    assert_eq!(simulator.lock().await.unit(1).expect("unit").holding(1), 222);
+
+    let error = manager
+        .write_custom(
+            &session.id,
+            Some(&definition_id),
+            CustomWriteInput {
+                slave_id: 2,
+                function_code: 0x06,
+                address: 0,
+                values: vec!["1".to_owned()],
+            },
+        )
+        .await
+        .expect_err("out-of-range write must fail");
+    assert!(
+        error.contains("Modbus 异常 0x02") && error.contains("地址非法"),
+        "error should explain the Modbus exception: {error}"
+    );
+
+    let mut bad_input = definition_input("无响应定义");
+    bad_input.slave_id = 9;
+    let bad_definition = manager
+        .create_definition(&session.id, bad_input)
+        .await
+        .expect("create bad definition");
+    manager
+        .set_definition_enabled(&session.id, &bad_definition.id, false)
+        .await
+        .expect("disable bad definition");
+    let _ = manager
+        .read_once(&session.id, &bad_definition.id)
+        .await
+        .expect_err("missing slave must time out");
+    let mut error_snapshot = None;
+    for _ in 0..20 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::SessionData(snapshot)))
+                if snapshot.definition_id == bad_definition.id && snapshot.error.is_some() =>
+            {
+                error_snapshot = Some(snapshot);
+                break;
+            }
+            Ok(Ok(_)) => continue,
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+    let error_snapshot = error_snapshot.expect("error snapshot event");
+    assert_eq!(error_snapshot.values.len(), 1);
+    assert_eq!(error_snapshot.values[0].formatted, "—");
+    assert_eq!(error_snapshot.values[0].numeric, None);
+    manager
+        .delete_definition(&session.id, &bad_definition.id)
+        .await
+        .expect("delete bad definition");
 
     let created = manager
         .create_definition(&session.id, definition_input("额外定义"))

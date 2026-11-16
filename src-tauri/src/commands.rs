@@ -4,8 +4,9 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::model::{
-    AddressScanInput, BaudScanInput, DefinitionDto, DefinitionInput, NetworkScanInput,
-    NewSessionInput, SerialPortInfoDto, SessionDto, SlaveIdScanInput, WorkspaceSnapshotDto,
+    AddressScanInput, BaudScanInput, CustomWriteInput, DefinitionDto, DefinitionInput,
+    NetworkScanInput, NewSessionInput, SerialPortInfoDto, SessionDto, SlaveIdScanInput,
+    WorkspaceSnapshotDto,
 };
 use crate::state::AppState;
 
@@ -150,6 +151,19 @@ pub async fn session_delete(session_id: String, state: State<'_, AppState>) -> R
 }
 
 #[tauri::command]
+pub async fn write_custom(
+    session_id: String,
+    definition_id: Option<String>,
+    input: CustomWriteInput,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .manager
+        .write_custom(&session_id, definition_id.as_deref(), input)
+        .await
+}
+
+#[tauri::command]
 pub async fn session_disconnect(
     session_id: String,
     state: State<'_, AppState>,
@@ -158,22 +172,22 @@ pub async fn session_disconnect(
 }
 
 #[tauri::command]
-pub fn scan_slave_ids(input: SlaveIdScanInput, state: State<'_, AppState>) -> String {
+pub async fn scan_slave_ids(input: SlaveIdScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_slave_scan(input)
 }
 
 #[tauri::command]
-pub fn scan_addresses(input: AddressScanInput, state: State<'_, AppState>) -> String {
+pub async fn scan_addresses(input: AddressScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_address_scan(input)
 }
 
 #[tauri::command]
-pub fn scan_baud_rates(input: BaudScanInput, state: State<'_, AppState>) -> String {
+pub async fn scan_baud_rates(input: BaudScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_baud_scan(input)
 }
 
 #[tauri::command]
-pub fn scan_network(input: NetworkScanInput, state: State<'_, AppState>) -> String {
+pub async fn scan_network(input: NetworkScanInput, state: State<'_, AppState>) -> String {
     state.scans.start_network_scan(input)
 }
 

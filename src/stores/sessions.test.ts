@@ -82,6 +82,27 @@ describe("sessions store", () => {
     expect(timeline?.series[1]).toEqual([42, 42]);
   });
 
+  it("keeps failed reads out of history and trend data", () => {
+    const store = useSessionsStore();
+    store.applyWorkspace(workspace);
+    store.applySnapshot(snapshot(1, 10));
+    const failed = snapshot(2, 0);
+    store.applySnapshot({
+      ...failed,
+      error: "Modbus 异常 0x02",
+      values: failed.values.map((entry) => ({
+        ...entry,
+        words: [],
+        formatted: "—",
+        numeric: null,
+        stale: true,
+        error: "Modbus 异常 0x02",
+      })),
+    });
+    expect(store.history["d1:0"]).toEqual([10]);
+    expect(store.timelines["d1"]?.series[0]).toEqual([10, null]);
+  });
+
   it("applies status events immutably", () => {
     const store = useSessionsStore();
     store.applyWorkspace(workspace);

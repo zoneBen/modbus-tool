@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { RefreshCw, Table2 } from "@lucide/vue";
+import { PencilLine, RefreshCw, Table2 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import EmptyState from "@/components/common/EmptyState.vue";
+import AliasDialog from "@/components/definition/AliasDialog.vue";
+import FormatDialog from "@/components/definition/FormatDialog.vue";
 import Sparkline from "@/components/grid/Sparkline.vue";
 import { Button } from "@/components/ui/button";
 import { formatAddress, formatHexBytes, formatLatency, formatWord, historyKey } from "@/lib/format";
@@ -15,6 +17,7 @@ import type { WriteTarget } from "@/types/ui";
 const emit = defineEmits<{
   (event: "write", target: WriteTarget): void;
   (event: "new-session"): void;
+  (event: "open-trend"): void;
 }>();
 
 const sessions = useSessionsStore();
@@ -22,6 +25,9 @@ const settings = useSettingsStore();
 const { t } = useI18n();
 
 const selectedAddress = ref<number | null>(null);
+const aliasOpen = ref(false);
+const aliasRow = ref<GridRow | null>(null);
+const formatOpen = ref(false);
 const flashMap = ref<Record<number, boolean>>({});
 let previousValues = new Map<number, string>();
 
@@ -110,6 +116,27 @@ function openWrite(row: GridRow): void {
     dataType: definition.value.dataType,
   });
 }
+
+const selectedRow = computed(
+  () => rows.value.find((row) => row.address === selectedAddress.value) ?? null,
+);
+
+function openSelectedWrite(): void {
+  if (selectedRow.value) openWrite(selectedRow.value);
+}
+
+function openTrend(): void {
+  if (definition.value) emit("open-trend");
+}
+
+function openAlias(row: GridRow): void {
+  aliasRow.value = row;
+  aliasOpen.value = true;
+}
+
+function openFormat(): void {
+  if (definition.value && !isSlave.value) formatOpen.value = true;
+}
 </script>
 
 <template>
@@ -123,6 +150,18 @@ function openWrite(row: GridRow): void {
         <span class="numeric">{{ rows.length }} 值</span>
         <span class="numeric text-muted-foreground">· {{ definition.quantity }} 寄存器</span>
         <span class="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 gap-1 border-hairline-strong bg-overlay-1 px-2 text-[11px]"
+            :disabled="!selectedRow || isSlave"
+            aria-label="写入选中寄存器"
+            title="先选择一行，再打开写入弹窗"
+            @click="openSelectedWrite"
+          >
+            <PencilLine class="size-3" />
+            写入值
+          </Button>
           <span class="status-dot" :class="snapshot?.error ? 'text-error' : 'text-signal'" />
           <span>{{ snapshot?.error ? "读取异常" : snapshot ? "实时" : "等待采样" }}</span>
           <span v-if="snapshot" class="numeric text-muted-foreground">
@@ -157,7 +196,6 @@ function openWrite(row: GridRow): void {
                 selectedAddress === row.address ? 'bg-overlay-2' : '',
               ]"
               @click="selectedAddress = row.address"
-              @dblclick="openWrite(row)"
             >
               <span
                 v-if="selectedAddress === row.address"
@@ -166,7 +204,11 @@ function openWrite(row: GridRow): void {
               <span class="numeric text-[12px] text-muted-foreground">
                 {{ formatAddress(row.address, settings.addressBase) }}
               </span>
-              <div class="flex min-w-0 items-center gap-2">
+              <div
+                class="flex min-w-0 cursor-text items-center gap-2"
+                title="双击编辑别名"
+                @dblclick.stop="openAlias(row)"
+              >
                 <span
                   class="size-1 shrink-0 rounded-full"
                   :class="
@@ -186,14 +228,20 @@ function openWrite(row: GridRow): void {
               </div>
               <span
                 v-if="settings.showRawColumn"
-                class="numeric truncate text-[11px] text-muted-foreground"
+                class="numeric cursor-pointer truncate text-[11px] text-muted-foreground"
+                title="双击打开趋势大图"
+                @dblclick.stop="openTrend"
               >
-                {{ formatWord(row.words[0] ?? 0) }}
+                {{ row.words.length ? formatWord(row.words[0] ?? 0) : "—" }}
                 <span v-if="row.words.length > 1" class="text-muted-foreground/70">
                   {{ row.words.slice(1).map(formatWord).join(" ") }}
                 </span>
               </span>
-              <div class="flex justify-end">
+              <div
+                class="flex cursor-pointer justify-end"
+                title="双击打开趋势大图"
+                @dblclick.stop="openTrend"
+              >
                 <span
                   class="numeric rounded px-1.5 py-0.5 text-[14px] font-medium tracking-tight"
                   :class="[
@@ -204,10 +252,18 @@ function openWrite(row: GridRow): void {
                   {{ row.formatted }}
                 </span>
               </div>
-              <div class="flex justify-center">
+              <div
+                class="flex cursor-pointer justify-center"
+                title="双击打开趋势大图"
+                @dblclick.stop="openTrend"
+              >
                 <Sparkline :points="row.history" :tone="sparkTone" :width="84" :height="22" />
               </div>
-              <div class="flex justify-center">
+              <div
+                class="flex cursor-pointer justify-center"
+                title="双击修改数据类型 / 字节序"
+                @dblclick.stop="openFormat"
+              >
                 <span
                   class="numeric rounded border px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide"
                   :class="
@@ -254,6 +310,17 @@ function openWrite(row: GridRow): void {
     </EmptyState>
 
     <EmptyState
+      v-else-if="sessions.activeSession && sessions.activeDefinitions.length === 0"
+      title="还没有读取定义"
+      :description="`在左侧「读取定义」旁点击 +，为「${sessions.activeSession.name}」配置功能码与地址后开始轮询。`"
+      class="m-auto"
+    >
+      <template #icon>
+        <Table2 class="size-5" />
+      </template>
+    </EmptyState>
+
+    <EmptyState
       v-else
       :title="t('workspace.noSession')"
       :description="t('workspace.noSessionHint')"
@@ -265,5 +332,13 @@ function openWrite(row: GridRow): void {
         {{ t("workspace.newSession") }}
       </Button>
     </EmptyState>
+
+    <AliasDialog
+      v-model:open="aliasOpen"
+      :definition="definition"
+      :address="aliasRow?.address ?? 0"
+      :current-alias="aliasRow?.alias ?? ''"
+    />
+    <FormatDialog v-model:open="formatOpen" :definition="definition" />
   </section>
 </template>

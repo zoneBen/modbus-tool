@@ -4,6 +4,7 @@ import type { AppEventMap, AppEventName, IpcApi } from "@/types/commands";
 import type {
   AddressScanInput,
   BaudScanInput,
+  CustomWriteInput,
   Definition,
   DefinitionInput,
   NetworkScanInput,
@@ -41,6 +42,8 @@ function createTauriBridge(): IpcApi {
     cancelScan: (scanId: string) => invoke<void>("scan_cancel", { scanId }),
     writeRegister: (sessionId: string, definitionId: string, address: number, value: string) =>
       invoke<void>("write_register", { sessionId, definitionId, address, value }),
+    writeCustom: (sessionId: string, definitionId: string | null, input: CustomWriteInput) =>
+      invoke<void>("write_custom", { sessionId, definitionId, input }),
     on: async <K extends AppEventName>(
       event: K,
       handler: (payload: AppEventMap[K]) => void,

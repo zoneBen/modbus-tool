@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ipc, isDemoMode } from "@/lib/ipc";
+import { ipc } from "@/lib/ipc";
 import { useSessionsStore } from "@/stores/sessions";
 import type { Framing, SessionRole, TransportKind } from "@/types/models";
 
@@ -25,7 +25,6 @@ const open = defineModel<boolean>("open", { default: false });
 const sessions = useSessionsStore();
 
 const roleOptions = ["master", "slave"] as const;
-const slaveAvailable = isDemoMode;
 const name = ref("");
 const role = ref<SessionRole>("master");
 const linkMode = ref<"network" | "serial">("serial");
@@ -33,6 +32,7 @@ const transport = ref<"tcp" | "udp">("tcp");
 const framing = ref<Framing>("rtu");
 const host = ref("192.168.1.10");
 const port = ref("502");
+const slaveId = ref("1");
 const serialPort = ref("COM3");
 const baudRate = ref(9600);
 const parity = ref("none");
@@ -89,8 +89,16 @@ watch(open, async (isOpen) => {
 });
 
 watch(role, (value) => {
-  if (value === "slave" && linkMode.value === "network") host.value = "0.0.0.0";
-  if (value === "master" && host.value === "0.0.0.0") host.value = "192.168.1.10";
+  if (value === "slave") {
+    linkMode.value = "network";
+    framing.value = "mbap";
+    transport.value = "tcp";
+    host.value = "0.0.0.0";
+    if (port.value === "502") port.value = "5020";
+  } else {
+    if (host.value === "0.0.0.0") host.value = "192.168.1.10";
+    if (port.value === "5020") port.value = "502";
+  }
 });
 
 watch(linkMode, (value) => {
@@ -99,8 +107,8 @@ watch(linkMode, (value) => {
 
 async function submit(): Promise<void> {
   if (busy.value) return;
-  if (role.value === "slave" && !slaveAvailable) {
-    toast.info("真实从站模拟器将在 P7 阶段启用；浏览器 Demo 可体验从站界面。");
+  if (role.value === "slave" && linkMode.value === "network" && transport.value === "udp") {
+    toast.error("从站模拟暂不支持 UDP，请选择 TCP");
     return;
   }
   if (linkMode.value === "network" && role.value === "master" && !host.value.trim()) {
@@ -127,9 +135,15 @@ async function submit(): Promise<void> {
       dataBits: dataBits.value,
       parity: parity.value as "none" | "even" | "odd",
       stopBits: stopBits.value,
+      slaveId: role.value === "slave" ? Math.max(1, Number(slaveId.value) || 1) : undefined,
     });
     toast.success(`已创建会话「${session.name}」`, {
-      description: sessions.demo ? "演示模式已自动建立连接。" : "正在连接设备…",
+      description:
+        role.value === "slave"
+          ? "从站模拟器已启动监听。"
+          : sessions.demo
+            ? "演示模式已自动建立连接。"
+            : "正在连接设备…",
     });
     name.value = "";
     open.value = false;
@@ -161,7 +175,11 @@ async function submit(): Promise<void> {
           新建会话
         </DialogTitle>
         <DialogDescription class="relative text-[11.5px] text-muted-foreground">
-          配置链路参数。当前为演示模式，任意参数均可建立模拟连接。
+          {{
+            role === "slave"
+              ? "从站模拟器会监听所选链路，响应主站的读写请求。"
+              : "配置链路参数并连接目标设备。"
+          }}
         </DialogDescription>
       </DialogHeader>
 
@@ -182,19 +200,13 @@ async function submit(): Promise<void> {
                 v-for="option in roleOptions"
                 :key="option"
                 type="button"
-                class="flex h-8 items-center justify-center gap-1.5 rounded-md text-[11.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-35"
+                class="flex h-8 items-center justify-center gap-1.5 rounded-md text-[11.5px] transition-colors"
                 :class="
                   role === option
                     ? option === 'slave'
                       ? 'bg-sim/15 text-sim'
                       : 'bg-signal/15 text-signal'
                     : 'text-muted-foreground hover:text-foreground'
-                "
-                :disabled="option === 'slave' && !slaveAvailable"
-                :title="
-                  option === 'slave' && !slaveAvailable
-                    ? '真实从站模拟器将在 P7 阶段启用'
-                    : undefined
                 "
                 @click="role = option"
               >
@@ -220,15 +232,35 @@ async function submit(): Promise<void> {
             </TabsList>
           </Tabs>
 
+          <div v-if="role === 'slave'" class="grid grid-cols-3 gap-3">
+            <div class="space-y-1.5">
+              <Label class="text-[11px] text-muted-foreground">从站 ID</Label>
+              <Input
+                v-model="slaveId"
+                inputmode="numeric"
+                class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+              />
+            </div>
+            <div
+              class="col-span-2 flex items-center rounded-lg border border-sim/20 bg-sim/5 px-3 text-[11px] leading-relaxed text-muted-foreground"
+            >
+              模拟映射：保持/输入寄存器 0–15、线圈/离散输入 0–7；主站写入会实时回显。
+            </div>
+          </div>
+
           <div v-if="linkMode === 'network'" class="grid grid-cols-3 gap-3">
             <div class="col-span-1 space-y-1.5">
               <Label class="text-[11px] text-muted-foreground">传输层</Label>
               <FormSelect
                 v-model="transport"
-                :options="[
-                  { label: 'TCP', value: 'tcp' },
-                  { label: 'UDP', value: 'udp' },
-                ]"
+                :options="
+                  role === 'slave'
+                    ? [{ label: 'TCP', value: 'tcp' }]
+                    : [
+                        { label: 'TCP', value: 'tcp' },
+                        { label: 'UDP', value: 'udp' },
+                      ]
+                "
               />
             </div>
             <div class="space-y-1.5">
@@ -309,12 +341,6 @@ async function submit(): Promise<void> {
             </div>
           </div>
         </div>
-
-        <p
-          class="rounded-lg border border-warn/15 bg-warn/[0.05] px-3 py-2 text-[11px] leading-relaxed text-warn/70"
-        >
-          演示会话会生成真实的 Modbus 帧（MBAP / RTU），可在底部报文监控中查看双向通信。
-        </p>
       </div>
 
       <DialogFooter class="border-t border-hairline bg-well-soft px-5 py-3">

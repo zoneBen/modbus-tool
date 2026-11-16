@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import { Database, PencilLine, Plus } from "@lucide/vue";
-import { ref } from "vue";
+import { Database, PencilLine, Plus, Trash2 } from "@lucide/vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import StatusPill from "@/components/common/StatusPill.vue";
 import TransportGlyph from "@/components/common/TransportGlyph.vue";
 import DefinitionDialog from "@/components/definition/DefinitionDialog.vue";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -27,6 +37,8 @@ const sessions = useSessionsStore();
 const settings = useSettingsStore();
 const { t } = useI18n();
 
+const isSlaveSession = computed(() => sessions.activeSession?.role === "slave");
+
 const definitionDialogOpen = ref(false);
 const editingDefinition = ref<Definition | null>(null);
 
@@ -38,6 +50,37 @@ function openCreateDefinition(): void {
 function openEditDefinition(definition: Definition): void {
   editingDefinition.value = definition;
   definitionDialogOpen.value = true;
+}
+
+const deleteTarget = ref<Definition | null>(null);
+const deleteDialogOpen = ref(false);
+const deletingDefinition = ref(false);
+
+function requestDeleteDefinition(definition: Definition): void {
+  deleteTarget.value = definition;
+  deleteDialogOpen.value = true;
+}
+
+function closeDeleteDefinition(): void {
+  deleteDialogOpen.value = false;
+  deleteTarget.value = null;
+}
+
+async function confirmDeleteDefinition(): Promise<void> {
+  const target = deleteTarget.value;
+  if (!target || deletingDefinition.value) return;
+  deletingDefinition.value = true;
+  try {
+    await sessions.deleteDefinition(target.id);
+    toast.success(`已删除定义「${target.name}」`);
+    closeDeleteDefinition();
+  } catch (error: unknown) {
+    toast.error("删除定义失败", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    deletingDefinition.value = false;
+  }
 }
 
 const accentClass: Record<string, string> = {
@@ -145,12 +188,15 @@ function selectSession(sessionId: string): void {
 
       <div v-if="sessions.activeSession" class="mt-4">
         <div class="flex items-center justify-between px-2.5">
-          <span class="label-caps">{{ t("workspace.definitions") }}</span>
+          <span class="label-caps">{{
+            isSlaveSession ? "模拟映射" : t("workspace.definitions")
+          }}</span>
           <div class="flex items-center gap-1">
             <span class="numeric text-[11px] text-muted-foreground">
               {{ sessions.activeDefinitions.length.toString().padStart(2, "0") }}
             </span>
             <button
+              v-if="!isSlaveSession"
               type="button"
               class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
               aria-label="新建读取定义"
@@ -192,22 +238,38 @@ function selectSession(sessionId: string): void {
               >
                 {{ definition.name }}
               </span>
-              <button
-                type="button"
-                class="flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-                aria-label="编辑读取定义"
-                @click.stop="openEditDefinition(definition)"
+              <template v-if="!isSlaveSession">
+                <button
+                  type="button"
+                  class="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
+                  aria-label="编辑读取定义"
+                  @click.stop="openEditDefinition(definition)"
+                >
+                  <PencilLine class="size-3" />
+                </button>
+                <button
+                  type="button"
+                  class="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-error/10 hover:text-error"
+                  aria-label="删除读取定义"
+                  @click.stop="requestDeleteDefinition(definition)"
+                >
+                  <Trash2 class="size-3" />
+                </button>
+                <Switch
+                  :model-value="definition.enabled"
+                  class="scale-[0.72]"
+                  @click.stop
+                  @update:model-value="
+                    (checked) => sessions.toggleDefinition(definition.id, Boolean(checked))
+                  "
+                />
+              </template>
+              <span
+                v-else
+                class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[11px] text-sim"
               >
-                <PencilLine class="size-3" />
-              </button>
-              <Switch
-                :model-value="definition.enabled"
-                class="scale-[0.72]"
-                @click.stop
-                @update:model-value="
-                  (checked) => sessions.toggleDefinition(definition.id, Boolean(checked))
-                "
-              />
+                SIM
+              </span>
             </div>
             <div class="mt-1 flex items-center gap-2 pl-[38px] text-[11px] text-muted-foreground">
               <span class="numeric">{{ formatFunctionCode(definition.functionCode) }}</span>
@@ -222,6 +284,37 @@ function selectSession(sessionId: string): void {
     </div>
 
     <DefinitionDialog v-model:open="definitionDialogOpen" :definition="editingDefinition" />
+
+    <AlertDialog
+      :open="deleteDialogOpen"
+      @update:open="
+        (open) => {
+          if (!open) closeDeleteDefinition();
+        }
+      "
+    >
+      <AlertDialogContent
+        class="border-glass-border bg-[color:var(--glass-strong)] backdrop-blur-2xl"
+      >
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除读取定义</AlertDialogTitle>
+          <AlertDialogDescription>
+            将停止轮询并移除「{{ deleteTarget?.name }}」及其已缓存数据，此操作无法撤销。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="deletingDefinition">取消</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            class="text-white"
+            :disabled="deletingDefinition"
+            @click="confirmDeleteDefinition"
+          >
+            {{ deletingDefinition ? "删除中…" : "删除定义" }}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <div class="flex shrink-0 items-center justify-between border-t border-hairline px-3.5 py-2.5">
       <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">

@@ -1,6 +1,7 @@
 import type {
   AddressScanInput,
   BaudScanInput,
+  CustomWriteInput,
   Definition,
   DefinitionInput,
   DefinitionSnapshot,
@@ -62,6 +63,11 @@ export interface IpcApi {
     definitionId: string,
     address: number,
     value: string,
+  ): Promise<void>;
+  writeCustom(
+    sessionId: string,
+    definitionId: string | null,
+    input: CustomWriteInput,
   ): Promise<void>;
   on<K extends AppEventName>(
     event: K,

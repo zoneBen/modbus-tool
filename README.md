@@ -6,90 +6,31 @@
 
 技术栈：**Rust + Tauri 2 + Vue 3 + TypeScript + Tailwind CSS v4 + shadcn-vue + uPlot**。核心协议层自研，支持 RTU / ASCII / MBAP 三种帧格式与串口 / TCP / UDP 三种链路。
 
-> 当前状态：**v0.1.3 主站调试版**。真实 TCP/UDP/串口主站引擎、报文监视、定义编辑、写入、四类扫描与 uPlot 曲线已接入 Rust 后端；浏览器 Demo（`pnpm dev`）无需 Rust 即可体验完整 UI。本地与 GitHub Actions 均已通过，Windows Release 已成功产出 NSIS/MSI artifact。真实从站服务端、CSV 日志与工作区持久化仍待后续阶段。
+> 当前状态：**v0.1.4 主站调试版**。真实 TCP/UDP/串口主站引擎、报文监视、定义编辑、写入、四类扫描与 uPlot 曲线已接入 Rust 后端；浏览器 Demo（`pnpm dev`）无需 Rust 即可体验完整 UI。本地与 GitHub Actions 均已通过，Windows Release 已成功产出 NSIS/MSI artifact。真实从站服务端、CSV 日志与工作区持久化仍待后续阶段。
 
 ## 已实现
 
 - **协议核心**（`crates/modbus-core`）：PDU 编解码、CRC16/LRC、RTU/ASCII/MBAP、异常码、INT8/16/32/64、UINT、FLOAT32/64、HEX/BIN/ASCII、ABCD/DCBA/BADC/CDAB、从站模拟引擎；39 个单元与属性测试
 - **主站引擎**：TCP / UDP / 串口；RTU / ASCII / MBAP；周期轮询、单次读、FC05/06/0F/10 写、读重试、写不自动重试、自动重连、跨事务 ID 校验、t3.5 串口排空
-- **定义编辑**：FC01–04、从站 ID、地址/数量、数据类型、字节/字序、轮询周期、启停；保存后即时生效；可删除定义并集中维护寄存器别名/含义
+- **定义编辑**：FC01–04、从站 ID、地址/数量、数据类型、字节/字序、轮询周期、启停；保存后即时生效；列表内直接删除定义，别名在列表中双击维护；新建会话不再自动生成 1–16 读取定义
 - **会话管理**：新建、切换、关闭删除（含定义与缓存清理）；串口为默认链路，默认 9600 8N1 / RTU
+- **写入弹窗**：表格按钮打开，支持从站 ID、FC05/06/0F/10 或按定义自动编码、地址与值配置；成功/失败原因（含 Modbus 异常码中文说明）在弹窗与通知中反馈
 - **报文监控**：双向原始帧、分段着色 HEX、字段解码、时间戳、延时、搜索/方向过滤/跟随/清空、帧详情
+- **从站模拟器**：TCP（MBAP / RTU / ASCII over TCP）与串口 RTU / ASCII 监听；可设从站 ID；模拟保持/输入寄存器 0–15、线圈/离散输入 0–7，主站读写实时回显
 - **四类扫描**：从站 ID、寄存器地址、串口波特率、局域网 IP/端口（CIDR + 并发 + 可选 Modbus 探测）；进度、取消、实时结果
-- **实时曲线**：uPlot 多序列、1/5/15/30 分钟窗口、暂停、跨线提示、图例实时值、数据表视图；深色/浅色分类色板分别经 dataviz 校验
-- **界面**：深色仪器风与浅色高对比主题可切换（支持跟随系统），语义化色板/半透明层级、毛玻璃静态面板、值变化闪烁、状态呼吸、可拖拽监控抽屉、快捷键预留、地址基址 0/1
+- **实时曲线**：uPlot 多序列、1/5/15/30 分钟窗口、暂停、跨线提示、图例实时值、数据表视图；双击数值/原始值/趋势列进入带返回按钮的全屏趋势大图；读取失败以 `—` 占位并从趋势中剔除，不写入 0
+- **界面**：深色仪器风与浅色高对比主题可切换（支持跟随系统），语义化色板/半透明层级、毛玻璃静态面板、值变化闪烁、状态呼吸、可拖拽监控抽屉、快捷键预留、地址基址 0/1；设置内可切换简体中文 / English（预览）
+- **列表交互**：双击别名编辑点位名称，双击格式编辑数据类型与字节/字序，双击数值或趋势查看大图
 - **演示运行时**：浏览器内生成真实结构的 MBAP/RTU 帧、主站/从站数据、扫描过程与曲线
 - **工程化**：Windows CI（lint/typecheck/Vitest/build/rustfmt/clippy/cargo test）；Release Windows（NSIS/MSI，可选离线 WebView2）
 
 ## 已知限制 / 下一步
 
-- **从站模拟器**：仅浏览器 Demo；真实 TCP/UDP/串口从站服务端待实现（P7）
+- **从站模拟器**：支持 TCP 与串口 RTU/ASCII；暂不支持 UDP；映射固定为 16 个寄存器 / 8 个线圈，后续加入自定义映射编辑
 - **CSV 数据日志**：UI 入口已预留，写入任务待实现（P6）
 - **工作区持久化**：会话/定义当前驻留内存，重启丢失（P4）
 - **报文导出**：入口已预留，导出任务待实现（P6）
 - **串口**：代码与协议测试通过，尚未用真实 RS-485 / USB 串口设备验证
+- **English**：当前为预览，部分新增弹窗仍为中文，后续逐步补全
 - **FC08/11/17/22/23/43-14**：后续阶段
-- **CI**：Windows CI 与 Release 已通过，NSIS/MSI artifact 已生成；安装包签名与自动更新待接入
-
-## 开发
-
-```bash
-pnpm install
-pnpm dev          # 浏览器 Demo，无需 Rust
-```
-
-有 Rust 工具链时：
-
-```bash
-pnpm tauri dev
-```
-
-常用检查：
-
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test:unit
-pnpm format:check
-pnpm build
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
-
-`scripts/` 提供 PowerShell / Bash 包装：`dev-web`、`dev`、`check`、`build`。
-
-## CI 构建（当前仅 Windows）
-
-仓库坚持 CI-first，本地不要求安装 Rust：
-
-1. 推送代码 / 提交 PR → **CI** 自动运行前端与 Rust 检查。
-2. **Actions → Release Windows → Run workflow** → 产出 NSIS + MSI 安装包，作为 artifact 下载（保留 14 天）。
-3. 推送 `v*` 标签 → 自动创建 draft release 并附带安装包。
-4. 目标机器无法联网或缺少 WebView2 时，运行同上工作流并勾选 **offline_webview**，产出内置离线 WebView2 的安装包。
-
-安装包未签名，Windows SmartScreen 会提示；后续阶段再加入签名与自动更新。
-
-## 项目结构
-
-```
-crates/modbus-core/    纯协议核心（PDU、帧、值解析、模拟引擎，无 I/O 依赖）
-src-tauri/             Tauri 应用（会话 Actor、传输、扫描、定义/写入、事件）
-src/                   Vue 3 前端（仪器风 UI、Pinia、uPlot、i18n）
-scripts/               本地与 CI 构建脚本
-.github/workflows/     Windows CI + Release
-docs/architecture.md   协议矩阵、Actor 与事件流
-```
-
-## 安全
-
-- Tauri 仅启用 `core:default` 与 `dialog:default`，不引入 opener/fs 插件
-- 生产 CSP 限制为 `self` + Tauri IPC；开发 CSP 单独放开以支持 Vite HMR
-- 不包含硬编码密钥
-- 设备报文、扫描输入、定义参数在 Rust 边界校验长度、功能码、地址与数量范围
-- 会话配置当前仅驻留内存，持久化实现时会在写入前校验 schema
-
-## 文档
-
-- [架构说明](docs/architecture.md)
-- [设计文档](设计文档.txt)
+- **扫描**：已加入输入校验与异常任务隔离；若特定设备/驱动仍导致异常，需要提供现场日志继续定位

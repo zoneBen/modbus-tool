@@ -39,6 +39,15 @@ export interface Definition {
 
 export type DefinitionInput = Omit<Definition, "id">;
 
+export type WriteFunctionCode = 5 | 6 | 15 | 16;
+
+export interface CustomWriteInput {
+  slaveId: number;
+  functionCode: WriteFunctionCode;
+  address: number;
+  values: string[];
+}
+
 export interface SessionStats {
   tx: number;
   rx: number;
@@ -140,6 +149,7 @@ export interface NewSessionInput {
   retries?: number;
   interFrameDelayMs?: number;
   autoReconnect?: boolean;
+  slaveId?: number;
 }
 
 export interface SessionStatusEvent {

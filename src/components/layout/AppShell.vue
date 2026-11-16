@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { toast } from "vue-sonner";
+import TrendOverlay from "@/components/chart/TrendOverlay.vue";
 import ActivityRail from "@/components/layout/ActivityRail.vue";
 import SessionSidebar from "@/components/layout/SessionSidebar.vue";
 import SessionTabs from "@/components/layout/SessionTabs.vue";
@@ -14,18 +16,21 @@ import NewSessionDialog from "@/components/session/NewSessionDialog.vue";
 import SettingsDialog from "@/components/settings/SettingsDialog.vue";
 import { useRealtimeEvents } from "@/composables/useRealtimeEvents";
 import { clamp } from "@/lib/format";
+import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import type { WriteTarget } from "@/types/ui";
 
 useRealtimeEvents();
 
 const settings = useSettingsStore();
+const sessions = useSessionsStore();
 const initialDialog = new URLSearchParams(window.location.search).get("dialog");
 const newSessionOpen = ref(initialDialog === "session");
 const settingsOpen = ref(initialDialog === "settings");
 const scanOpen = ref(initialDialog === "scan");
 const writeOpen = ref(false);
 const writeTarget = ref<WriteTarget | null>(null);
+const trendOpen = ref(false);
 
 const monitorStyle = computed(() => ({
   height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
@@ -34,6 +39,24 @@ const monitorStyle = computed(() => ({
 function openWrite(target: WriteTarget): void {
   writeTarget.value = target;
   writeOpen.value = true;
+}
+
+function openWriteFromToolbar(): void {
+  const definition = sessions.activeDefinition;
+  if (!definition) {
+    toast.info("请先选择或新建一个读取定义");
+    return;
+  }
+  const firstValue =
+    sessions.activeSnapshot?.values.find((value) => value.numeric !== null) ??
+    sessions.activeSnapshot?.values[0];
+  const address = firstValue?.address ?? definition.startAddress;
+  openWrite({
+    address,
+    alias: definition.aliases[address] ?? `寄存器 ${address}`,
+    current: firstValue?.formatted ?? "—",
+    dataType: definition.dataType,
+  });
 }
 
 function toggleMonitor(): void {
@@ -82,14 +105,15 @@ function startResize(event: PointerEvent): void {
       <SessionSidebar @new-session="newSessionOpen = true" />
 
       <main class="flex min-w-0 flex-1 flex-col">
-        <SessionTabs @new-session="newSessionOpen = true" />
-        <SessionToolbar @new-session="newSessionOpen = true" @open-settings="settingsOpen = true" />
+        <SessionTabs />
+        <SessionToolbar @write="openWriteFromToolbar" @open-settings="settingsOpen = true" />
 
         <div class="flex min-h-0 flex-1">
           <RegisterGrid
             class="min-w-0 flex-1"
             @write="openWrite"
             @new-session="newSessionOpen = true"
+            @open-trend="trendOpen = true"
           />
           <InspectorPanel />
         </div>
@@ -120,5 +144,6 @@ function startResize(event: PointerEvent): void {
     <SettingsDialog v-model:open="settingsOpen" />
     <ScanDialog v-model:open="scanOpen" />
     <WriteDialog v-model:open="writeOpen" :target="writeTarget" />
+    <TrendOverlay v-model:open="trendOpen" />
   </div>
 </template>

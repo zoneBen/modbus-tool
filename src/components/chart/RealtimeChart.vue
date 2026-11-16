@@ -210,7 +210,7 @@ function buildOptions(width: number, height: number): uPlot.Options {
         label: series.label,
         stroke: series.color,
         width: 2,
-        spanGaps: true,
+        spanGaps: false,
         points: { show: false },
         fill: single ? `${series.color}1f` : undefined,
       })),

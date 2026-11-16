@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Gauge, Pause, Play, Plus, RefreshCw, Settings2 } from "@lucide/vue";
+import { Gauge, Pause, PencilLine, Play, RefreshCw, Settings2 } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 
 const emit = defineEmits<{
-  (event: "new-session"): void;
+  (event: "write"): void;
   (event: "open-settings"): void;
 }>();
 
@@ -115,6 +115,21 @@ const addressBases = [0, 1] as const;
             size="sm"
             class="h-8 gap-1.5 border-hairline-strong bg-overlay-1 text-[12px]"
             :disabled="!definition || isSlave"
+            @click="emit('write')"
+          >
+            <PencilLine class="size-3.5" />
+            <span class="hidden lg:inline">{{ t("toolbar.write") }}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">打开写入寄存器弹窗</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8 gap-1.5 border-hairline-strong bg-overlay-1 text-[12px]"
+            :disabled="!definition || isSlave"
             @click="sessions.readOnce()"
           >
             <RefreshCw class="size-3.5" />
@@ -150,20 +165,6 @@ const addressBases = [0, 1] as const;
     </Button>
 
     <TooltipProvider :delay-duration="180">
-      <Tooltip>
-        <TooltipTrigger as-child>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            class="rounded-lg text-muted-foreground hover:text-foreground"
-            aria-label="新建会话"
-            @click="emit('new-session')"
-          >
-            <Plus class="size-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{{ t("toolbar.newSession") }}</TooltipContent>
-      </Tooltip>
       <Tooltip>
         <TooltipTrigger as-child>
           <Button

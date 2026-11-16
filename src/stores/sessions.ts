@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { ipc } from "@/lib/ipc";
 import type {
+  CustomWriteInput,
   Definition,
   DefinitionInput,
   DefinitionSnapshot,
@@ -202,11 +203,13 @@ export const useSessionsStore = defineStore("sessions", () => {
     const session = activeSession.value;
     if (!session) throw new Error("未选择会话");
     const definition = await ipc.createDefinition(session.id, input);
-    sessions.value = sessions.value.map((candidate) =>
-      candidate.id === session.id
-        ? { ...candidate, definitions: [...candidate.definitions, definition] }
-        : candidate,
-    );
+    sessions.value = sessions.value.map((candidate) => {
+      if (candidate.id !== session.id) return candidate;
+      if (candidate.definitions.some((entry) => entry.id === definition.id)) {
+        return candidate;
+      }
+      return { ...candidate, definitions: [...candidate.definitions, definition] };
+    });
     activeDefinitionId.value = definition.id;
     return definition;
   }
@@ -242,6 +245,20 @@ export const useSessionsStore = defineStore("sessions", () => {
     if (activeDefinitionId.value === definitionId) {
       activeDefinitionId.value = remaining[0]?.id ?? null;
     }
+
+    const nextSnapshots = { ...snapshots.value };
+    delete nextSnapshots[snapshotKey(session.id, definitionId)];
+    snapshots.value = nextSnapshots;
+
+    const nextTimelines = { ...timelines.value };
+    delete nextTimelines[definitionId];
+    timelines.value = nextTimelines;
+
+    const nextHistory = { ...history.value };
+    for (const key of Object.keys(nextHistory)) {
+      if (key.startsWith(`${definitionId}:`)) delete nextHistory[key];
+    }
+    history.value = nextHistory;
   }
 
   async function createSession(input: NewSessionInput): Promise<Session> {
@@ -288,6 +305,13 @@ export const useSessionsStore = defineStore("sessions", () => {
     await ipc.writeRegister(session.id, definition.id, address, value);
   }
 
+  async function writeCustom(input: CustomWriteInput): Promise<void> {
+    const session = activeSession.value;
+    const definition = activeDefinition.value;
+    if (!session) throw new Error("未选择会话");
+    await ipc.writeCustom(session.id, definition?.id ?? null, input);
+  }
+
   return {
     sessions,
     activeSessionId,
@@ -323,5 +347,6 @@ export const useSessionsStore = defineStore("sessions", () => {
     createSession,
     deleteSession,
     writeRegister,
+    writeCustom,
   };
 });

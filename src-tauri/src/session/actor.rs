@@ -10,15 +10,17 @@ use tokio::time::{Instant, sleep, sleep_until};
 
 use modbus_core::frame;
 use modbus_core::value::{decode_words, encode_value};
-use modbus_core::{DataType, Framing, PduRequest, PduResponse};
+use modbus_core::{DataType, ExceptionCode, Framing, PduRequest, PduResponse};
 
 use crate::event::{AppEvent, EventBus, emit};
 use crate::frames::{FrameInfo, build_frame};
 use crate::model::{
-    DefinitionDto, DefinitionInput, DefinitionSnapshotDto, FrameDto, LinkConfig, RegisterValueDto,
-    SessionState, SessionStatus, now_ms,
+    CustomWriteInput, DefinitionDto, DefinitionInput, DefinitionSnapshotDto, FrameDto, LinkConfig,
+    RegisterValueDto, SessionRole, SessionState, SessionStatus, now_ms,
 };
 use crate::transport::{Transport, TransportError};
+
+use super::slave::SlaveServer;
 
 pub enum SessionCommand {
     Connect {
@@ -57,6 +59,11 @@ pub enum SessionCommand {
         definition_id: String,
         address: u16,
         value: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    WriteCustom {
+        definition_id: Option<String>,
+        input: CustomWriteInput,
         reply: oneshot::Sender<Result<(), String>>,
     },
     Shutdown,
@@ -103,6 +110,7 @@ pub struct Actor {
     commands: Option<mpsc::UnboundedReceiver<SessionCommand>>,
     seq: Arc<AtomicU64>,
     transport: Option<Transport>,
+    slave: Option<SlaveServer>,
     next_tid: u16,
     last_run: HashMap<String, Instant>,
 }
@@ -120,6 +128,7 @@ impl Actor {
             commands: Some(commands),
             seq,
             transport: None,
+            slave: None,
             next_tid: 0,
             last_run: HashMap::new(),
         }
@@ -147,6 +156,7 @@ impl Actor {
                 None => break,
             }
         }
+        self.slave = None;
         self.transport = None;
     }
 
@@ -227,6 +237,18 @@ impl Actor {
                 let _ = reply.send(result.map_err(TransactionError::message));
                 true
             }
+            SessionCommand::WriteCustom {
+                definition_id,
+                input,
+                reply,
+            } => {
+                let result = self.write_custom(definition_id.as_deref(), input).await;
+                if matches!(&result, Err(TransactionError::Transport(_))) {
+                    self.reconnect().await;
+                }
+                let _ = reply.send(result.map_err(TransactionError::message));
+                true
+            }
             SessionCommand::Shutdown => false,
         }
     }
@@ -238,10 +260,37 @@ impl Actor {
         }
         self.emit_status(None).await;
 
-        let (link, timeout_ms) = {
+        let (role, link, timeout_ms) = {
             let state = self.state.read().await;
-            (state.config.link.clone(), state.config.timeout_ms.max(3000))
+            (
+                state.config.role,
+                state.config.link.clone(),
+                state.config.timeout_ms.max(3000),
+            )
         };
+        if role == SessionRole::Slave {
+            return match SlaveServer::start(
+                self.state.clone(),
+                self.bus.clone(),
+                self.seq.clone(),
+            )
+            .await
+            {
+                Ok(server) => {
+                    self.slave = Some(server);
+                    self.last_run.clear();
+                    Ok(())
+                }
+                Err(message) => {
+                    {
+                        let mut state = self.state.write().await;
+                        state.status = SessionStatus::Error;
+                    }
+                    self.emit_status(Some(message.clone())).await;
+                    Err(message)
+                }
+            };
+        }
         match Transport::connect(&link, Duration::from_millis(timeout_ms)).await {
             Ok(transport) => {
                 self.transport = Some(transport);
@@ -266,6 +315,9 @@ impl Actor {
     }
 
     async fn disconnect(&mut self) {
+        if let Some(mut slave) = self.slave.take() {
+            slave.stop();
+        }
         self.transport = None;
         self.last_run.clear();
         {
@@ -276,8 +328,11 @@ impl Actor {
     }
 
     async fn reconnect(&mut self) {
-        let auto_reconnect = { self.state.read().await.config.auto_reconnect };
-        if !auto_reconnect {
+        let (auto_reconnect, role) = {
+            let state = self.state.read().await;
+            (state.config.auto_reconnect, state.config.role)
+        };
+        if role == SessionRole::Slave || !auto_reconnect {
             return;
         }
         self.transport = None;
@@ -320,7 +375,10 @@ impl Actor {
 
     async fn next_due(&self) -> Option<Instant> {
         let state = self.state.read().await;
-        if state.status != SessionStatus::Connected || !state.polling {
+        if state.config.role == SessionRole::Slave
+            || state.status != SessionStatus::Connected
+            || !state.polling
+        {
             return None;
         }
         let now = Instant::now();
@@ -394,7 +452,8 @@ impl Actor {
             Err(error) => {
                 let failure = error.into_read_failure();
                 let message = failure.message();
-                self.emit_data(definition, Vec::new(), 0.0, Some(message))
+                let placeholders = error_values(definition, &message);
+                self.emit_data(definition, placeholders, 0.0, Some(message))
                     .await;
                 self.wait_inter_frame().await;
                 return Err(failure);
@@ -402,12 +461,9 @@ impl Actor {
         };
 
         if let PduResponse::Exception { code, .. } = &response {
-            let message = format!(
-                "Modbus 异常 0x{:02X} ({})",
-                code.as_u8(),
-                code.description()
-            );
-            self.emit_data(definition, Vec::new(), latency_ms, Some(message.clone()))
+            let message = exception_message(*code);
+            let placeholders = error_values(definition, &message);
+            self.emit_data(definition, placeholders, latency_ms, Some(message.clone()))
                 .await;
             self.wait_inter_frame().await;
             return Err(ReadFailure::Protocol(message));
@@ -420,7 +476,8 @@ impl Actor {
                 Ok(())
             }
             Err(message) => {
-                self.emit_data(definition, Vec::new(), latency_ms, Some(message.clone()))
+                let placeholders = error_values(definition, &message);
+                self.emit_data(definition, placeholders, latency_ms, Some(message.clone()))
                     .await;
                 self.wait_inter_frame().await;
                 Err(ReadFailure::Protocol(message))
@@ -474,11 +531,38 @@ impl Actor {
 
         match response {
             PduResponse::Exception { code, .. } => {
-                Err(TransactionError::Protocol(format!("Modbus 异常: {code}")))
+                Err(TransactionError::Protocol(exception_message(code)))
             }
             PduResponse::WriteSingleAck { .. } | PduResponse::WriteMultipleAck { .. } => {
                 if definition.is_read() {
                     let _ = self.read_definition(definition).await;
+                }
+                Ok(())
+            }
+            _ => Err(TransactionError::Protocol("写入响应类型不匹配".to_owned())),
+        }
+    }
+
+    async fn write_custom(
+        &mut self,
+        definition_id: Option<&str>,
+        input: CustomWriteInput,
+    ) -> Result<(), TransactionError> {
+        let slave_id = input.slave_id;
+        let request = build_custom_request(&input)?;
+        let (response, _) = self.transact(&request, slave_id, false).await?;
+        self.wait_inter_frame().await;
+
+        match response {
+            PduResponse::Exception { code, .. } => {
+                Err(TransactionError::Protocol(exception_message(code)))
+            }
+            PduResponse::WriteSingleAck { .. } | PduResponse::WriteMultipleAck { .. } => {
+                if let Some(definition_id) = definition_id
+                    && let Some(definition) = self.definition(definition_id).await
+                    && definition.is_read()
+                {
+                    let _ = self.read_definition(&definition).await;
                 }
                 Ok(())
             }
@@ -837,11 +921,160 @@ impl Actor {
     }
 }
 
+fn build_custom_request(input: &CustomWriteInput) -> Result<PduRequest, TransactionError> {
+    if !(1..=247).contains(&input.slave_id) {
+        return Err(TransactionError::Protocol(
+            "从站 ID 需在 1–247 之间".to_owned(),
+        ));
+    }
+
+    let values: Vec<&str> = input
+        .values
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .collect();
+    if values.is_empty() {
+        return Err(TransactionError::Protocol("请输入写入值".to_owned()));
+    }
+
+    let quantity = values.len() as u32;
+    if quantity > 1 && u32::from(input.address) + quantity > 0x1_0000 {
+        return Err(TransactionError::Protocol("写入地址范围超出 65535".to_owned()));
+    }
+
+    match input.function_code {
+        0x05 => {
+            if values.len() != 1 {
+                return Err(TransactionError::Protocol(
+                    "FC05 只能写入一个线圈".to_owned(),
+                ));
+            }
+            Ok(PduRequest::WriteSingleCoil {
+                address: input.address,
+                value: parse_coil(values[0])?,
+            })
+        }
+        0x06 => {
+            if values.len() != 1 {
+                return Err(TransactionError::Protocol(
+                    "FC06 只能写入一个寄存器".to_owned(),
+                ));
+            }
+            Ok(PduRequest::WriteSingleRegister {
+                address: input.address,
+                value: parse_register(values[0])?,
+            })
+        }
+        0x0F => {
+            if values.len() > 1968 {
+                return Err(TransactionError::Protocol(
+                    "FC0F 一次最多写入 1968 个线圈".to_owned(),
+                ));
+            }
+            let coils = values
+                .iter()
+                .map(|value| parse_coil(value))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(PduRequest::WriteMultipleCoils {
+                address: input.address,
+                values: coils,
+            })
+        }
+        0x10 => {
+            if values.len() > 123 {
+                return Err(TransactionError::Protocol(
+                    "FC10 一次最多写入 123 个寄存器".to_owned(),
+                ));
+            }
+            let registers = values
+                .iter()
+                .map(|value| parse_register(value))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(PduRequest::WriteMultipleRegisters {
+                address: input.address,
+                values: registers,
+            })
+        }
+        _ => Err(TransactionError::Protocol(
+            "写入功能码仅支持 FC05 / FC06 / FC0F / FC10".to_owned(),
+        )),
+    }
+}
+
+fn parse_register(text: &str) -> Result<u16, TransactionError> {
+    let cleaned = text.trim().replace('_', "");
+    let parsed = if let Some(hex) = cleaned
+        .strip_prefix("0x")
+        .or_else(|| cleaned.strip_prefix("0X"))
+    {
+        u16::from_str_radix(hex, 16)
+    } else {
+        cleaned.parse::<u16>()
+    };
+    parsed.map_err(|_| {
+        TransactionError::Protocol(format!(
+            "无法解析寄存器值「{text}」，请输入 0–65535 或 0x0000–0xFFFF"
+        ))
+    })
+}
+
+fn parse_coil(text: &str) -> Result<bool, TransactionError> {
+    match text.trim().to_ascii_lowercase().as_str() {
+        "1" | "on" | "true" => Ok(true),
+        "0" | "off" | "false" => Ok(false),
+        _ => Err(TransactionError::Protocol(format!(
+            "无法解析线圈值「{text}」，请输入 0/1 或 ON/OFF"
+        ))),
+    }
+}
+
+fn exception_message(code: ExceptionCode) -> String {
+    let reason = match code {
+        ExceptionCode::IllegalFunction => "设备不支持该功能码",
+        ExceptionCode::IllegalDataAddress => "寄存器或线圈地址非法 / 越界",
+        ExceptionCode::IllegalDataValue => "写入值超出设备允许范围",
+        ExceptionCode::ServerDeviceFailure => "从站执行写入时发生内部故障",
+        ExceptionCode::Acknowledge => "从站已接受请求但仍在处理",
+        ExceptionCode::ServerDeviceBusy => "从站忙，请稍后重试",
+        ExceptionCode::MemoryParityError => "从站存储奇偶校验错误",
+        ExceptionCode::GatewayPathUnavailable => "网关路径不可用",
+        ExceptionCode::GatewayTargetFailed => "网关无法连接目标从站",
+    };
+    format!("Modbus 异常 0x{:02X}：{reason}", code.as_u8())
+}
+
 async fn wait_until(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => sleep_until(deadline).await,
         None => std::future::pending::<()>().await,
     }
+}
+
+fn error_values(definition: &DefinitionDto, message: &str) -> Vec<RegisterValueDto> {
+    let is_bits = definition.data_type == DataType::Bool;
+    let span = if is_bits {
+        1
+    } else {
+        definition.rule().word_span().max(1)
+    };
+    let count = if is_bits {
+        usize::from(definition.quantity)
+    } else {
+        usize::from(definition.quantity).div_ceil(span)
+    };
+    (0..count)
+        .map(|index| RegisterValueDto {
+            address: definition
+                .start_address
+                .wrapping_add((index * span) as u16),
+            words: Vec::new(),
+            formatted: "—".to_owned(),
+            numeric: None,
+            stale: true,
+            error: Some(message.to_owned()),
+        })
+        .collect()
 }
 
 fn build_values(

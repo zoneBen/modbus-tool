@@ -102,6 +102,7 @@ pub fn run() {
             commands::definition_update,
             commands::definition_delete,
             commands::write_register,
+            commands::write_custom,
             commands::session_disconnect,
             commands::session_delete,
             commands::scan_slave_ids,

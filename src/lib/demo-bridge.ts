@@ -3,6 +3,7 @@ import type {
   AddressScanInput,
   BaudScanInput,
   ByteOrder,
+  CustomWriteInput,
   DataType,
   Definition,
   DefinitionInput,
@@ -60,6 +61,32 @@ function spanOf(dataType: DataType): number {
 
 function valueCount(definition: Definition): number {
   return Math.max(1, Math.floor(definition.quantity / spanOf(definition.dataType)));
+}
+
+function parseDemoRegister(text: string): number {
+  const cleaned = text.trim().replace(/_/g, "");
+  const value = cleaned.toLowerCase().startsWith("0x")
+    ? Number.parseInt(cleaned.slice(2), 16)
+    : Number(cleaned);
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+    throw new Error(`无法解析寄存器值「${text}」，请输入 0–65535 或 0x0000–0xFFFF`);
+  }
+  return value;
+}
+
+function parseDemoCoil(text: string): boolean {
+  switch (text.trim().toLowerCase()) {
+    case "1":
+    case "on":
+    case "true":
+      return true;
+    case "0":
+    case "off":
+    case "false":
+      return false;
+    default:
+      throw new Error(`无法解析线圈值「${text}」，请输入 0/1 或 ON/OFF`);
+  }
 }
 
 function makeDefinition(
@@ -507,19 +534,9 @@ export function createDemoBridge(): IpcApi {
             "abcd",
             900,
             { 0: "设定温度 ×10", 1: "设定压力 ×100", 2: "运行模式", 3: "心跳计数" },
-            10,
+            input.slaveId ?? 10,
           )
-        : makeDefinition(
-            `${id}-main`,
-            "保持寄存器 · 主表",
-            0,
-            12,
-            "u16",
-            "abcd",
-            1000,
-            { 0: "寄存器 0", 1: "寄存器 1", 2: "寄存器 2", 3: "寄存器 3" },
-            1,
-          );
+        : null;
     const session: Session = {
       id,
       name: input.name || (role === "slave" ? "模拟器 · 新从站" : "新会话"),
@@ -532,7 +549,7 @@ export function createDemoBridge(): IpcApi {
       accent,
       stats: { tx: 0, rx: 0, errors: 0, latencyMs: input.transport === "serial" ? 18 : 6 },
       startedAt: Date.now(),
-      definitions: [definition],
+      definitions: definition ? [definition] : [],
     };
     sessions.push(session);
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
@@ -864,6 +881,153 @@ export function createDemoBridge(): IpcApi {
     emit("session:status", statusPayload(session));
   }
 
+  async function writeCustom(
+    sessionId: string,
+    definitionId: string | null,
+    input: CustomWriteInput,
+  ): Promise<void> {
+    const session = sessionById(sessionId);
+    const definition = definitionId
+      ? session.definitions.find((candidate) => candidate.id === definitionId)
+      : undefined;
+    if (input.slaveId < 1 || input.slaveId > 247) {
+      throw new Error("从站 ID 需在 1–247 之间");
+    }
+    if (definition && input.slaveId !== definition.slaveId) {
+      throw new Error("Modbus 异常 0x0B：网关无法连接目标从站");
+    }
+    const rawValues = input.values.map((value) => value.trim()).filter(Boolean);
+    if (!rawValues.length) throw new Error("请输入写入值");
+
+    const quantity = rawValues.length;
+    if (quantity > 1 && input.address + quantity > 0x10000) {
+      throw new Error("写入地址范围超出 65535");
+    }
+    const addressHigh = (input.address >> 8) & 0xff;
+    const addressLow = input.address & 0xff;
+    const quantityHigh = (quantity >> 8) & 0xff;
+    const quantityLow = quantity & 0xff;
+    const writes: Array<{ address: number; value: number; bit: boolean }> = [];
+    let requestPdu: number[];
+    let responsePdu: number[];
+    let label: string;
+
+    switch (input.functionCode) {
+      case 5: {
+        if (quantity !== 1) throw new Error("FC05 只能写入一个线圈");
+        const on = parseDemoCoil(rawValues[0] ?? "0");
+        requestPdu = [0x05, addressHigh, addressLow, on ? 0xff : 0x00, 0x00];
+        responsePdu = requestPdu;
+        writes.push({ address: input.address, value: on ? 1 : 0, bit: true });
+        label = "FC05";
+        break;
+      }
+      case 6: {
+        if (quantity !== 1) throw new Error("FC06 只能写入一个寄存器");
+        const value = parseDemoRegister(rawValues[0] ?? "0");
+        requestPdu = [0x06, addressHigh, addressLow, (value >> 8) & 0xff, value & 0xff];
+        responsePdu = requestPdu;
+        writes.push({ address: input.address, value, bit: false });
+        label = "FC06";
+        break;
+      }
+      case 15: {
+        if (quantity > 1968) throw new Error("FC0F 一次最多写入 1968 个线圈");
+        const coils = rawValues.map(parseDemoCoil);
+        const byteCount = Math.ceil(quantity / 8);
+        const packed = Array.from({ length: byteCount }, () => 0);
+        coils.forEach((on, index) => {
+          if (on) packed[Math.floor(index / 8)] |= 1 << (index % 8);
+        });
+        requestPdu = [
+          0x0f,
+          addressHigh,
+          addressLow,
+          0x00,
+          quantityHigh,
+          quantityLow,
+          byteCount,
+          ...packed,
+        ];
+        responsePdu = [0x0f, addressHigh, addressLow, 0x00, quantityHigh, quantityLow];
+        coils.forEach((on, index) => {
+          writes.push({ address: input.address + index, value: on ? 1 : 0, bit: true });
+        });
+        label = "FC0F";
+        break;
+      }
+      case 16: {
+        if (quantity > 123) throw new Error("FC10 一次最多写入 123 个寄存器");
+        const registers = rawValues.map(parseDemoRegister);
+        requestPdu = [
+          0x10,
+          addressHigh,
+          addressLow,
+          0x00,
+          quantityHigh,
+          quantityLow,
+          quantity * 2,
+          ...wordsToDataBytes(registers),
+        ];
+        responsePdu = [0x10, addressHigh, addressLow, 0x00, quantityHigh, quantityLow];
+        registers.forEach((value, index) => {
+          writes.push({ address: input.address + index, value, bit: false });
+        });
+        label = "FC10";
+        break;
+      }
+      default:
+        throw new Error("写入功能码仅支持 FC05 / FC06 / FC0F / FC10");
+    }
+
+    const transactionId = nextTransaction(session.id);
+    const requestRaw =
+      session.framing === "mbap"
+        ? mbapFrame(transactionId, input.slaveId, requestPdu)
+        : rtuFrame(input.slaveId, requestPdu);
+    const responseRaw =
+      session.framing === "mbap"
+        ? mbapFrame(transactionId, input.slaveId, responsePdu)
+        : rtuFrame(input.slaveId, responsePdu);
+    const frames: Frame[] = [
+      makeFrame(
+        session,
+        "tx",
+        requestRaw,
+        `${label} · 从站 ${input.slaveId} · 写入 ${input.address} × ${quantity}`,
+      ),
+      makeFrame(session, "rx", responseRaw, `${label} · 写入确认`, 2 + Math.random() * 4),
+    ];
+    session.stats.tx += 1;
+    session.stats.rx += 1;
+    emit("session:frames", { sessionId, frames });
+    emit("session:status", statusPayload(session));
+
+    if (!definition) return;
+    const key = snapshotKey(sessionId, definition.id);
+    const snapshot = latestSnapshots.get(key);
+    if (!snapshot) return;
+    const next = {
+      ...snapshot,
+      timestamp: Date.now(),
+      error: undefined,
+      values: snapshot.values.map((entry) => {
+        const written = writes.find((item) => item.address === entry.address);
+        if (!written) return entry;
+        return {
+          ...entry,
+          words: [written.value],
+          formatted: written.bit ? (written.value ? "ON" : "OFF") : formatNumber(written.value),
+          numeric: written.value,
+          stale: false,
+          error: undefined,
+        };
+      }),
+    };
+    storeSnapshot(next);
+    emit("session:data", next);
+  }
+
   async function on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,
@@ -894,6 +1058,7 @@ export function createDemoBridge(): IpcApi {
     scanNetwork,
     cancelScan,
     writeRegister,
+    writeCustom,
     on,
   };
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, SlidersHorizontal, Trash2, X } from "@lucide/vue";
+import { Plus, SlidersHorizontal, X } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
@@ -42,7 +42,6 @@ const byteOrder = ref<ByteOrder>("abcd");
 const intervalMs = ref("1000");
 const enabled = ref(true);
 const saving = ref(false);
-const confirmDelete = ref(false);
 
 interface AliasRow {
   address: string;
@@ -96,7 +95,6 @@ watch(
   () => [open.value, props.definition] as const,
   ([isOpen]) => {
     if (!isOpen) return;
-    confirmDelete.value = false;
     const definition = props.definition;
     if (definition) {
       name.value = definition.name;
@@ -184,23 +182,6 @@ async function submit(): Promise<void> {
     });
   } finally {
     saving.value = false;
-  }
-}
-
-async function remove(): Promise<void> {
-  if (!props.definition) return;
-  if (!confirmDelete.value) {
-    confirmDelete.value = true;
-    return;
-  }
-  try {
-    await sessions.deleteDefinition(props.definition.id);
-    toast.success("定义已删除");
-    open.value = false;
-  } catch (error: unknown) {
-    toast.error("删除定义失败", {
-      description: error instanceof Error ? error.message : String(error),
-    });
   }
 }
 </script>
@@ -347,17 +328,6 @@ async function remove(): Promise<void> {
       </div>
 
       <DialogFooter class="border-t border-hairline bg-well-soft px-5 py-3">
-        <Button
-          v-if="definition"
-          variant="ghost"
-          size="sm"
-          class="mr-auto h-8 gap-1.5 text-[11.5px]"
-          :class="confirmDelete ? 'text-error' : 'text-muted-foreground'"
-          @click="remove"
-        >
-          <Trash2 class="size-3" />
-          {{ confirmDelete ? "再次点击确认删除" : "删除定义" }}
-        </Button>
         <DialogClose as-child>
           <Button
             variant="outline"

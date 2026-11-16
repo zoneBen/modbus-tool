@@ -441,12 +441,14 @@ pub struct NewSessionInput {
     pub inter_frame_delay_ms: Option<u64>,
     #[serde(default)]
     pub auto_reconnect: Option<bool>,
+    #[serde(default)]
+    pub slave_id: Option<u8>,
 }
 
 impl NewSessionInput {
     pub fn into_config(self, id: String) -> Result<SessionConfig, String> {
-        if self.role == SessionRole::Slave {
-            return Err("从站模拟器将在后续阶段启用".to_owned());
+        if self.role == SessionRole::Slave && self.transport == TransportKind::Udp {
+            return Err("从站模拟暂不支持 UDP，请使用 TCP 或串口".to_owned());
         }
 
         let link = build_link(
@@ -499,12 +501,25 @@ impl NewSessionInput {
             retries: self.retries.unwrap_or(1).min(10),
             inter_frame_delay_ms: self.inter_frame_delay_ms.unwrap_or(0).min(60_000),
             auto_reconnect: self.auto_reconnect.unwrap_or(true),
-            definitions: vec![default_definition()],
-            polling: true,
+            definitions: if self.role == SessionRole::Slave {
+                vec![simulator_definition(self.slave_id.unwrap_or(1))]
+            } else {
+                Vec::new()
+            },
+            polling: self.role != SessionRole::Slave,
             accent,
             started_at: now_ms(),
         })
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomWriteInput {
+    pub slave_id: u8,
+    pub function_code: u8,
+    pub address: u16,
+    pub values: Vec<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -759,18 +774,18 @@ fn default_concurrency() -> usize {
     64
 }
 
-pub fn default_definition() -> DefinitionDto {
+fn simulator_definition(unit_id: u8) -> DefinitionDto {
     DefinitionDto {
         id: uuid::Uuid::new_v4().to_string(),
-        name: "保持寄存器 · 主表".to_owned(),
+        name: "从站模拟映射".to_owned(),
         function_code: 0x03,
-        slave_id: 1,
+        slave_id: unit_id,
         start_address: 0,
         quantity: 16,
         data_type: DataType::U16,
         byte_order: OrderPreset::Abcd,
         byte_pos: None,
-        interval_ms: 1000,
+        interval_ms: 500,
         enabled: true,
         aliases: BTreeMap::new(),
     }

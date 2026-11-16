@@ -30,6 +30,7 @@ const editOpen = ref(false);
 
 const definition = computed(() => sessions.activeDefinition);
 const session = computed(() => sessions.activeSession);
+const isSlave = computed(() => session.value?.role === "slave");
 const snapshot = computed(() => sessions.activeSnapshot);
 const firstValue = computed(() => snapshot.value?.values[0] ?? null);
 
@@ -108,7 +109,7 @@ const fields = computed(() => {
       <SlidersHorizontal class="size-3.5 text-muted-foreground" />
       <span class="label-caps">定义检查器</span>
       <button
-        v-if="definition"
+        v-if="definition && !isSlave"
         type="button"
         class="ml-auto flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
         aria-label="编辑读取定义"
@@ -207,18 +208,24 @@ const fields = computed(() => {
             </div>
             <div class="mt-3 flex items-center gap-2 border-t border-hairline pt-2">
               <span class="numeric text-[11px] text-muted-foreground">
-                {{ firstValue?.words.map(formatWord).join(" ") ?? "—" }}
+                {{ firstValue?.words.length ? firstValue.words.map(formatWord).join(" ") : "—" }}
               </span>
               <ArrowRight class="size-3 text-muted-foreground/70" />
               <span class="numeric text-[11px] text-foreground">{{
                 firstValue?.formatted ?? "—"
               }}</span>
             </div>
+            <p
+              v-if="snapshot?.error"
+              class="mt-2 rounded-md border border-error/25 bg-error/10 px-2 py-1 text-[11px] leading-relaxed text-error"
+            >
+              {{ snapshot.error }}
+            </p>
           </div>
         </div>
 
         <p class="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-          {{ "写操作在演示模式下直接更新本地缓存；接入真实设备后由 Rust 编码并发往链路。" }}
+          写操作通过寄存器表格上方的「写入值」按钮执行；双击寄存器行可打开趋势大图。
         </p>
       </div>
     </template>
