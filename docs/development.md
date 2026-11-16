@@ -1,6 +1,8 @@
 # 开发与构建
 
-本文档收录开发、测试、CI 与项目结构信息；产品功能说明见根目录 [README](../README.md)。
+本文档收录技术栈、开发、测试、CI 与项目结构信息；产品功能说明见根目录 [README](../README.md)。
+
+技术栈：**Rust + Tauri 2 + Vue 3 + TypeScript + Tailwind CSS v4 + shadcn-vue + uPlot**。协议层位于 `crates/modbus-core`，不依赖 Tauri/串口/网络。
 
 ## 本地开发
 

@@ -373,7 +373,7 @@ fn build_snapshot(
     let values = (0..definition.quantity.min(MAP_QUANTITY))
         .map(|offset| {
             let address = definition.start_address.wrapping_add(offset);
-            let word = unit.map(|unit| unit.holding(address)).unwrap_or(0);
+            let word = unit.map_or(0, |unit| unit.holding(address));
             RegisterValueDto {
                 address,
                 words: vec![word],
@@ -503,7 +503,7 @@ fn serial_loop(
                 handle_serial_request(
                     &request,
                     framing,
-                    &mut *port,
+                    &mut port,
                     &simulator,
                     &definition,
                     &session_id,
@@ -547,7 +547,7 @@ fn serial_loop(
             handle_serial_request(
                 &request,
                 Framing::Rtu,
-                &mut *port,
+                &mut port,
                 &simulator,
                 &definition,
                 &session_id,

@@ -1,12 +1,6 @@
 # Modbus Tool
 
-[![CI](https://github.com/zoneBen/modbus-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/zoneBen/modbus-tool/actions/workflows/ci.yml)
-
-对标 Modbus Poll 的轻量桌面调试工具：主站读写、原始报文监视、四类设备扫描、实时曲线。从站模拟器当前仅提供演示运行时，真实服务端与 CSV 日志在后续阶段接入。
-
-技术栈：**Rust + Tauri 2 + Vue 3 + TypeScript + Tailwind CSS v4 + shadcn-vue + uPlot**。核心协议层自研，支持 RTU / ASCII / MBAP 三种帧格式与串口 / TCP / UDP 三种链路。
-
-> 当前状态：**v0.1.4 主站调试版**。真实 TCP/UDP/串口主站引擎、报文监视、定义编辑、写入、四类扫描与 uPlot 曲线已接入 Rust 后端；浏览器 Demo（`pnpm dev`）无需 Rust 即可体验完整 UI。本地与 GitHub Actions 均已通过，Windows Release 已成功产出 NSIS/MSI artifact。真实从站服务端、CSV 日志与工作区持久化仍待后续阶段。
+对标 Modbus Poll 的轻量桌面调试工具：主站读写、从站模拟、原始报文监视、四类设备扫描、实时曲线。支持 RTU / ASCII / MBAP 三种帧格式与串口 / TCP / UDP 三种链路。
 
 ## 已实现
 
@@ -21,8 +15,7 @@
 - **实时曲线**：uPlot 多序列、1/5/15/30 分钟窗口、暂停、跨线提示、图例实时值、数据表视图；双击数值/原始值/趋势列进入带返回按钮的全屏趋势大图；读取失败以 `—` 占位并从趋势中剔除，不写入 0
 - **界面**：深色仪器风与浅色高对比主题可切换（支持跟随系统），语义化色板/半透明层级、毛玻璃静态面板、值变化闪烁、状态呼吸、可拖拽监控抽屉、快捷键预留、地址基址 0/1；设置内可切换简体中文 / English（预览）
 - **列表交互**：双击别名编辑点位名称，双击格式编辑数据类型与字节/字序，双击数值或趋势查看大图
-- **演示运行时**：浏览器内生成真实结构的 MBAP/RTU 帧、主站/从站数据、扫描过程与曲线
-- **工程化**：Windows CI（lint/typecheck/Vitest/build/rustfmt/clippy/cargo test）；Release Windows（NSIS/MSI，可选离线 WebView2）
+- **浏览器 Demo**：无需 Rust 即可体验完整界面，并在浏览器内生成真实结构的 MBAP/RTU 帧、主站/从站数据、扫描过程与曲线
 
 ## 已知限制 / 下一步
 
@@ -33,4 +26,4 @@
 - **串口**：代码与协议测试通过，尚未用真实 RS-485 / USB 串口设备验证
 - **English**：当前为预览，部分新增弹窗仍为中文，后续逐步补全
 - **FC08/11/17/22/23/43-14**：后续阶段
-- **扫描**：已加入输入校验与异常任务隔离；若特定设备/驱动仍导致异常，需要提供现场日志继续定位
+- **扫描**：修复了扫描任务在非 Tokio 上下文启动导致进程退出的问题；扫描失败会回传状态与错误信息
