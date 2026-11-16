@@ -226,12 +226,12 @@ async fn tcp_connection(
         ) else {
             continue;
         };
-        if let Some(response) = &reply.response {
-            if socket.write_all(response).await.is_err() {
-                break;
-            }
+        if let Some(response) = &reply.response
+            && socket.write_all(response).await.is_err()
+        {
+            break;
         }
-        publish_async(&state, &bus, reply, &simulator, &definition).await;
+        publish_async(&state, &bus, reply).await;
     }
 }
 
@@ -395,13 +395,7 @@ fn build_snapshot(
     }
 }
 
-async fn publish_async(
-    state: &Arc<RwLock<SessionState>>,
-    bus: &EventBus,
-    reply: SlaveReply,
-    simulator: &Arc<Mutex<Simulator>>,
-    definition: &DefinitionDto,
-) {
+async fn publish_async(state: &Arc<RwLock<SessionState>>, bus: &EventBus, reply: SlaveReply) {
     let event = {
         let mut state = state.write().await;
         state.stats.rx += 1;
@@ -415,18 +409,11 @@ async fn publish_async(
             frames: reply.frames,
         },
     );
-    let snapshot = build_snapshot(&event.session_id, definition, simulator);
-    emit(bus, AppEvent::SessionData(snapshot));
+    emit(bus, AppEvent::SessionData(reply.snapshot));
     emit(bus, AppEvent::SessionStatus(event));
 }
 
-fn publish_blocking(
-    state: &Arc<RwLock<SessionState>>,
-    bus: &EventBus,
-    reply: SlaveReply,
-    simulator: &Arc<Mutex<Simulator>>,
-    definition: &DefinitionDto,
-) {
+fn publish_blocking(state: &Arc<RwLock<SessionState>>, bus: &EventBus, reply: SlaveReply) {
     if reply.frames.is_empty() {
         return;
     }
@@ -434,18 +421,14 @@ fn publish_blocking(
         state.stats.rx += 1;
         state.stats.tx += u64::from(reply.response.is_some());
         let event = state.status_event(None);
-        let session_id = event.session_id.clone();
         emit(
             bus,
             AppEvent::SessionFrames {
-                session_id: session_id.clone(),
+                session_id: event.session_id.clone(),
                 frames: reply.frames,
             },
         );
-        emit(
-            bus,
-            AppEvent::SessionData(build_snapshot(&session_id, definition, simulator)),
-        );
+        emit(bus, AppEvent::SessionData(reply.snapshot));
         emit(bus, AppEvent::SessionStatus(event));
     }
 }
@@ -574,12 +557,12 @@ fn handle_serial_request(
     else {
         return;
     };
-    if let Some(response) = &reply.response {
-        if port.write_all(response).is_err() || port.flush().is_err() {
-            return;
-        }
+    if let Some(response) = &reply.response
+        && (port.write_all(response).is_err() || port.flush().is_err())
+    {
+        return;
     }
-    publish_blocking(state, bus, reply, simulator, definition);
+    publish_blocking(state, bus, reply);
 }
 
 #[cfg(test)]

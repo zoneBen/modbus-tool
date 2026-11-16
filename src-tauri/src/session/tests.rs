@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use modbus_core::frame;
 use modbus_core::simulator::{Simulator, SlaveUnit};
-use modbus_core::{DataType, Framing, OrderPreset};
+use modbus_core::{DataType, Framing, OrderPreset, PduRequest, PduResponse};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
 use crate::event::{AppEvent, event_bus};
@@ -245,4 +245,64 @@ async fn reads_and_writes_over_real_tcp() {
 
     manager.shutdown_all().await;
     server.abort();
+}
+
+#[tokio::test]
+async fn tcp_slave_serves_modbus_requests() {
+    let probe = TcpListener::bind("127.0.0.1:0").await.expect("probe bind");
+    let port = probe.local_addr().expect("probe addr").port();
+    drop(probe);
+
+    let mut slave_input = input(port);
+    slave_input.name = "TCP slave".to_owned();
+    slave_input.role = SessionRole::Slave;
+    slave_input.slave_id = Some(1);
+    let manager = SessionManager::new(event_bus());
+    let session = manager
+        .create_session(slave_input)
+        .await
+        .expect("start slave");
+    assert_eq!(session.role, SessionRole::Slave);
+    assert_eq!(session.definitions.len(), 1);
+
+    let connect = TcpStream::connect(("127.0.0.1", port));
+    let mut socket = tokio::time::timeout(Duration::from_secs(2), connect)
+        .await
+        .expect("connect timeout")
+        .expect("connect slave");
+
+    let read = PduRequest::ReadHoldingRegisters {
+        address: 0,
+        quantity: 2,
+    };
+    let pdu = read.encode().expect("request pdu");
+    let request_frame = frame::encode(Framing::Mbap, 1, Some(7), &pdu).expect("request frame");
+    socket
+        .write_all(&request_frame)
+        .await
+        .expect("write request");
+    let mut header = [0u8; 6];
+    tokio::time::timeout(Duration::from_secs(2), socket.read_exact(&mut header))
+        .await
+        .expect("header timeout")
+        .expect("read header");
+    let length = usize::from(u16::from_be_bytes([header[4], header[5]]));
+    let mut response = header.to_vec();
+    response.resize(6 + length, 0);
+    let body = socket.read_exact(&mut response[6..]);
+    tokio::time::timeout(Duration::from_secs(2), body)
+        .await
+        .expect("body timeout")
+        .expect("read body");
+    let adu = frame::decode(Framing::Mbap, &response).expect("decode response");
+    let decoded = PduResponse::decode_for_request(&read, &adu.pdu).expect("response pdu");
+    assert_eq!(
+        decoded,
+        PduResponse::ReadRegisters {
+            function_code: 3,
+            values: vec![1000, 1001]
+        }
+    );
+
+    manager.shutdown_all().await;
 }
