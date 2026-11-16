@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "工业总线调试台",
-    version: "v0.1.0 · P1",
+    version: "v0.1.2",
   },
   nav: {
     workspace: "工作台",
@@ -32,7 +32,7 @@ export default {
     newSession: "新建会话",
     noSession: "还没有会话",
     noSessionHint: "新建一个主站会话，或启动从站模拟器。",
-    autosave: "工作区自动保存",
+    autosave: "工作区驻留内存",
   },
   monitor: {
     title: "报文监控",

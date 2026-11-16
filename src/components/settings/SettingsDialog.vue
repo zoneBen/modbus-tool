@@ -115,7 +115,7 @@ const toggles = [
       >
         <div class="flex items-center gap-2">
           <span class="font-medium text-foreground/70">Modbus Tool</span>
-          <span class="numeric">v0.1.0 · P1 Preview</span>
+          <span class="numeric">v0.1.2 · Preview</span>
         </div>
         <span
           v-if="sessions.demo"

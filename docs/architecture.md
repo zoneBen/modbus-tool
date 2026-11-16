@@ -91,7 +91,7 @@ loop {
 
 ## 里程碑状态
 
-- P1 脚手架 / 设计系统 / Demo / Windows CI — 完成，CI 待远端运行
+- P1 脚手架 / 设计系统 / Demo / Windows CI — 完成，CI 已通过
 - P2 协议核心与测试 — 完成
 - P3 串口/TCP/UDP 传输 + 主站 Actor — 完成（串口未用真实硬件验证）
 - P4 Tauri 命令/事件 + 工作区持久化 — 命令/事件完成，持久化待实现
@@ -99,7 +99,7 @@ loop {
 - P6 报文导出 + CSV 日志 — 待实现
 - P7 从站模拟器 — 浏览器 Demo 完成，真实服务端待实现
 - P8 四类扫描 — 完成
-- P9 uPlot 曲线 + Windows 发布 — 曲线与发布工作流完成，安装包待远端验证
+- P9 uPlot 曲线 + Windows 发布 — 曲线完成；Windows 安装包 artifact 已验证
 
 ## 后续优化
 

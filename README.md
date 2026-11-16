@@ -1,10 +1,12 @@
 # Modbus Tool
 
+[![CI](https://github.com/zoneBen/modbus-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/zoneBen/modbus-tool/actions/workflows/ci.yml)
+
 对标 Modbus Poll 的轻量桌面调试工具：主站读写、原始报文监视、四类设备扫描、实时曲线。从站模拟器当前仅提供演示运行时，真实服务端与 CSV 日志在后续阶段接入。
 
 技术栈：**Rust + Tauri 2 + Vue 3 + TypeScript + Tailwind CSS v4 + shadcn-vue + uPlot**。核心协议层自研，支持 RTU / ASCII / MBAP 三种帧格式与串口 / TCP / UDP 三种链路。
 
-> 当前状态：**可用的主站调试版**。真实 TCP/UDP/串口主站引擎、报文监视、定义编辑、写入、四类扫描与 uPlot 曲线已接入 Rust 后端；浏览器 Demo（`pnpm dev`）无需 Rust 即可体验完整 UI。已通过本地 `cargo test --workspace`、TCP 回环集成测试、ESLint / vue-tsc / Vitest / Vite build；GitHub Actions 工作流已就绪，尚未在远端执行。
+> 当前状态：**v0.1.2 主站调试版**。真实 TCP/UDP/串口主站引擎、报文监视、定义编辑、写入、四类扫描与 uPlot 曲线已接入 Rust 后端；浏览器 Demo（`pnpm dev`）无需 Rust 即可体验完整 UI。本地与 GitHub Actions 均已通过，Windows Release 已成功产出 NSIS/MSI artifact。真实从站服务端、CSV 日志与工作区持久化仍待后续阶段。
 
 ## 已实现
 
@@ -26,7 +28,7 @@
 - **报文导出**：入口已预留，导出任务待实现（P6）
 - **串口**：代码与协议测试通过，尚未用真实 RS-485 / USB 串口设备验证
 - **FC08/11/17/22/23/43-14**：后续阶段
-- **CI**：Windows 工作流已编写，尚未在 GitHub 远端运行；安装包签名与自动更新待接入
+- **CI**：Windows CI 与 Release 已通过，NSIS/MSI artifact 已生成；安装包签名与自动更新待接入
 
 ## 开发
 
