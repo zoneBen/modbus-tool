@@ -136,8 +136,9 @@ fn build_simulator(unit_id: u8) -> Simulator {
         unit.set_input(address, 2000 + address);
     }
     for address in 0..8u16 {
-        unit.set_coil(address, address % 2 == 0);
-        unit.discrete_inputs.insert(address, address % 2 == 1);
+        unit.set_coil(address, address.is_multiple_of(2));
+        unit.discrete_inputs
+            .insert(address, !address.is_multiple_of(2));
     }
     Simulator::new([unit])
 }
