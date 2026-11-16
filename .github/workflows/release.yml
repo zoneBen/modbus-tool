@@ -79,14 +79,23 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ steps.bundle.outputs.args }}
 
+      - name: List bundle files
+        shell: bash
+        run: |
+          echo "NSIS/MSI bundles:"
+          find . -type f \( -path "*/bundle/nsis/*.exe" -o -path "*/bundle/msi/*.msi" \) | sort
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: modbus-tool-windows
+          # Cargo workspace builds put bundles under the workspace root target/.
           path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
       # Later, when macOS/Linux are ready, add a matrix:
