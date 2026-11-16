@@ -1,0 +1,249 @@
+<script setup lang="ts">
+import { Database, PencilLine, Plus } from "@lucide/vue";
+import { ref } from "vue";
+import { useI18n } from "vue-i18n";
+import StatusPill from "@/components/common/StatusPill.vue";
+import TransportGlyph from "@/components/common/TransportGlyph.vue";
+import DefinitionDialog from "@/components/definition/DefinitionDialog.vue";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  formatFunctionCode,
+  formatInterval,
+  formatLatency,
+  formatNumber,
+  formatRange,
+} from "@/lib/format";
+import { useSessionsStore } from "@/stores/sessions";
+import { useSettingsStore } from "@/stores/settings";
+import type { Definition } from "@/types/models";
+
+const emit = defineEmits<{
+  (event: "new-session"): void;
+}>();
+
+const sessions = useSessionsStore();
+const settings = useSettingsStore();
+const { t } = useI18n();
+
+const definitionDialogOpen = ref(false);
+const editingDefinition = ref<Definition | null>(null);
+
+function openCreateDefinition(): void {
+  editingDefinition.value = null;
+  definitionDialogOpen.value = true;
+}
+
+function openEditDefinition(definition: Definition): void {
+  editingDefinition.value = definition;
+  definitionDialogOpen.value = true;
+}
+
+const accentClass: Record<string, string> = {
+  signal: "bg-signal",
+  rx: "bg-rx",
+  sim: "bg-sim",
+};
+
+function selectSession(sessionId: string): void {
+  sessions.setActiveSession(sessionId);
+}
+</script>
+
+<template>
+  <aside
+    class="flex h-full w-[268px] shrink-0 flex-col border-r border-white/[0.06] bg-white/[0.018]"
+  >
+    <div class="flex h-[52px] shrink-0 items-center justify-between px-4">
+      <div>
+        <p class="text-[13px] font-semibold tracking-tight">{{ t("workspace.title") }}</p>
+        <p class="text-[10px] text-muted-foreground">
+          {{ sessions.masterCount }} 主站 · {{ sessions.slaveCount }} 从站
+        </p>
+      </div>
+      <TooltipProvider :delay-duration="180">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              class="rounded-lg border border-white/[0.07] bg-white/[0.03] text-muted-foreground hover:text-foreground"
+              aria-label="新建会话"
+              @click="emit('new-session')"
+            >
+              <Plus class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{{ t("workspace.newSession") }}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+
+    <div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+      <div class="space-y-1.5">
+        <button
+          v-for="session in sessions.sessions"
+          :key="session.id"
+          type="button"
+          class="group relative w-full rounded-xl border px-3 py-2.5 text-left transition-all duration-200"
+          :class="
+            session.id === sessions.activeSessionId
+              ? 'border-white/[0.09] bg-white/[0.055] shadow-lg shadow-black/20'
+              : 'border-transparent hover:border-white/[0.05] hover:bg-white/[0.03]'
+          "
+          @click="selectSession(session.id)"
+        >
+          <span
+            v-if="session.id === sessions.activeSessionId"
+            class="absolute inset-y-3 left-0 w-[2px] rounded-full"
+            :class="accentClass[session.accent]"
+          />
+          <div class="flex items-center gap-2">
+            <TransportGlyph
+              :transport="session.transport"
+              :role="session.role"
+              class="size-[15px] shrink-0"
+              :class="
+                session.role === 'slave'
+                  ? 'text-sim'
+                  : session.transport === 'serial'
+                    ? 'text-rx'
+                    : 'text-signal-dim'
+              "
+            />
+            <span class="min-w-0 flex-1 truncate text-[12.5px] font-medium">
+              {{ session.name }}
+            </span>
+            <StatusPill :status="session.status" :polling="session.polling" compact />
+          </div>
+          <div class="mt-1 flex items-center gap-2 pl-[23px]">
+            <span class="numeric min-w-0 flex-1 truncate text-[10px] text-muted-foreground/80">
+              {{ session.endpoint }}
+            </span>
+            <span
+              v-if="session.role === 'master'"
+              class="numeric text-[10px] text-muted-foreground/70"
+            >
+              {{ formatLatency(session.stats.latencyMs) }}
+            </span>
+            <span v-else class="text-[9px] font-medium uppercase tracking-wider text-sim/80">
+              SLAVE {{ session.definitions[0]?.slaveId ?? 10 }}
+            </span>
+          </div>
+          <div
+            class="mt-1.5 flex items-center gap-3 pl-[23px] text-[9.5px] text-muted-foreground/55"
+          >
+            <span
+              >TX <span class="numeric">{{ formatNumber(session.stats.tx) }}</span></span
+            >
+            <span
+              >RX <span class="numeric">{{ formatNumber(session.stats.rx) }}</span></span
+            >
+            <span v-if="session.stats.errors > 0" class="text-error/80">
+              ERR <span class="numeric">{{ session.stats.errors }}</span>
+            </span>
+          </div>
+        </button>
+      </div>
+
+      <div v-if="sessions.activeSession" class="mt-4">
+        <div class="flex items-center justify-between px-2.5">
+          <span class="label-caps">{{ t("workspace.definitions") }}</span>
+          <div class="flex items-center gap-1">
+            <span class="numeric text-[10px] text-muted-foreground/60">
+              {{ sessions.activeDefinitions.length.toString().padStart(2, "0") }}
+            </span>
+            <button
+              type="button"
+              class="flex size-5 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-white/[0.06] hover:text-foreground"
+              aria-label="新建读取定义"
+              @click="openCreateDefinition"
+            >
+              <Plus class="size-3" />
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-1.5 space-y-0.5">
+          <div
+            v-for="definition in sessions.activeDefinitions"
+            :key="definition.id"
+            role="button"
+            tabindex="0"
+            class="group w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition-colors"
+            :class="
+              definition.id === sessions.activeDefinitionId
+                ? 'bg-white/[0.055]'
+                : 'hover:bg-white/[0.03]'
+            "
+            @click="sessions.setActiveDefinition(definition.id)"
+            @keydown.enter="sessions.setActiveDefinition(definition.id)"
+            @keydown.space.prevent="sessions.setActiveDefinition(definition.id)"
+          >
+            <div class="flex items-center gap-2">
+              <span
+                class="numeric rounded border border-white/[0.07] bg-black/20 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide"
+                :class="
+                  definition.dataType === 'f32' || definition.dataType === 'f64'
+                    ? 'text-rx'
+                    : 'text-signal-dim'
+                "
+              >
+                {{ definition.dataType.toUpperCase() }}
+              </span>
+              <span
+                class="min-w-0 flex-1 truncate text-[11.5px]"
+                :class="definition.enabled ? '' : 'text-muted-foreground/60'"
+              >
+                {{ definition.name }}
+              </span>
+              <button
+                type="button"
+                class="flex size-5 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                aria-label="编辑读取定义"
+                @click.stop="openEditDefinition(definition)"
+              >
+                <PencilLine class="size-3" />
+              </button>
+              <Switch
+                :model-value="definition.enabled"
+                class="scale-[0.72]"
+                @click.stop
+                @update:model-value="
+                  (checked) => sessions.toggleDefinition(definition.id, Boolean(checked))
+                "
+              />
+            </div>
+            <div
+              class="mt-1 flex items-center gap-2 pl-[38px] text-[9.5px] text-muted-foreground/65"
+            >
+              <span class="numeric">{{ formatFunctionCode(definition.functionCode) }}</span>
+              <span class="numeric">{{
+                formatRange(definition.startAddress, definition.quantity, settings.addressBase)
+              }}</span>
+              <span class="ml-auto numeric">{{ formatInterval(definition.intervalMs) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <DefinitionDialog v-model:open="definitionDialogOpen" :definition="editingDefinition" />
+
+    <div
+      class="flex shrink-0 items-center justify-between border-t border-white/[0.06] px-3.5 py-2.5"
+    >
+      <div class="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+        <Database class="size-3" />
+        <span>{{ t("workspace.autosave") }}</span>
+      </div>
+      <span
+        v-if="sessions.demo"
+        class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[9px] font-medium text-sim"
+      >
+        DEMO
+      </span>
+    </div>
+  </aside>
+</template>

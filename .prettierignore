@@ -1,0 +1,10 @@
+dist
+coverage
+node_modules
+src-tauri
+pnpm-lock.yaml
+src/components/ui
+target
+.rust-tmp
+.chrome-tmp*
+.tmp-*

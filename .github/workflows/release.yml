@@ -1,0 +1,95 @@
+name: Release Windows
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      offline_webview:
+        description: "使用离线 WebView2 运行时打包（适合无外网 / LTSC 机器）"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Compute bundle arguments
+        id: bundle
+        shell: bash
+        run: |
+          if [ "${{ inputs.offline_webview }}" = "true" ]; then
+            echo "args=--bundles nsis,msi --config src-tauri/tauri.offline-webview.conf.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=--bundles nsis,msi" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Tag push: build and attach installers to a draft release.
+      - name: Build and publish draft release
+        if: github.ref_type == 'tag'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Modbus Tool ${{ github.ref_name }}
+          releaseBody: "Windows 安装包。若目标机器缺少 WebView2，请重新运行本工作流并勾选离线 WebView2 选项。"
+          releaseDraft: true
+          prerelease: false
+          tauriScript: pnpm tauri
+          args: ${{ steps.bundle.outputs.args }}
+
+      # Manual dispatch: build only; artifacts are uploaded below.
+      - name: Build bundles (manual)
+        if: github.event_name == 'workflow_dispatch'
+        uses: tauri-apps/tauri-action@v0
+        with:
+          tauriScript: pnpm tauri
+          args: ${{ steps.bundle.outputs.args }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: modbus-tool-windows
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Later, when macOS/Linux are ready, add a matrix:
+      # - macos-latest (aarch64-apple-darwin, x86_64-apple-darwin)
+      # - ubuntu-22.04 (needs libwebkit2gtk-4.1-dev, libudev-dev, librsvg2-dev, patchelf)
+      # and keep Windows as the first validated target.
