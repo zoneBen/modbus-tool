@@ -504,7 +504,7 @@ fn serial_loop(
                 handle_serial_request(
                     &request,
                     framing,
-                    &mut port,
+                    &mut *port,
                     &simulator,
                     &definition,
                     &session_id,
@@ -546,7 +546,7 @@ fn serial_loop(
             handle_serial_request(
                 &request,
                 Framing::Rtu,
-                &mut port,
+                &mut *port,
                 &simulator,
                 &definition,
                 &session_id,
