@@ -51,7 +51,7 @@ async function copyFrame(): Promise<void> {
     <template v-if="frame">
       <div class="flex h-[38px] shrink-0 items-center gap-2 border-b border-hairline px-3">
         <span class="label-caps">{{ t("monitor.detail") }}</span>
-        <span class="numeric text-[10px] text-muted-foreground">#{{ frame.seq }}</span>
+        <span class="numeric text-[11px] text-muted-foreground">#{{ frame.seq }}</span>
         <Button
           variant="ghost"
           size="icon-xs"
@@ -74,12 +74,12 @@ async function copyFrame(): Promise<void> {
           </span>
           <div class="min-w-0">
             <p class="truncate text-[12px] font-medium">{{ frame.summary }}</p>
-            <p class="numeric text-[10px] text-muted-foreground">
+            <p class="numeric text-[11px] text-muted-foreground">
               {{ formatTime(frame.timestamp) }} · {{ sessionName }}
             </p>
           </div>
           <span
-            class="numeric ml-auto rounded border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            class="numeric ml-auto rounded border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[11px] text-muted-foreground"
           >
             {{ formatLatency(frame.latencyMs ?? 0) }}
           </span>
@@ -100,7 +100,7 @@ async function copyFrame(): Promise<void> {
           </div>
           <div
             v-if="frame.decoded.functionCode"
-            class="flex items-center justify-between px-2 pt-0.5 text-[10px] text-muted-foreground"
+            class="flex items-center justify-between px-2 pt-0.5 text-[11px] text-muted-foreground"
           >
             <span>从站 {{ frame.decoded.slaveId }}</span>
             <span class="numeric">{{ formatFunctionCode(frame.decoded.functionCode) }}</span>

@@ -73,7 +73,7 @@ const toggles = [
         <div class="flex items-center justify-between gap-4 py-3">
           <div>
             <p class="text-[12px] font-medium text-foreground">界面主题</p>
-            <p class="mt-0.5 text-[10.5px] text-muted-foreground">
+            <p class="mt-0.5 text-[11px] text-muted-foreground">
               深色仪器风或浅色高对比，可跟随系统设置。
             </p>
           </div>
@@ -103,7 +103,7 @@ const toggles = [
         >
           <div>
             <p class="text-[12px] font-medium text-foreground">{{ item.title }}</p>
-            <p class="mt-0.5 text-[10.5px] leading-relaxed text-muted-foreground">
+            <p class="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
               {{ item.hint }}
             </p>
           </div>
@@ -116,7 +116,7 @@ const toggles = [
         <div class="flex items-center justify-between gap-4 border-t border-hairline py-3">
           <div>
             <p class="text-[12px] font-medium text-foreground">地址基址</p>
-            <p class="mt-0.5 text-[10.5px] text-muted-foreground">
+            <p class="mt-0.5 text-[11px] text-muted-foreground">
               Modbus Poll 风格：0 基址或 1 基址显示。
             </p>
           </div>
@@ -141,14 +141,14 @@ const toggles = [
 
       <Separator class="bg-overlay-2" />
 
-      <div class="flex items-center justify-between px-5 py-3 text-[10.5px] text-muted-foreground">
+      <div class="flex items-center justify-between px-5 py-3 text-[11px] text-muted-foreground">
         <div class="flex items-center gap-2">
           <span class="font-medium text-foreground">Modbus Tool</span>
           <span class="numeric">v0.1.3 · Preview</span>
         </div>
         <span
           v-if="sessions.demo"
-          class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[10px] text-sim"
+          class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[11px] text-sim"
         >
           DEMO RUNTIME
         </span>

@@ -209,7 +209,7 @@ function openWrite(row: GridRow): void {
               </div>
               <div class="flex justify-center">
                 <span
-                  class="numeric rounded border px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                  class="numeric rounded border px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide"
                   :class="
                     definition.dataType === 'f32' || definition.dataType === 'f64'
                       ? 'border-rx/20 bg-rx/10 text-rx/90'

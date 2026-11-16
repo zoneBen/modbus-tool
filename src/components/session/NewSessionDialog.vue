@@ -311,7 +311,7 @@ async function submit(): Promise<void> {
         </div>
 
         <p
-          class="rounded-lg border border-warn/15 bg-warn/[0.05] px-3 py-2 text-[10.5px] leading-relaxed text-warn/70"
+          class="rounded-lg border border-warn/15 bg-warn/[0.05] px-3 py-2 text-[11px] leading-relaxed text-warn/70"
         >
           演示会话会生成真实的 Modbus 帧（MBAP / RTU），可在底部报文监控中查看双向通信。
         </p>

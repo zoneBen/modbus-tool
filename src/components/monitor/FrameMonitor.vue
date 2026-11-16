@@ -104,7 +104,7 @@ function exportFrames(): void {
         @click="openTab('frames')"
       >
         {{ t("monitor.title") }}
-        <span class="numeric rounded bg-overlay-3 px-1 py-0.5 text-[10px] text-muted-foreground">
+        <span class="numeric rounded bg-overlay-3 px-1 py-0.5 text-[11px] text-muted-foreground">
           {{ count }}
         </span>
         <span
@@ -131,7 +131,7 @@ function exportFrames(): void {
       >
         <ScrollText class="size-3.5" />
         数据日志
-        <span class="rounded border border-hairline px-1 text-[10px]">P6</span>
+        <span class="rounded border border-hairline px-1 text-[11px]">P6</span>
       </button>
 
       <div v-if="activeTab === 'frames'" class="ml-auto flex items-center gap-1.5">
@@ -151,7 +151,7 @@ function exportFrames(): void {
             v-for="option in directionOptions"
             :key="option"
             type="button"
-            class="numeric rounded-md px-1.5 py-0.5 text-[10px] uppercase transition-colors"
+            class="numeric rounded-md px-1.5 py-0.5 text-[11px] uppercase transition-colors"
             :class="
               frames.direction === option
                 ? 'bg-overlay-3 text-foreground'
@@ -222,11 +222,11 @@ function exportFrames(): void {
                 v-if="frame.seq === frames.selectedFrame?.seq"
                 class="absolute inset-y-1 left-0 w-[2px] rounded-full bg-rx/70"
               />
-              <span class="numeric text-[10.5px] text-muted-foreground">{{
+              <span class="numeric text-[11px] text-muted-foreground">{{
                 formatTime(frame.timestamp)
               }}</span>
               <span
-                class="numeric inline-flex h-[15px] items-center justify-center rounded border text-[10px] font-medium"
+                class="numeric inline-flex h-[15px] items-center justify-center rounded border text-[11px] font-medium"
                 :class="directionClass[frame.direction]"
               >
                 {{ frame.direction.toUpperCase() }}
@@ -235,10 +235,10 @@ function exportFrames(): void {
                 {{ sessions.sessionName(frame.sessionId) }}
               </span>
               <span class="truncate text-[11.5px] text-foreground">{{ frame.summary }}</span>
-              <span class="numeric truncate text-[10.5px] text-muted-foreground">{{
+              <span class="numeric truncate text-[11px] text-muted-foreground">{{
                 snippet(frame)
               }}</span>
-              <span class="numeric text-right text-[10.5px] text-muted-foreground">
+              <span class="numeric text-right text-[11px] text-muted-foreground">
                 {{ formatLatency(frame.latencyMs ?? 0) }}
               </span>
               <span class="flex justify-center">

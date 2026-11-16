@@ -101,7 +101,7 @@ async function submit(): Promise<void> {
             <p class="numeric mt-0.5 text-[13px] text-foreground">{{ target.current }}</p>
           </div>
           <span
-            class="numeric ml-3 rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[10px] text-rx"
+            class="numeric ml-3 rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[11px] text-rx"
           >
             {{ target.dataType.toUpperCase() }}
           </span>
@@ -117,7 +117,7 @@ async function submit(): Promise<void> {
             class="numeric h-11 rounded-lg border-hairline-strong bg-well text-[16px] tracking-tight"
             @keydown.enter="submit"
           />
-          <p class="text-[10px] text-muted-foreground">
+          <p class="text-[11px] text-muted-foreground">
             {{ isFloat ? "支持小数，按定义的浮点字节序编码" : "0 – 65535 的整数" }}
           </p>
         </div>

@@ -39,22 +39,22 @@ const addressBases = [0, 1] as const;
         </span>
         <template v-if="definition">
           <span
-            class="numeric rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[10px] font-medium text-rx"
+            class="numeric rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[11px] font-medium text-rx"
           >
             {{ formatFunctionCode(definition.functionCode) }}
           </span>
           <span
-            class="numeric rounded border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            class="numeric rounded border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[11px] text-muted-foreground"
           >
             从站 {{ definition.slaveId }}
           </span>
           <span
-            class="numeric hidden rounded border border-hairline bg-well px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline"
+            class="numeric hidden rounded border border-hairline bg-well px-1.5 py-0.5 text-[11px] text-muted-foreground sm:inline"
           >
             {{ formatRange(definition.startAddress, definition.quantity, settings.addressBase) }}
           </span>
           <span
-            class="numeric rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
+            class="numeric rounded px-1.5 py-0.5 text-[11px] font-medium uppercase"
             :class="
               definition.dataType === 'f32' || definition.dataType === 'f64'
                 ? 'border border-rx/20 bg-rx/10 text-rx'

@@ -125,11 +125,11 @@ function selectSession(sessionId: string): void {
             >
               {{ formatLatency(session.stats.latencyMs) }}
             </span>
-            <span v-else class="text-[10px] font-medium uppercase tracking-wider text-sim/80">
+            <span v-else class="text-[11px] font-medium uppercase tracking-wider text-sim/80">
               SLAVE {{ session.definitions[0]?.slaveId ?? 10 }}
             </span>
           </div>
-          <div class="mt-1.5 flex items-center gap-3 pl-[23px] text-[10.5px] text-muted-foreground">
+          <div class="mt-1.5 flex items-center gap-3 pl-[23px] text-[11px] text-muted-foreground">
             <span
               >TX <span class="numeric">{{ formatNumber(session.stats.tx) }}</span></span
             >
@@ -177,7 +177,7 @@ function selectSession(sessionId: string): void {
           >
             <div class="flex items-center gap-2">
               <span
-                class="numeric rounded border border-hairline bg-well px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                class="numeric rounded border border-hairline bg-well px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide"
                 :class="
                   definition.dataType === 'f32' || definition.dataType === 'f64'
                     ? 'text-rx'
@@ -209,7 +209,7 @@ function selectSession(sessionId: string): void {
                 "
               />
             </div>
-            <div class="mt-1 flex items-center gap-2 pl-[38px] text-[10.5px] text-muted-foreground">
+            <div class="mt-1 flex items-center gap-2 pl-[38px] text-[11px] text-muted-foreground">
               <span class="numeric">{{ formatFunctionCode(definition.functionCode) }}</span>
               <span class="numeric">{{
                 formatRange(definition.startAddress, definition.quantity, settings.addressBase)
@@ -230,7 +230,7 @@ function selectSession(sessionId: string): void {
       </div>
       <span
         v-if="sessions.demo"
-        class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[10px] font-medium text-sim"
+        class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[11px] font-medium text-sim"
       >
         DEMO
       </span>

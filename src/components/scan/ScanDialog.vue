@@ -293,7 +293,7 @@ function startCurrent(): void {
                   v-for="mode in linkModes"
                   :key="mode"
                   type="button"
-                  class="rounded-md px-2 py-0.5 text-[10.5px] transition-colors"
+                  class="rounded-md px-2 py-0.5 text-[11px] transition-colors"
                   :class="
                     linkMode === mode
                       ? 'bg-overlay-3 text-foreground'
@@ -308,7 +308,7 @@ function startCurrent(): void {
 
             <div v-if="linkMode === 'network'" class="grid grid-cols-4 gap-2">
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">传输层</Label>
+                <Label class="text-[11px] text-muted-foreground">传输层</Label>
                 <FormSelect
                   v-model="transport"
                   :options="[
@@ -318,14 +318,14 @@ function startCurrent(): void {
                 />
               </div>
               <div class="col-span-2 space-y-1">
-                <Label class="text-[10px] text-muted-foreground">主机</Label>
+                <Label class="text-[11px] text-muted-foreground">主机</Label>
                 <Input
                   v-model="host"
                   class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
                 />
               </div>
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">端口</Label>
+                <Label class="text-[11px] text-muted-foreground">端口</Label>
                 <Input
                   v-model="port"
                   inputmode="numeric"
@@ -335,14 +335,14 @@ function startCurrent(): void {
             </div>
             <div v-else class="grid grid-cols-4 gap-2">
               <div class="col-span-2 space-y-1">
-                <Label class="text-[10px] text-muted-foreground">串口</Label>
+                <Label class="text-[11px] text-muted-foreground">串口</Label>
                 <FormSelect
                   v-model="serialPort"
                   :options="serialPorts.map((item) => ({ label: item.label, value: item.path }))"
                 />
               </div>
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">波特率</Label>
+                <Label class="text-[11px] text-muted-foreground">波特率</Label>
                 <FormSelect
                   v-model="baudRate"
                   :options="
@@ -353,7 +353,7 @@ function startCurrent(): void {
                 />
               </div>
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">校验</Label>
+                <Label class="text-[11px] text-muted-foreground">校验</Label>
                 <FormSelect
                   v-model="parity"
                   :options="[
@@ -367,11 +367,11 @@ function startCurrent(): void {
 
             <div class="grid grid-cols-3 gap-2">
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">帧格式</Label>
+                <Label class="text-[11px] text-muted-foreground">帧格式</Label>
                 <FormSelect v-model="framing" :options="framingOptions" />
               </div>
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">超时 (ms)</Label>
+                <Label class="text-[11px] text-muted-foreground">超时 (ms)</Label>
                 <Input
                   v-model="timeoutMs"
                   inputmode="numeric"
@@ -380,14 +380,14 @@ function startCurrent(): void {
               </div>
               <div v-if="linkMode === 'serial'" class="grid grid-cols-2 gap-2">
                 <div class="space-y-1">
-                  <Label class="text-[10px] text-muted-foreground">数据位</Label>
+                  <Label class="text-[11px] text-muted-foreground">数据位</Label>
                   <FormSelect
                     v-model="dataBits"
                     :options="['7', '8'].map((value) => ({ label: value, value }))"
                   />
                 </div>
                 <div class="space-y-1">
-                  <Label class="text-[10px] text-muted-foreground">停止位</Label>
+                  <Label class="text-[11px] text-muted-foreground">停止位</Label>
                   <FormSelect
                     v-model="stopBits"
                     :options="['1', '2'].map((value) => ({ label: value, value }))"
@@ -403,32 +403,32 @@ function startCurrent(): void {
           class="grid grid-cols-[1.25fr_1fr_0.75fr_0.9fr_0.9fr] gap-2"
         >
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">功能码</Label>
+            <Label class="text-[11px] text-muted-foreground">功能码</Label>
             <FormSelect v-model="idFunction" :options="functionOptions" />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">起始地址</Label>
+            <Label class="text-[11px] text-muted-foreground">起始地址</Label>
             <Input
               v-model="idAddress"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">数量</Label>
+            <Label class="text-[11px] text-muted-foreground">数量</Label>
             <Input
               v-model="idQuantity"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">起始 ID</Label>
+            <Label class="text-[11px] text-muted-foreground">起始 ID</Label>
             <Input
               v-model="idStart"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">结束 ID</Label>
+            <Label class="text-[11px] text-muted-foreground">结束 ID</Label>
             <Input
               v-model="idEnd"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
@@ -438,39 +438,39 @@ function startCurrent(): void {
 
         <div v-if="activeKind === 'address'" class="grid grid-cols-6 gap-2">
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">功能码</Label>
+            <Label class="text-[11px] text-muted-foreground">功能码</Label>
             <FormSelect v-model="addressFunction" :options="functionOptions" />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">从站 ID</Label>
+            <Label class="text-[11px] text-muted-foreground">从站 ID</Label>
             <Input
               v-model="addressSlaveId"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">起始地址</Label>
+            <Label class="text-[11px] text-muted-foreground">起始地址</Label>
             <Input
               v-model="addressStart"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">结束地址</Label>
+            <Label class="text-[11px] text-muted-foreground">结束地址</Label>
             <Input
               v-model="addressEnd"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">块大小</Label>
+            <Label class="text-[11px] text-muted-foreground">块大小</Label>
             <Input
               v-model="blockSize"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">仅非零</Label>
+            <Label class="text-[11px] text-muted-foreground">仅非零</Label>
             <div
               class="flex h-9 items-center rounded-lg border border-hairline-strong bg-well px-3"
             >
@@ -482,14 +482,14 @@ function startCurrent(): void {
         <template v-if="activeKind === 'baud'">
           <div class="grid grid-cols-3 gap-2 rounded-xl border border-hairline bg-well-soft p-3">
             <div class="col-span-2 space-y-1">
-              <Label class="text-[10px] text-muted-foreground">串口</Label>
+              <Label class="text-[11px] text-muted-foreground">串口</Label>
               <FormSelect
                 v-model="serialPort"
                 :options="serialPorts.map((item) => ({ label: item.label, value: item.path }))"
               />
             </div>
             <div class="space-y-1">
-              <Label class="text-[10px] text-muted-foreground">帧格式</Label>
+              <Label class="text-[11px] text-muted-foreground">帧格式</Label>
               <FormSelect
                 v-model="baudFraming"
                 :options="[
@@ -499,25 +499,25 @@ function startCurrent(): void {
               />
             </div>
             <div class="col-span-3 space-y-1">
-              <Label class="text-[10px] text-muted-foreground">候选波特率（逗号分隔）</Label>
+              <Label class="text-[11px] text-muted-foreground">候选波特率（逗号分隔）</Label>
               <Input
                 v-model="baudRateList"
                 class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
               />
             </div>
             <div class="space-y-1">
-              <Label class="text-[10px] text-muted-foreground">从站 ID</Label>
+              <Label class="text-[11px] text-muted-foreground">从站 ID</Label>
               <Input
                 v-model="baudSlaveId"
                 class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
               />
             </div>
             <div class="space-y-1">
-              <Label class="text-[10px] text-muted-foreground">功能码</Label>
+              <Label class="text-[11px] text-muted-foreground">功能码</Label>
               <FormSelect v-model="baudFunction" :options="functionOptions" />
             </div>
             <div class="space-y-1">
-              <Label class="text-[10px] text-muted-foreground">地址 / 数量</Label>
+              <Label class="text-[11px] text-muted-foreground">地址 / 数量</Label>
               <div class="grid grid-cols-2 gap-1">
                 <Input
                   v-model="baudAddress"
@@ -530,7 +530,7 @@ function startCurrent(): void {
               </div>
             </div>
             <div class="space-y-1">
-              <Label class="text-[10px] text-muted-foreground">超时 (ms)</Label>
+              <Label class="text-[11px] text-muted-foreground">超时 (ms)</Label>
               <Input
                 v-model="baudTimeout"
                 class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
@@ -538,14 +538,14 @@ function startCurrent(): void {
             </div>
             <div class="grid grid-cols-3 gap-1">
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">数据位</Label>
+                <Label class="text-[11px] text-muted-foreground">数据位</Label>
                 <FormSelect
                   v-model="dataBits"
                   :options="['7', '8'].map((value) => ({ label: value, value }))"
                 />
               </div>
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">校验</Label>
+                <Label class="text-[11px] text-muted-foreground">校验</Label>
                 <FormSelect
                   v-model="parity"
                   :options="[
@@ -556,7 +556,7 @@ function startCurrent(): void {
                 />
               </div>
               <div class="space-y-1">
-                <Label class="text-[10px] text-muted-foreground">停止位</Label>
+                <Label class="text-[11px] text-muted-foreground">停止位</Label>
                 <FormSelect
                   v-model="stopBits"
                   :options="['1', '2'].map((value) => ({ label: value, value }))"
@@ -571,7 +571,7 @@ function startCurrent(): void {
           class="grid grid-cols-3 gap-2 rounded-xl border border-hairline bg-well-soft p-3"
         >
           <div class="col-span-2 space-y-1">
-            <Label class="text-[10px] text-muted-foreground">CIDR 网段</Label>
+            <Label class="text-[11px] text-muted-foreground">CIDR 网段</Label>
             <Input
               v-model="cidr"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
@@ -579,28 +579,28 @@ function startCurrent(): void {
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">端口</Label>
+            <Label class="text-[11px] text-muted-foreground">端口</Label>
             <Input
               v-model="netPort"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">超时 (ms)</Label>
+            <Label class="text-[11px] text-muted-foreground">超时 (ms)</Label>
             <Input
               v-model="netTimeout"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">并发</Label>
+            <Label class="text-[11px] text-muted-foreground">并发</Label>
             <Input
               v-model="netConcurrency"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1">
-            <Label class="text-[10px] text-muted-foreground">探测从站 ID</Label>
+            <Label class="text-[11px] text-muted-foreground">探测从站 ID</Label>
             <Input
               v-model="netSlaveId"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
@@ -611,7 +611,7 @@ function startCurrent(): void {
           >
             <div>
               <p class="text-[11px] text-foreground">验证 Modbus 响应</p>
-              <p class="text-[10px] text-muted-foreground">关闭时仅检测 TCP 端口是否开放</p>
+              <p class="text-[11px] text-muted-foreground">关闭时仅检测 TCP 端口是否开放</p>
             </div>
             <Switch v-model="probeModbus" />
           </div>
@@ -620,12 +620,12 @@ function startCurrent(): void {
         <div class="rounded-xl border border-hairline bg-well-soft">
           <div class="flex items-center gap-2 border-b border-hairline px-3 py-2">
             <span class="text-[11px] font-medium text-foreground">扫描进度</span>
-            <span v-if="scans.progress" class="numeric text-[10px] text-muted-foreground">
+            <span v-if="scans.progress" class="numeric text-[11px] text-muted-foreground">
               {{ scans.progress.done }}/{{ scans.progress.total }} · 发现 {{ scans.progress.found }}
             </span>
             <span
               v-if="scans.error"
-              class="ml-auto rounded border border-error/20 bg-error/10 px-1.5 py-0.5 text-[10px] text-error"
+              class="ml-auto rounded border border-error/20 bg-error/10 px-1.5 py-0.5 text-[11px] text-error"
             >
               {{ scans.error }}
             </span>
@@ -638,7 +638,7 @@ function startCurrent(): void {
           </div>
 
           <div v-if="scans.results.length" class="scrollbar-thin max-h-[190px] overflow-y-auto">
-            <table class="w-full border-collapse text-[10.5px]">
+            <table class="w-full border-collapse text-[11px]">
               <thead class="sticky top-0 bg-surface">
                 <tr class="border-b border-hairline">
                   <th class="px-3 py-1.5 text-left font-medium text-muted-foreground">目标</th>
@@ -656,7 +656,7 @@ function startCurrent(): void {
                   <td class="numeric px-3 py-1 text-foreground">{{ result.label }}</td>
                   <td class="px-2 py-1">
                     <span
-                      class="rounded border px-1 py-0.5 text-[10px] uppercase"
+                      class="rounded border px-1 py-0.5 text-[11px] uppercase"
                       :class="statusTone[result.status]"
                     >
                       {{ result.status }}

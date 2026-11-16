@@ -116,7 +116,7 @@ const fields = computed(() => {
       >
         <PencilLine class="size-3" />
       </button>
-      <span v-if="definition" class="numeric text-[10px] text-muted-foreground">
+      <span v-if="definition" class="numeric text-[11px] text-muted-foreground">
         {{ definition.id.slice(-6) }}
       </span>
     </div>
@@ -140,7 +140,7 @@ const fields = computed(() => {
             :key="field.label"
             class="rounded-lg border border-hairline bg-overlay-1 px-2.5 py-2"
           >
-            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">
+            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">
               {{ field.label }}
             </p>
             <p class="numeric mt-1 truncate text-[11.5px] text-foreground">{{ field.value }}</p>
@@ -152,7 +152,7 @@ const fields = computed(() => {
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <span class="label-caps">{{ presetLabel[definition.byteOrder] }}</span>
-            <span class="text-[10px] text-muted-foreground">{{
+            <span class="text-[11px] text-muted-foreground">{{
               presetHint[definition.byteOrder]
             }}</span>
           </div>
@@ -162,11 +162,11 @@ const fields = computed(() => {
               :key="box.letter"
               class="flex flex-1 flex-col items-center rounded-lg border border-hairline bg-well py-1.5"
             >
-              <span class="text-[10px] text-muted-foreground">{{ box.letter }}</span>
+              <span class="text-[11px] text-muted-foreground">{{ box.letter }}</span>
               <span class="numeric text-[12px] text-foreground">{{ box.hex }}</span>
             </div>
           </div>
-          <p class="text-[10px] leading-relaxed text-muted-foreground">
+          <p class="text-[11px] leading-relaxed text-muted-foreground">
             四组预设仅映射字节序与字序，解析逻辑由 Rust 核心统一实现。
           </p>
         </div>
@@ -200,13 +200,13 @@ const fields = computed(() => {
                 <p class="numeric text-[11px] text-signal/85">
                   {{ formatLatency(snapshot?.latencyMs ?? 0) }}
                 </p>
-                <p class="numeric mt-1 text-[10px] text-muted-foreground">
+                <p class="numeric mt-1 text-[11px] text-muted-foreground">
                   {{ snapshot ? formatTime(snapshot.timestamp) : "—" }}
                 </p>
               </div>
             </div>
             <div class="mt-3 flex items-center gap-2 border-t border-hairline pt-2">
-              <span class="numeric text-[10.5px] text-muted-foreground">
+              <span class="numeric text-[11px] text-muted-foreground">
                 {{ firstValue?.words.map(formatWord).join(" ") ?? "—" }}
               </span>
               <ArrowRight class="size-3 text-muted-foreground/70" />
@@ -217,7 +217,7 @@ const fields = computed(() => {
           </div>
         </div>
 
-        <p class="mt-4 text-[10px] leading-relaxed text-muted-foreground">
+        <p class="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           {{ "写操作在演示模式下直接更新本地缓存；接入真实设备后由 Rust 编码并发往链路。" }}
         </p>
       </div>
