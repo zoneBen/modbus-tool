@@ -31,7 +31,7 @@ const addressBases = [0, 1] as const;
 </script>
 
 <template>
-  <div class="flex h-[54px] shrink-0 items-center gap-3 border-b border-white/[0.06] px-4">
+  <div class="flex h-[54px] shrink-0 items-center gap-3 border-b border-hairline px-4">
     <div class="min-w-0 flex-1">
       <div class="flex min-w-0 items-center gap-2">
         <span class="truncate text-[13px] font-semibold tracking-tight">
@@ -39,22 +39,22 @@ const addressBases = [0, 1] as const;
         </span>
         <template v-if="definition">
           <span
-            class="numeric rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[9px] font-medium text-rx"
+            class="numeric rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[10px] font-medium text-rx"
           >
             {{ formatFunctionCode(definition.functionCode) }}
           </span>
           <span
-            class="numeric rounded border border-white/[0.07] bg-white/[0.03] px-1.5 py-0.5 text-[9px] text-muted-foreground"
+            class="numeric rounded border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[10px] text-muted-foreground"
           >
             从站 {{ definition.slaveId }}
           </span>
           <span
-            class="numeric hidden rounded border border-white/[0.07] bg-black/20 px-1.5 py-0.5 text-[9px] text-muted-foreground/80 sm:inline"
+            class="numeric hidden rounded border border-hairline bg-well px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline"
           >
             {{ formatRange(definition.startAddress, definition.quantity, settings.addressBase) }}
           </span>
           <span
-            class="numeric rounded px-1.5 py-0.5 text-[9px] font-medium uppercase"
+            class="numeric rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
             :class="
               definition.dataType === 'f32' || definition.dataType === 'f64'
                 ? 'border border-rx/20 bg-rx/10 text-rx'
@@ -65,40 +65,40 @@ const addressBases = [0, 1] as const;
           </span>
         </template>
       </div>
-      <div class="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground/70">
+      <div class="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
         <span class="truncate">{{ session?.endpoint ?? "—" }}</span>
-        <span class="text-white/15">/</span>
+        <span class="text-foreground/15">/</span>
         <span class="uppercase">{{ session?.framing ?? "—" }}</span>
         <template v-if="definition">
-          <span class="text-white/15">/</span>
+          <span class="text-foreground/15">/</span>
           <span class="numeric">{{ formatInterval(definition.intervalMs) }}</span>
         </template>
         <template v-if="lastUpdate">
-          <span class="text-white/15">/</span>
+          <span class="text-foreground/15">/</span>
           <span class="numeric">{{ formatTime(lastUpdate) }}</span>
         </template>
       </div>
     </div>
 
     <div class="hidden items-center gap-2 xl:flex">
-      <Gauge class="size-3.5 text-muted-foreground/60" />
-      <span class="numeric text-[11px] text-muted-foreground">
+      <Gauge class="size-3.5 text-muted-foreground" />
+      <span class="numeric text-[12px] text-muted-foreground">
         {{ formatLatency(session?.stats.latencyMs ?? 0) }}
       </span>
     </div>
 
     <div class="mr-1 hidden items-center gap-2 md:flex">
-      <span class="text-[10px] text-muted-foreground/65">{{ t("status.addressBase") }}</span>
-      <div class="flex rounded-lg border border-white/[0.07] bg-black/20 p-0.5">
+      <span class="text-[11px] text-muted-foreground">{{ t("status.addressBase") }}</span>
+      <div class="flex rounded-lg border border-hairline bg-well p-0.5">
         <button
           v-for="base in addressBases"
           :key="base"
           type="button"
-          class="numeric rounded-md px-1.5 py-0.5 text-[10px] transition-colors"
+          class="numeric rounded-md px-1.5 py-0.5 text-[11px] transition-colors"
           :class="
             settings.addressBase === base
-              ? 'bg-white/[0.09] text-foreground'
-              : 'text-muted-foreground/60 hover:text-foreground'
+              ? 'bg-overlay-3 text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
           "
           @click="settings.addressBase = base"
         >
@@ -113,7 +113,7 @@ const addressBases = [0, 1] as const;
           <Button
             variant="outline"
             size="sm"
-            class="h-8 gap-1.5 border-white/[0.08] bg-white/[0.02] text-[11px]"
+            class="h-8 gap-1.5 border-hairline-strong bg-overlay-1 text-[12px]"
             :disabled="!definition || isSlave"
             @click="sessions.readOnce()"
           >
@@ -129,7 +129,7 @@ const addressBases = [0, 1] as const;
       v-if="isSlave"
       variant="outline"
       size="sm"
-      class="h-8 gap-1.5 border-sim/25 bg-sim/10 text-[11px] text-sim"
+      class="h-8 gap-1.5 border-sim/25 bg-sim/10 text-[12px] text-sim"
       disabled
     >
       <span class="status-dot status-dot-live" />
@@ -138,9 +138,9 @@ const addressBases = [0, 1] as const;
     <Button
       v-else
       size="sm"
-      class="h-8 gap-1.5 text-[11px]"
+      class="h-8 gap-1.5 text-[12px]"
       :variant="session?.polling ? 'default' : 'outline'"
-      :class="session?.polling ? 'glow-signal' : 'border-white/[0.08] bg-white/[0.02]'"
+      :class="session?.polling ? 'glow-signal' : 'border-hairline-strong bg-overlay-1'"
       :disabled="!session"
       @click="sessions.togglePolling()"
     >

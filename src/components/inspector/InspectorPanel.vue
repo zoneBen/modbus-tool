@@ -103,22 +103,20 @@ const fields = computed(() => {
 </script>
 
 <template>
-  <aside
-    class="hidden w-[306px] shrink-0 flex-col border-l border-white/[0.06] bg-white/[0.012] xl:flex"
-  >
-    <div class="flex h-9 shrink-0 items-center gap-2 border-b border-white/[0.05] px-4">
-      <SlidersHorizontal class="size-3.5 text-muted-foreground/60" />
+  <aside class="hidden w-[306px] shrink-0 flex-col border-l border-hairline bg-overlay-1 xl:flex">
+    <div class="flex h-9 shrink-0 items-center gap-2 border-b border-hairline px-4">
+      <SlidersHorizontal class="size-3.5 text-muted-foreground" />
       <span class="label-caps">定义检查器</span>
       <button
         v-if="definition"
         type="button"
-        class="ml-auto flex size-5 items-center justify-center rounded text-muted-foreground/45 transition-colors hover:bg-white/[0.06] hover:text-foreground"
+        class="ml-auto flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
         aria-label="编辑读取定义"
         @click="editOpen = true"
       >
         <PencilLine class="size-3" />
       </button>
-      <span v-if="definition" class="numeric text-[9px] text-muted-foreground/40">
+      <span v-if="definition" class="numeric text-[10px] text-muted-foreground">
         {{ definition.id.slice(-6) }}
       </span>
     </div>
@@ -127,11 +125,11 @@ const fields = computed(() => {
       <div class="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div>
           <p class="text-[13px] font-semibold">{{ definition.name }}</p>
-          <p class="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground/65">
+          <p class="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span>{{ session?.name }}</span>
-            <span class="text-white/15">·</span>
+            <span class="text-foreground/15">·</span>
             <span class="uppercase">{{ session?.framing }}</span>
-            <span class="text-white/15">·</span>
+            <span class="text-foreground/15">·</span>
             <span class="numeric">{{ session?.endpoint }}</span>
           </p>
         </div>
@@ -140,21 +138,21 @@ const fields = computed(() => {
           <div
             v-for="field in fields"
             :key="field.label"
-            class="rounded-lg border border-white/[0.045] bg-white/[0.02] px-2.5 py-2"
+            class="rounded-lg border border-hairline bg-overlay-1 px-2.5 py-2"
           >
-            <p class="text-[9px] uppercase tracking-wider text-muted-foreground/50">
+            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">
               {{ field.label }}
             </p>
-            <p class="numeric mt-1 truncate text-[10.5px] text-foreground/85">{{ field.value }}</p>
+            <p class="numeric mt-1 truncate text-[11.5px] text-foreground">{{ field.value }}</p>
           </div>
         </div>
 
-        <Separator class="my-4 bg-white/[0.06]" />
+        <Separator class="my-4 bg-overlay-3" />
 
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <span class="label-caps">{{ presetLabel[definition.byteOrder] }}</span>
-            <span class="text-[9px] text-muted-foreground/45">{{
+            <span class="text-[10px] text-muted-foreground">{{
               presetHint[definition.byteOrder]
             }}</span>
           </div>
@@ -162,30 +160,30 @@ const fields = computed(() => {
             <div
               v-for="box in byteBoxes"
               :key="box.letter"
-              class="flex flex-1 flex-col items-center rounded-lg border border-white/[0.06] bg-black/20 py-1.5"
+              class="flex flex-1 flex-col items-center rounded-lg border border-hairline bg-well py-1.5"
             >
-              <span class="text-[8px] text-muted-foreground/45">{{ box.letter }}</span>
-              <span class="numeric text-[11px] text-foreground/80">{{ box.hex }}</span>
+              <span class="text-[10px] text-muted-foreground">{{ box.letter }}</span>
+              <span class="numeric text-[12px] text-foreground">{{ box.hex }}</span>
             </div>
           </div>
-          <p class="text-[9px] leading-relaxed text-muted-foreground/45">
+          <p class="text-[10px] leading-relaxed text-muted-foreground">
             四组预设仅映射字节序与字序，解析逻辑由 Rust 核心统一实现。
           </p>
         </div>
 
-        <Separator class="my-4 bg-white/[0.06]" />
+        <Separator class="my-4 bg-overlay-3" />
 
         <div class="space-y-2">
           <div class="flex items-center gap-1.5">
-            <Gauge class="size-3 text-muted-foreground/55" />
+            <Gauge class="size-3 text-muted-foreground" />
             <span class="label-caps">实时采样</span>
           </div>
           <div
-            class="rounded-xl border border-white/[0.055] bg-gradient-to-br from-white/[0.04] to-transparent p-3"
+            class="rounded-xl border border-hairline bg-gradient-to-br from-overlay-2 to-transparent p-3"
           >
             <div class="flex items-end justify-between gap-2">
               <div class="min-w-0">
-                <p class="truncate text-[10px] text-muted-foreground/65">
+                <p class="truncate text-[11px] text-muted-foreground">
                   {{
                     firstValue
                       ? (definition.aliases[firstValue.address] ?? `寄存器 ${firstValue.address}`)
@@ -199,27 +197,27 @@ const fields = computed(() => {
                 </p>
               </div>
               <div class="shrink-0 text-right">
-                <p class="numeric text-[10px] text-signal/85">
+                <p class="numeric text-[11px] text-signal/85">
                   {{ formatLatency(snapshot?.latencyMs ?? 0) }}
                 </p>
-                <p class="numeric mt-1 text-[9px] text-muted-foreground/45">
+                <p class="numeric mt-1 text-[10px] text-muted-foreground">
                   {{ snapshot ? formatTime(snapshot.timestamp) : "—" }}
                 </p>
               </div>
             </div>
-            <div class="mt-3 flex items-center gap-2 border-t border-white/[0.05] pt-2">
-              <span class="numeric text-[9.5px] text-muted-foreground/55">
+            <div class="mt-3 flex items-center gap-2 border-t border-hairline pt-2">
+              <span class="numeric text-[10.5px] text-muted-foreground">
                 {{ firstValue?.words.map(formatWord).join(" ") ?? "—" }}
               </span>
-              <ArrowRight class="size-3 text-muted-foreground/35" />
-              <span class="numeric text-[10px] text-foreground/75">{{
+              <ArrowRight class="size-3 text-muted-foreground/70" />
+              <span class="numeric text-[11px] text-foreground">{{
                 firstValue?.formatted ?? "—"
               }}</span>
             </div>
           </div>
         </div>
 
-        <p class="mt-4 text-[9px] leading-relaxed text-muted-foreground/40">
+        <p class="mt-4 text-[10px] leading-relaxed text-muted-foreground">
           {{ "写操作在演示模式下直接更新本地缓存；接入真实设备后由 Rust 编码并发往链路。" }}
         </p>
       </div>

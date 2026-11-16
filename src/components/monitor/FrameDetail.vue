@@ -47,11 +47,11 @@ async function copyFrame(): Promise<void> {
 </script>
 
 <template>
-  <aside class="flex min-h-0 flex-col bg-black/10">
+  <aside class="flex min-h-0 flex-col bg-well-soft">
     <template v-if="frame">
-      <div class="flex h-[38px] shrink-0 items-center gap-2 border-b border-white/[0.05] px-3">
+      <div class="flex h-[38px] shrink-0 items-center gap-2 border-b border-hairline px-3">
         <span class="label-caps">{{ t("monitor.detail") }}</span>
-        <span class="numeric text-[9px] text-muted-foreground/40">#{{ frame.seq }}</span>
+        <span class="numeric text-[10px] text-muted-foreground">#{{ frame.seq }}</span>
         <Button
           variant="ghost"
           size="icon-xs"
@@ -73,13 +73,13 @@ async function copyFrame(): Promise<void> {
             <ArrowDownLeft v-else class="size-3.5" />
           </span>
           <div class="min-w-0">
-            <p class="truncate text-[11.5px] font-medium">{{ frame.summary }}</p>
-            <p class="numeric text-[9px] text-muted-foreground/55">
+            <p class="truncate text-[12px] font-medium">{{ frame.summary }}</p>
+            <p class="numeric text-[10px] text-muted-foreground">
               {{ formatTime(frame.timestamp) }} · {{ sessionName }}
             </p>
           </div>
           <span
-            class="numeric ml-auto rounded border border-white/[0.06] bg-white/[0.03] px-1.5 py-0.5 text-[9px] text-muted-foreground/70"
+            class="numeric ml-auto rounded border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[10px] text-muted-foreground"
           >
             {{ formatLatency(frame.latencyMs ?? 0) }}
           </span>
@@ -90,17 +90,17 @@ async function copyFrame(): Promise<void> {
           <div
             v-for="field in frame.decoded.fields"
             :key="`${field.label}-${field.offset}`"
-            class="flex items-center gap-2 rounded-md border border-white/[0.04] bg-white/[0.02] px-2 py-1.5"
+            class="flex items-center gap-2 rounded-md border border-hairline bg-overlay-1 px-2 py-1.5"
           >
             <span class="size-1.5 shrink-0 rounded-full" :class="toneDot[field.tone]" />
-            <span class="text-[10px] text-muted-foreground/75">{{ field.label }}</span>
-            <span class="numeric ml-auto truncate text-[10px] text-foreground/85">{{
+            <span class="text-[11px] text-muted-foreground">{{ field.label }}</span>
+            <span class="numeric ml-auto truncate text-[12px] text-foreground">{{
               field.value
             }}</span>
           </div>
           <div
             v-if="frame.decoded.functionCode"
-            class="flex items-center justify-between px-2 pt-0.5 text-[9px] text-muted-foreground/45"
+            class="flex items-center justify-between px-2 pt-0.5 text-[10px] text-muted-foreground"
           >
             <span>从站 {{ frame.decoded.slaveId }}</span>
             <span class="numeric">{{ formatFunctionCode(frame.decoded.functionCode) }}</span>
@@ -109,7 +109,7 @@ async function copyFrame(): Promise<void> {
 
         <div class="mt-4 space-y-1.5">
           <p class="label-caps">{{ t("monitor.raw") }}</p>
-          <div class="rounded-lg border border-white/[0.05] bg-black/25 p-2">
+          <div class="rounded-lg border border-hairline bg-well p-2">
             <HexBytes :bytes="frame.raw" :fields="frame.decoded.fields" class="break-all" />
           </div>
         </div>
@@ -117,7 +117,7 @@ async function copyFrame(): Promise<void> {
         <div v-if="frame.decoded.ascii" class="mt-3 space-y-1.5">
           <p class="label-caps">ASCII 帧</p>
           <p
-            class="numeric rounded-lg border border-white/[0.05] bg-black/25 p-2 text-[10px] text-foreground/75"
+            class="numeric rounded-lg border border-hairline bg-well p-2 text-[12px] text-foreground"
           >
             {{ frame.decoded.ascii }}
           </p>
@@ -126,7 +126,7 @@ async function copyFrame(): Promise<void> {
         <div class="mt-3 space-y-1.5">
           <p class="label-caps">{{ t("monitor.chars") }}</p>
           <p
-            class="numeric rounded-lg border border-white/[0.05] bg-black/25 p-2 text-[10px] text-foreground/55"
+            class="numeric rounded-lg border border-hairline bg-well p-2 text-[12px] text-foreground"
           >
             {{ formatAsciiBytes(frame.raw) }}
           </p>
@@ -135,12 +135,10 @@ async function copyFrame(): Promise<void> {
     </template>
 
     <div v-else class="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <div
-        class="glass flex size-10 items-center justify-center rounded-xl text-muted-foreground/60"
-      >
+      <div class="glass flex size-10 items-center justify-center rounded-xl text-muted-foreground">
         <Radio class="size-4" />
       </div>
-      <p class="text-[11px] text-muted-foreground/70">选择一条报文查看解析详情</p>
+      <p class="text-[12px] text-muted-foreground">选择一条报文查看解析详情</p>
     </div>
   </aside>
 </template>

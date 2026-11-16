@@ -45,6 +45,6 @@ const tone = computed(() => {
       :class="{ 'status-dot-live': status === 'connected' && polling }"
       aria-hidden="true"
     />
-    <span v-if="!compact" class="text-[11px] font-medium">{{ label }}</span>
+    <span v-if="!compact" class="text-[12px] font-medium">{{ label }}</span>
   </span>
 </template>

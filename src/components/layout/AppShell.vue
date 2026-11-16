@@ -73,7 +73,7 @@ function startResize(event: PointerEvent): void {
   >
     <div class="pointer-events-none fixed inset-0 instrument-grid opacity-45" aria-hidden="true" />
     <div
-      class="pointer-events-none fixed inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.025] to-transparent"
+      class="pointer-events-none fixed inset-x-0 top-0 h-40 bg-gradient-to-b from-overlay-1 to-transparent"
       aria-hidden="true"
     />
 
@@ -96,13 +96,13 @@ function startResize(event: PointerEvent): void {
 
         <div
           v-if="!settings.monitorCollapsed"
-          class="group relative h-[3px] shrink-0 cursor-row-resize border-y border-white/[0.025] bg-white/[0.008] transition-colors hover:bg-signal/15"
+          class="group relative h-[3px] shrink-0 cursor-row-resize border-y border-hairline bg-overlay-1 transition-colors hover:bg-signal/15"
           role="separator"
           aria-orientation="horizontal"
           @pointerdown="startResize"
         >
           <div
-            class="absolute left-1/2 top-1/2 h-[2px] w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/10 transition-colors group-hover:bg-signal/60"
+            class="absolute left-1/2 top-1/2 h-[2px] w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-overlay-3 transition-colors group-hover:bg-signal/60"
           />
         </div>
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useSettingsStore } from "@/stores/settings";
 import type { ChartData, ChartSeries } from "@/types/chart";
 
 const props = defineProps<{
@@ -9,11 +10,35 @@ const props = defineProps<{
   series: ChartSeries[];
 }>();
 
-const SURFACE = "#151a22";
-const AXIS = "#898781";
-const TEXT = "#c3c2b7";
-const GRID = "rgba(255,255,255,0.055)";
-const TICK = "rgba(255,255,255,0.08)";
+const settings = useSettingsStore();
+
+interface ChartPalette {
+  surface: string;
+  axis: string;
+  text: string;
+  grid: string;
+  tick: string;
+  labelBackground: string;
+}
+
+function cssColor(variable: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+  return value || fallback;
+}
+
+function currentPalette(): ChartPalette {
+  return {
+    surface: cssColor("--surface", "#1c2129"),
+    axis: cssColor("--muted-foreground", "#b9bcc4"),
+    text: cssColor("--foreground", "#f0f2f5"),
+    grid: cssColor("--grid-line", "rgba(255,255,255,0.05)"),
+    tick: cssColor("--separator", "rgba(255,255,255,0.08)"),
+    labelBackground: cssColor("--popover", "#252a33"),
+  };
+}
+
+const palette = ref<ChartPalette>(currentPalette());
 
 const container = ref<HTMLElement | null>(null);
 const tooltip = ref<{
@@ -112,6 +137,7 @@ function drawPrimaryLabel(self: uPlot): void {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
 
   const context = self.ctx;
+  const colors = palette.value;
   context.save();
 
   // End dot: 8px marker with a 2px surface ring.
@@ -120,24 +146,24 @@ function drawPrimaryLabel(self: uPlot): void {
   context.fillStyle = series.color;
   context.fill();
   context.lineWidth = 2;
-  context.strokeStyle = SURFACE;
+  context.strokeStyle = colors.surface;
   context.stroke();
 
   const label = `${series.label}  ${formatValue(value)}`;
-  context.font = "10px 'JetBrains Mono Variable', monospace";
-  const padding = 4;
+  context.font = "11px 'JetBrains Mono Variable', monospace";
+  const padding = 5;
   const textWidth = context.measureText(label).width;
   const boxWidth = textWidth + padding * 2;
-  const boxHeight = 16;
+  const boxHeight = 19;
   const placeLeft = x + 10 + boxWidth > self.width - 4;
   const boxX = placeLeft ? x - 10 - boxWidth : x + 10;
   const boxY = Math.min(Math.max(y - boxHeight / 2, 2), self.height - boxHeight - 2);
 
   context.beginPath();
   context.roundRect(boxX, boxY, boxWidth, boxHeight, 4);
-  context.fillStyle = "rgba(21,26,34,0.88)";
+  context.fillStyle = colors.labelBackground;
   context.fill();
-  context.fillStyle = TEXT;
+  context.fillStyle = colors.text;
   context.textBaseline = "middle";
   context.fillText(label, boxX + padding, boxY + boxHeight / 2 + 0.5);
   context.restore();
@@ -145,6 +171,7 @@ function drawPrimaryLabel(self: uPlot): void {
 
 function buildOptions(width: number, height: number): uPlot.Options {
   const single = props.series.length === 1;
+  const colors = palette.value;
   return {
     width,
     height,
@@ -154,7 +181,7 @@ function buildOptions(width: number, height: number): uPlot.Options {
       x: true,
       y: false,
       drag: { setScale: false },
-      points: { show: true, size: 7, width: 2, stroke: SURFACE },
+      points: { show: true, size: 7, width: 2, stroke: colors.surface },
     },
     scales: {
       x: { time: true },
@@ -162,18 +189,18 @@ function buildOptions(width: number, height: number): uPlot.Options {
     },
     axes: [
       {
-        stroke: AXIS,
-        font: "10px 'JetBrains Mono Variable', monospace",
-        grid: { stroke: GRID, width: 1 },
-        ticks: { stroke: TICK, width: 1 },
+        stroke: colors.axis,
+        font: "11px 'JetBrains Mono Variable', monospace",
+        grid: { stroke: colors.grid, width: 1 },
+        ticks: { stroke: colors.tick, width: 1 },
         values: (_self, splits) => splits.map((value) => shortTime(value * 1000)),
       },
       {
-        stroke: AXIS,
-        font: "10px 'JetBrains Mono Variable', monospace",
-        grid: { stroke: GRID, width: 1 },
+        stroke: colors.axis,
+        font: "11px 'JetBrains Mono Variable', monospace",
+        grid: { stroke: colors.grid, width: 1 },
         ticks: { show: false },
-        size: 48,
+        size: 52,
         values: (_self, splits) => splits.map((value) => formatAxis(value)),
       },
     ],
@@ -221,6 +248,14 @@ watch(
   },
 );
 watch(seriesSignature, createPlot);
+watch(
+  () => settings.resolvedTheme,
+  async () => {
+    await nextTick();
+    palette.value = currentPalette();
+    createPlot();
+  },
+);
 
 onMounted(() => {
   createPlot();
@@ -246,14 +281,14 @@ onBeforeUnmount(() => {
   <div ref="container" class="relative h-full w-full overflow-hidden">
     <div
       v-show="tooltip.visible"
-      class="glass-strong pointer-events-none absolute z-20 w-[184px] rounded-lg px-2.5 py-2 shadow-xl shadow-black/40"
+      class="glass-strong pointer-events-none absolute z-20 w-[184px] rounded-lg px-2.5 py-2 shadow-xl shadow-black/25"
       :style="{ left: `${tooltip.left}px`, top: `${tooltip.top}px` }"
     >
-      <p class="numeric text-[9px] text-muted-foreground/60">{{ tooltip.time }}</p>
+      <p class="numeric text-[11px] text-muted-foreground">{{ tooltip.time }}</p>
       <div v-for="row in tooltip.rows" :key="row.label" class="mt-1 flex items-center gap-1.5">
         <span class="size-1.5 shrink-0 rounded-full" :style="{ background: row.color }" />
-        <span class="min-w-0 truncate text-[10px] text-muted-foreground/75">{{ row.label }}</span>
-        <span class="numeric ml-auto text-[10px] text-foreground/90">{{ row.value }}</span>
+        <span class="min-w-0 truncate text-[11px] text-muted-foreground">{{ row.label }}</span>
+        <span class="numeric ml-auto text-[11px] text-foreground">{{ row.value }}</span>
       </div>
     </div>
   </div>

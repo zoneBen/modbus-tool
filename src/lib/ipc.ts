@@ -21,6 +21,7 @@ function createTauriBridge(): IpcApi {
     boot: () => invoke<WorkspaceSnapshot>("workspace_get"),
     listSerialPorts: () => invoke<SerialPortInfo[]>("list_serial_ports"),
     createSession: (input: NewSessionInput) => invoke<Session>("session_create", { input }),
+    deleteSession: (sessionId: string) => invoke<void>("session_delete", { sessionId }),
     setPolling: (sessionId: string, enabled: boolean) =>
       invoke<void>("session_set_polling", { sessionId, enabled }),
     readOnce: (sessionId: string, definitionId: string) =>

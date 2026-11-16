@@ -70,9 +70,9 @@ async function submit(): Promise<void> {
 <template>
   <Dialog v-model:open="open">
     <DialogContent
-      class="gap-0 overflow-hidden border-white/[0.08] bg-[color:var(--glass-strong)] p-0 shadow-2xl shadow-black/60 backdrop-blur-2xl sm:max-w-[420px]"
+      class="gap-0 overflow-hidden border-hairline-strong bg-[color:var(--glass-strong)] p-0 shadow-2xl shadow-black/25 backdrop-blur-2xl sm:max-w-[420px]"
     >
-      <DialogHeader class="border-b border-white/[0.06] px-5 py-4">
+      <DialogHeader class="border-b border-hairline px-5 py-4">
         <DialogTitle class="flex items-center gap-2 text-[13.5px]">
           <span
             class="flex size-7 items-center justify-center rounded-lg border border-signal/20 bg-signal/10 text-signal"
@@ -81,61 +81,61 @@ async function submit(): Promise<void> {
           </span>
           写入寄存器
         </DialogTitle>
-        <DialogDescription class="text-[10.5px] text-muted-foreground/65">
+        <DialogDescription class="text-[11.5px] text-muted-foreground">
           演示模式下写入会立即更新本地缓存，并生成 FC06 / FC16 报文。
         </DialogDescription>
       </DialogHeader>
 
       <div v-if="target" class="space-y-4 px-5 py-4">
         <div
-          class="flex items-center justify-between rounded-lg border border-white/[0.055] bg-white/[0.02] px-3 py-2.5"
+          class="flex items-center justify-between rounded-lg border border-hairline bg-overlay-1 px-3 py-2.5"
         >
           <div>
-            <p class="text-[10px] text-muted-foreground/55">目标地址</p>
-            <p class="numeric mt-0.5 text-[13px] text-foreground/90">
+            <p class="text-[11px] text-muted-foreground">目标地址</p>
+            <p class="numeric mt-0.5 text-[13px] text-foreground">
               {{ formatAddress(target.address, settings.addressBase) }}
             </p>
           </div>
           <div class="min-w-0 text-right">
-            <p class="truncate text-[10px] text-muted-foreground/55">{{ target.alias }}</p>
-            <p class="numeric mt-0.5 text-[13px] text-foreground/90">{{ target.current }}</p>
+            <p class="truncate text-[11px] text-muted-foreground">{{ target.alias }}</p>
+            <p class="numeric mt-0.5 text-[13px] text-foreground">{{ target.current }}</p>
           </div>
           <span
-            class="numeric ml-3 rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[9px] text-rx"
+            class="numeric ml-3 rounded border border-rx/20 bg-rx/10 px-1.5 py-0.5 text-[10px] text-rx"
           >
             {{ target.dataType.toUpperCase() }}
           </span>
         </div>
 
         <div class="space-y-1.5">
-          <Label class="text-[10px] text-muted-foreground/70">写入值</Label>
+          <Label class="text-[11px] text-muted-foreground">写入值</Label>
           <Input
             v-model="value"
             :step="isFloat ? 'any' : 1"
             type="text"
             inputmode="decimal"
-            class="numeric h-11 rounded-lg border-white/[0.08] bg-black/25 text-[16px] tracking-tight"
+            class="numeric h-11 rounded-lg border-hairline-strong bg-well text-[16px] tracking-tight"
             @keydown.enter="submit"
           />
-          <p class="text-[9px] text-muted-foreground/45">
+          <p class="text-[10px] text-muted-foreground">
             {{ isFloat ? "支持小数，按定义的浮点字节序编码" : "0 – 65535 的整数" }}
           </p>
         </div>
       </div>
 
-      <DialogFooter class="border-t border-white/[0.06] bg-black/10 px-5 py-3">
+      <DialogFooter class="border-t border-hairline bg-well-soft px-5 py-3">
         <DialogClose as-child>
           <Button
             variant="outline"
             size="sm"
-            class="h-8 border-white/[0.08] bg-transparent text-[11px]"
+            class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
             取消
           </Button>
         </DialogClose>
         <Button
           size="sm"
-          class="h-8 min-w-[76px] text-[11px]"
+          class="h-8 min-w-[76px] text-[12px]"
           :disabled="busy || !target"
           @click="submit"
         >

@@ -116,16 +116,16 @@ function openWrite(row: GridRow): void {
   <section class="relative flex h-full min-h-0 min-w-0 flex-col">
     <template v-if="definition">
       <div
-        class="flex h-9 shrink-0 items-center gap-2 border-b border-white/[0.05] px-4 text-[10px] text-muted-foreground/60"
+        class="flex h-9 shrink-0 items-center gap-2 border-b border-hairline px-4 text-[11px] text-muted-foreground"
       >
         <span class="label-caps">寄存器视图</span>
-        <span class="text-white/15">/</span>
+        <span class="text-foreground/15">/</span>
         <span class="numeric">{{ rows.length }} 值</span>
-        <span class="numeric text-muted-foreground/40">· {{ definition.quantity }} 寄存器</span>
+        <span class="numeric text-muted-foreground">· {{ definition.quantity }} 寄存器</span>
         <span class="ml-auto flex items-center gap-2">
           <span class="status-dot" :class="snapshot?.error ? 'text-error' : 'text-signal'" />
           <span>{{ snapshot?.error ? "读取异常" : snapshot ? "实时" : "等待采样" }}</span>
-          <span v-if="snapshot" class="numeric text-muted-foreground/50">
+          <span v-if="snapshot" class="numeric text-muted-foreground">
             {{ formatLatency(snapshot.latencyMs) }}
           </span>
         </span>
@@ -134,7 +134,7 @@ function openWrite(row: GridRow): void {
       <div class="min-h-0 flex-1 overflow-auto scrollbar-thin">
         <div class="min-w-[620px]">
           <div
-            class="sticky top-0 z-10 grid items-center border-b border-white/[0.06] bg-background/80 px-4 py-1.5 backdrop-blur-md"
+            class="sticky top-0 z-10 grid items-center border-b border-hairline bg-background/80 px-4 py-1.5 backdrop-blur-md"
             :class="gridClass"
           >
             <span class="label-caps">地址</span>
@@ -150,11 +150,11 @@ function openWrite(row: GridRow): void {
             <div
               v-for="row in rows"
               :key="row.address"
-              class="row-stripe group relative grid cursor-default items-center border-b border-white/[0.035] px-4 transition-colors hover:bg-white/[0.035]"
+              class="row-stripe group relative grid cursor-default items-center border-b border-hairline px-4 transition-colors hover:bg-overlay-2"
               :class="[
                 gridClass,
                 rowHeightClass,
-                selectedAddress === row.address ? 'bg-white/[0.05]' : '',
+                selectedAddress === row.address ? 'bg-overlay-2' : '',
               ]"
               @click="selectedAddress = row.address"
               @dblclick="openWrite(row)"
@@ -163,7 +163,7 @@ function openWrite(row: GridRow): void {
                 v-if="selectedAddress === row.address"
                 class="absolute inset-y-1 left-0 w-[2px] rounded-full bg-signal/70"
               />
-              <span class="numeric text-[11px] text-muted-foreground/75">
+              <span class="numeric text-[12px] text-muted-foreground">
                 {{ formatAddress(row.address, settings.addressBase) }}
               </span>
               <div class="flex min-w-0 items-center gap-2">
@@ -176,11 +176,9 @@ function openWrite(row: GridRow): void {
                   "
                 />
                 <span
-                  class="truncate text-[11.5px]"
+                  class="truncate text-[12px]"
                   :class="
-                    definition.aliases[row.address]
-                      ? 'text-foreground/90'
-                      : 'text-muted-foreground/70'
+                    definition.aliases[row.address] ? 'text-foreground' : 'text-muted-foreground'
                   "
                 >
                   {{ row.alias }}
@@ -188,10 +186,10 @@ function openWrite(row: GridRow): void {
               </div>
               <span
                 v-if="settings.showRawColumn"
-                class="numeric truncate text-[10px] text-muted-foreground/70"
+                class="numeric truncate text-[11px] text-muted-foreground"
               >
                 {{ formatWord(row.words[0] ?? 0) }}
-                <span v-if="row.words.length > 1" class="text-muted-foreground/35">
+                <span v-if="row.words.length > 1" class="text-muted-foreground/70">
                   {{ row.words.slice(1).map(formatWord).join(" ") }}
                 </span>
               </span>
@@ -211,11 +209,11 @@ function openWrite(row: GridRow): void {
               </div>
               <div class="flex justify-center">
                 <span
-                  class="numeric rounded border px-1 py-0.5 text-[8.5px] font-medium uppercase tracking-wide"
+                  class="numeric rounded border px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide"
                   :class="
                     definition.dataType === 'f32' || definition.dataType === 'f64'
                       ? 'border-rx/20 bg-rx/10 text-rx/90'
-                      : 'border-white/[0.06] bg-white/[0.03] text-muted-foreground/70'
+                      : 'border-hairline bg-overlay-1 text-muted-foreground'
                   "
                 >
                   {{ row.format }}
@@ -232,8 +230,8 @@ function openWrite(row: GridRow): void {
 
           <div v-else class="flex h-52 flex-col items-center justify-center gap-2 text-center">
             <span class="status-dot status-dot-live text-signal" />
-            <p class="text-[11.5px] text-muted-foreground">等待首次采样…</p>
-            <p class="text-[10px] text-muted-foreground/60">
+            <p class="text-[12px] text-muted-foreground">等待首次采样…</p>
+            <p class="text-[11px] text-muted-foreground">
               轮询周期 {{ definition.intervalMs }} ms · 从站 {{ definition.slaveId }}
             </p>
           </div>

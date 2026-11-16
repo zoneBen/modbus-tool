@@ -28,9 +28,9 @@ const roleOptions = ["master", "slave"] as const;
 const slaveAvailable = isDemoMode;
 const name = ref("");
 const role = ref<SessionRole>("master");
-const linkMode = ref<"network" | "serial">("network");
+const linkMode = ref<"network" | "serial">("serial");
 const transport = ref<"tcp" | "udp">("tcp");
-const framing = ref<Framing>("mbap");
+const framing = ref<Framing>("rtu");
 const host = ref("192.168.1.10");
 const port = ref("502");
 const serialPort = ref("COM3");
@@ -60,7 +60,7 @@ const framingOptions = computed(() =>
 const defaultName = computed(() =>
   role.value === "slave"
     ? `模拟器 · 从站 ${(sessions.slaveCount + 1).toString().padStart(2, "0")}`
-    : `${linkMode.value === "serial" ? "串口" : "TCP"} 会话 ${(sessions.masterCount + 1).toString().padStart(2, "0")}`,
+    : `${linkMode.value === "serial" ? "串口" : "网络"} 会话 ${(sessions.masterCount + 1).toString().padStart(2, "0")}`,
 );
 
 const endpoint = computed(() => {
@@ -146,9 +146,9 @@ async function submit(): Promise<void> {
 <template>
   <Dialog v-model:open="open">
     <DialogContent
-      class="gap-0 overflow-hidden border-white/[0.08] bg-[color:var(--glass-strong)] p-0 shadow-2xl shadow-black/60 backdrop-blur-2xl sm:max-w-[580px]"
+      class="gap-0 overflow-hidden border-hairline-strong bg-[color:var(--glass-strong)] p-0 shadow-2xl shadow-black/25 backdrop-blur-2xl sm:max-w-[580px]"
     >
-      <DialogHeader class="relative border-b border-white/[0.06] px-5 py-4">
+      <DialogHeader class="relative border-b border-hairline px-5 py-4">
         <div
           class="pointer-events-none absolute inset-0 bg-gradient-to-r from-signal/[0.07] to-transparent"
         />
@@ -160,7 +160,7 @@ async function submit(): Promise<void> {
           </span>
           新建会话
         </DialogTitle>
-        <DialogDescription class="relative text-[10.5px] text-muted-foreground/65">
+        <DialogDescription class="relative text-[11.5px] text-muted-foreground">
           配置链路参数。当前为演示模式，任意参数均可建立模拟连接。
         </DialogDescription>
       </DialogHeader>
@@ -168,29 +168,27 @@ async function submit(): Promise<void> {
       <div class="space-y-4 px-5 py-4">
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">会话名称</Label>
+            <Label class="text-[11px] text-muted-foreground">会话名称</Label>
             <Input
               v-model="name"
               :placeholder="defaultName"
-              class="h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
+              class="h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">角色</Label>
-            <div
-              class="grid grid-cols-2 gap-1 rounded-lg border border-white/[0.07] bg-black/20 p-0.5"
-            >
+            <Label class="text-[11px] text-muted-foreground">角色</Label>
+            <div class="grid grid-cols-2 gap-1 rounded-lg border border-hairline bg-well p-0.5">
               <button
                 v-for="option in roleOptions"
                 :key="option"
                 type="button"
-                class="flex h-8 items-center justify-center gap-1.5 rounded-md text-[10.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-35"
+                class="flex h-8 items-center justify-center gap-1.5 rounded-md text-[11.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-35"
                 :class="
                   role === option
                     ? option === 'slave'
                       ? 'bg-sim/15 text-sim'
                       : 'bg-signal/15 text-signal'
-                    : 'text-muted-foreground/60 hover:text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
                 "
                 :disabled="option === 'slave' && !slaveAvailable"
                 :title="
@@ -210,21 +208,21 @@ async function submit(): Promise<void> {
 
         <div class="space-y-2">
           <Tabs v-model="linkMode">
-            <TabsList class="grid w-full grid-cols-2 border border-white/[0.06] bg-black/20">
-              <TabsTrigger value="network" class="gap-1.5 text-[10.5px]">
-                <Network class="size-3.5" />
-                网络
-              </TabsTrigger>
-              <TabsTrigger value="serial" class="gap-1.5 text-[10.5px]">
+            <TabsList class="grid w-full grid-cols-2 border border-hairline bg-well">
+              <TabsTrigger value="serial" class="gap-1.5 text-[12px]">
                 <Usb class="size-3.5" />
                 串口
+              </TabsTrigger>
+              <TabsTrigger value="network" class="gap-1.5 text-[12px]">
+                <Network class="size-3.5" />
+                网络
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
           <div v-if="linkMode === 'network'" class="grid grid-cols-3 gap-3">
             <div class="col-span-1 space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">传输层</Label>
+              <Label class="text-[11px] text-muted-foreground">传输层</Label>
               <FormSelect
                 v-model="transport"
                 :options="[
@@ -234,35 +232,35 @@ async function submit(): Promise<void> {
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">主机地址</Label>
+              <Label class="text-[11px] text-muted-foreground">主机地址</Label>
               <Input
                 v-model="host"
                 :disabled="role === 'slave'"
-                class="numeric h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
+                class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">端口</Label>
+              <Label class="text-[11px] text-muted-foreground">端口</Label>
               <Input
                 v-model="port"
                 type="number"
                 min="1"
                 max="65535"
-                class="numeric h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
+                class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
               />
             </div>
           </div>
 
           <div v-else class="grid grid-cols-2 gap-3">
             <div class="col-span-2 space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">串口端口</Label>
+              <Label class="text-[11px] text-muted-foreground">串口端口</Label>
               <FormSelect
                 v-model="serialPort"
                 :options="serialPorts.map((item) => ({ label: item.label, value: item.path }))"
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">波特率</Label>
+              <Label class="text-[11px] text-muted-foreground">波特率</Label>
               <FormSelect
                 v-model="baudRate"
                 :options="
@@ -274,7 +272,7 @@ async function submit(): Promise<void> {
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">校验 / 数据位 / 停止位</Label>
+              <Label class="text-[11px] text-muted-foreground">校验 / 数据位 / 停止位</Label>
               <div class="grid grid-cols-3 gap-1.5">
                 <FormSelect
                   v-model="parity"
@@ -298,13 +296,13 @@ async function submit(): Promise<void> {
 
           <div class="grid grid-cols-2 gap-3">
             <div class="space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">帧格式</Label>
+              <Label class="text-[11px] text-muted-foreground">帧格式</Label>
               <FormSelect v-model="framing" :options="framingOptions" />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[10px] text-muted-foreground/70">链路端点</Label>
+              <Label class="text-[11px] text-muted-foreground">链路端点</Label>
               <div
-                class="numeric flex h-9 items-center truncate rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 text-[10.5px] text-muted-foreground/70"
+                class="numeric flex h-9 items-center truncate rounded-lg border border-hairline bg-overlay-1 px-3 text-[11.5px] text-muted-foreground"
               >
                 {{ endpoint }}
               </div>
@@ -313,23 +311,23 @@ async function submit(): Promise<void> {
         </div>
 
         <p
-          class="rounded-lg border border-warn/15 bg-warn/[0.05] px-3 py-2 text-[9.5px] leading-relaxed text-warn/70"
+          class="rounded-lg border border-warn/15 bg-warn/[0.05] px-3 py-2 text-[10.5px] leading-relaxed text-warn/70"
         >
           演示会话会生成真实的 Modbus 帧（MBAP / RTU），可在底部报文监控中查看双向通信。
         </p>
       </div>
 
-      <DialogFooter class="border-t border-white/[0.06] bg-black/10 px-5 py-3">
+      <DialogFooter class="border-t border-hairline bg-well-soft px-5 py-3">
         <DialogClose as-child>
           <Button
             variant="outline"
             size="sm"
-            class="h-8 border-white/[0.08] bg-transparent text-[11px]"
+            class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
             取消
           </Button>
         </DialogClose>
-        <Button size="sm" class="h-8 gap-1.5 text-[11px]" :disabled="busy" @click="submit">
+        <Button size="sm" class="h-8 gap-1.5 text-[12px]" :disabled="busy" @click="submit">
           <Network class="size-3.5" />
           {{ busy ? "连接中…" : "连接会话" }}
         </Button>

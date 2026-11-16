@@ -9,9 +9,10 @@ import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import type { ChartData, ChartSeries } from "@/types/chart";
 
-// Validated for the dark chart surface with the dataviz palette validator:
-// all six slots pass lightness, chroma, adjacent CVD, normal-vision and contrast.
-const PALETTE = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#0ca30c"];
+// Both palettes pass the dataviz validator on their own chart surface
+// (light: #f6f8fb, dark: #1a1f27); slots are assigned in fixed order.
+const DARK_PALETTE = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#0ca30c"];
+const LIGHT_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"];
 const MAX_SERIES = 6;
 const WINDOW_OPTIONS = [
   { label: "1m", value: 60 },
@@ -33,6 +34,7 @@ const definition = computed(() => sessions.activeDefinition);
 const timeline = computed(() =>
   definition.value ? sessions.timelines[definition.value.id] : undefined,
 );
+const palette = computed(() => (settings.resolvedTheme === "dark" ? DARK_PALETTE : LIGHT_PALETTE));
 
 interface SeriesEntry {
   address: number;
@@ -60,7 +62,7 @@ const allSeries = computed<SeriesEntry[]>(() => {
       ...entry,
       label:
         def.aliases[entry.address] ?? `地址 ${formatAddress(entry.address, settings.addressBase)}`,
-      color: PALETTE[index] ?? PALETTE[0],
+      color: palette.value[index] ?? palette.value[0],
     }));
 });
 
@@ -177,40 +179,40 @@ const tableRows = computed(() => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <div class="flex h-8 shrink-0 items-center gap-2 border-b border-white/[0.04] px-3">
+    <div class="flex h-8 shrink-0 items-center gap-2 border-b border-hairline px-3">
       <Activity class="size-3 text-signal" />
-      <span class="text-[10.5px] font-medium">实时曲线</span>
-      <span class="max-w-[180px] truncate text-[9.5px] text-muted-foreground/55">
+      <span class="text-[11.5px] font-medium">实时曲线</span>
+      <span class="max-w-[180px] truncate text-[11.5px] text-muted-foreground">
         {{ definition?.name ?? "未选择定义" }}
       </span>
       <span
         v-if="paused"
-        class="rounded border border-warn/25 bg-warn/10 px-1.5 py-0.5 text-[8.5px] text-warn"
+        class="rounded border border-warn/25 bg-warn/10 px-1.5 py-0.5 text-[11px] text-warn"
       >
         已暂停
       </span>
-      <span v-else-if="displayData" class="flex items-center gap-1 text-[8.5px] text-signal/80">
+      <span v-else-if="displayData" class="flex items-center gap-1 text-[11px] text-signal">
         <span class="status-dot status-dot-live scale-75" />
         LIVE
       </span>
       <span
         v-if="numericCount > MAX_SERIES"
-        class="rounded border border-white/[0.06] px-1 py-0.5 text-[8px] text-muted-foreground/45"
+        class="rounded border border-hairline px-1 py-0.5 text-[11px] text-muted-foreground"
       >
         仅显示前 {{ MAX_SERIES }} 条
       </span>
 
       <div class="ml-auto flex items-center gap-1.5">
-        <div class="flex rounded-md border border-white/[0.06] bg-black/20 p-0.5">
+        <div class="flex rounded-md border border-hairline bg-well p-0.5">
           <button
             v-for="option in WINDOW_OPTIONS"
             :key="option.value"
             type="button"
-            class="numeric rounded px-1.5 py-0.5 text-[9px] transition-colors"
+            class="numeric rounded px-1.5 py-0.5 text-[11px] transition-colors"
             :class="
               windowSec === option.value
-                ? 'bg-white/[0.08] text-foreground'
-                : 'text-muted-foreground/50 hover:text-foreground'
+                ? 'bg-overlay-3 text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
             "
             @click="windowSec = option.value"
           >
@@ -220,7 +222,7 @@ const tableRows = computed(() => {
         <Button
           variant="ghost"
           size="icon-xs"
-          class="rounded-md text-muted-foreground/65 hover:text-foreground"
+          class="rounded-md text-muted-foreground hover:text-foreground"
           :aria-label="paused ? '继续曲线' : '暂停曲线'"
           @click="togglePause"
         >
@@ -231,7 +233,7 @@ const tableRows = computed(() => {
           variant="ghost"
           size="icon-xs"
           class="rounded-md"
-          :class="showTable ? 'text-signal' : 'text-muted-foreground/65 hover:text-foreground'"
+          :class="showTable ? 'text-signal' : 'text-muted-foreground hover:text-foreground'"
           aria-label="切换数据表视图"
           @click="showTable = !showTable"
         >
@@ -244,16 +246,16 @@ const tableRows = computed(() => {
       <div class="min-h-0 flex-1 p-2 pb-0">
         <div
           v-if="showTable"
-          class="scrollbar-thin h-full overflow-auto rounded-lg border border-white/[0.05] bg-black/15"
+          class="scrollbar-thin h-full overflow-auto rounded-lg border border-hairline bg-well-soft"
         >
-          <table class="w-full border-collapse text-[9.5px]">
-            <thead class="sticky top-0 bg-[#151a22]">
-              <tr class="border-b border-white/[0.06]">
-                <th class="px-2 py-1.5 text-left font-medium text-muted-foreground/55">时间</th>
+          <table class="w-full border-collapse text-[11.5px]">
+            <thead class="sticky top-0 bg-surface">
+              <tr class="border-b border-hairline">
+                <th class="px-2 py-1.5 text-left font-medium text-muted-foreground">时间</th>
                 <th
                   v-for="entry in selectedSeries"
                   :key="entry.address"
-                  class="px-2 py-1.5 text-right font-medium text-muted-foreground/55"
+                  class="px-2 py-1.5 text-right font-medium text-muted-foreground"
                 >
                   <span class="inline-flex items-center gap-1">
                     <span class="size-1.5 rounded-full" :style="{ background: entry.color }" />
@@ -263,18 +265,14 @@ const tableRows = computed(() => {
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="row in tableRows"
-                :key="row.timestamp"
-                class="border-b border-white/[0.03]"
-              >
-                <td class="numeric px-2 py-1 text-muted-foreground/60">
+              <tr v-for="row in tableRows" :key="row.timestamp" class="border-b border-hairline">
+                <td class="numeric px-2 py-1 text-muted-foreground">
                   {{ formatTime(row.timestamp) }}
                 </td>
                 <td
                   v-for="(value, index) in row.values"
                   :key="index"
-                  class="numeric px-2 py-1 text-right text-foreground/85"
+                  class="numeric px-2 py-1 text-right text-foreground"
                 >
                   {{ value }}
                 </td>
@@ -283,7 +281,7 @@ const tableRows = computed(() => {
           </table>
           <p
             v-if="!tableRows.length"
-            class="px-3 py-6 text-center text-[10px] text-muted-foreground/50"
+            class="px-3 py-6 text-center text-[11px] text-muted-foreground"
           >
             窗口内暂无采样
           </p>
@@ -293,7 +291,7 @@ const tableRows = computed(() => {
           <RealtimeChart :data="displayData" :series="chartSeries" />
           <div
             v-if="paused"
-            class="glass pointer-events-none absolute bottom-2 left-2 rounded-md px-2 py-1 text-[8.5px] text-warn/85"
+            class="glass pointer-events-none absolute bottom-2 left-2 rounded-md px-2 py-1 text-[11px] text-warn"
           >
             已暂停 · 数据仍在后台缓冲
           </div>
@@ -313,7 +311,7 @@ const tableRows = computed(() => {
 
       <div
         v-if="selectedSeries.length >= 2"
-        class="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-white/[0.04] px-3 py-1.5"
+        class="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-hairline px-3 py-1.5"
       >
         <button
           v-for="entry in allSeries"
@@ -322,28 +320,28 @@ const tableRows = computed(() => {
           class="flex items-center gap-1.5 rounded-md border px-1.5 py-1 transition-colors"
           :class="
             selectedAddresses.includes(entry.address)
-              ? 'border-white/[0.08] bg-white/[0.035]'
-              : 'border-transparent opacity-45 hover:opacity-75'
+              ? 'border-hairline-strong bg-overlay-2'
+              : 'border-transparent opacity-60 hover:opacity-90'
           "
           @click="toggleAddress(entry.address)"
         >
           <span class="size-1.5 rounded-full" :style="{ background: entry.color }" />
-          <span class="max-w-[110px] truncate text-[9px] text-muted-foreground/80">
+          <span class="max-w-[110px] truncate text-[11px] text-muted-foreground">
             {{ entry.label }}
           </span>
-          <span class="numeric text-[9px] text-foreground/85">{{ latestValue(entry) }}</span>
+          <span class="numeric text-[11px] text-foreground">{{ latestValue(entry) }}</span>
         </button>
       </div>
       <div
         v-else-if="selectedSeries.length === 1"
-        class="flex shrink-0 items-center gap-2 border-t border-white/[0.04] px-3 py-1.5"
+        class="flex shrink-0 items-center gap-2 border-t border-hairline px-3 py-1.5"
       >
         <span class="size-1.5 rounded-full" :style="{ background: selectedSeries[0]?.color }" />
-        <span class="text-[9.5px] text-muted-foreground/75">{{ selectedSeries[0]?.label }}</span>
-        <span class="numeric text-[10px] text-foreground/90">{{
+        <span class="text-[11.5px] text-muted-foreground">{{ selectedSeries[0]?.label }}</span>
+        <span class="numeric text-[11px] text-foreground">{{
           latestValue(selectedSeries[0]!)
         }}</span>
-        <span class="ml-auto text-[8.5px] text-muted-foreground/40">单序列 · 无图例</span>
+        <span class="ml-auto text-[11px] text-muted-foreground">单序列 · 无图例</span>
       </div>
     </div>
 

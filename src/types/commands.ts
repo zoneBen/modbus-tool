@@ -41,6 +41,7 @@ export interface IpcApi {
   boot(): Promise<WorkspaceSnapshot>;
   listSerialPorts(): Promise<SerialPortInfo[]>;
   createSession(input: NewSessionInput): Promise<Session>;
+  deleteSession(sessionId: string): Promise<void>;
   setPolling(sessionId: string, enabled: boolean): Promise<void>;
   readOnce(sessionId: string, definitionId: string): Promise<void>;
   setDefinitionEnabled(sessionId: string, definitionId: string, enabled: boolean): Promise<void>;

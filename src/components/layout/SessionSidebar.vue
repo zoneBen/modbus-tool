@@ -52,13 +52,11 @@ function selectSession(sessionId: string): void {
 </script>
 
 <template>
-  <aside
-    class="flex h-full w-[268px] shrink-0 flex-col border-r border-white/[0.06] bg-white/[0.018]"
-  >
+  <aside class="flex h-full w-[268px] shrink-0 flex-col border-r border-hairline bg-overlay-1">
     <div class="flex h-[52px] shrink-0 items-center justify-between px-4">
       <div>
         <p class="text-[13px] font-semibold tracking-tight">{{ t("workspace.title") }}</p>
-        <p class="text-[10px] text-muted-foreground">
+        <p class="text-[11px] text-muted-foreground">
           {{ sessions.masterCount }} 主站 · {{ sessions.slaveCount }} 从站
         </p>
       </div>
@@ -68,7 +66,7 @@ function selectSession(sessionId: string): void {
             <Button
               variant="ghost"
               size="icon-sm"
-              class="rounded-lg border border-white/[0.07] bg-white/[0.03] text-muted-foreground hover:text-foreground"
+              class="rounded-lg border border-hairline bg-overlay-1 text-muted-foreground hover:text-foreground"
               aria-label="新建会话"
               @click="emit('new-session')"
             >
@@ -89,8 +87,8 @@ function selectSession(sessionId: string): void {
           class="group relative w-full rounded-xl border px-3 py-2.5 text-left transition-all duration-200"
           :class="
             session.id === sessions.activeSessionId
-              ? 'border-white/[0.09] bg-white/[0.055] shadow-lg shadow-black/20'
-              : 'border-transparent hover:border-white/[0.05] hover:bg-white/[0.03]'
+              ? 'border-hairline-strong bg-overlay-2 shadow-lg shadow-black/20'
+              : 'border-transparent hover:border-hairline hover:bg-overlay-1'
           "
           @click="selectSession(session.id)"
         >
@@ -118,22 +116,20 @@ function selectSession(sessionId: string): void {
             <StatusPill :status="session.status" :polling="session.polling" compact />
           </div>
           <div class="mt-1 flex items-center gap-2 pl-[23px]">
-            <span class="numeric min-w-0 flex-1 truncate text-[10px] text-muted-foreground/80">
+            <span class="numeric min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
               {{ session.endpoint }}
             </span>
             <span
               v-if="session.role === 'master'"
-              class="numeric text-[10px] text-muted-foreground/70"
+              class="numeric text-[11px] text-muted-foreground"
             >
               {{ formatLatency(session.stats.latencyMs) }}
             </span>
-            <span v-else class="text-[9px] font-medium uppercase tracking-wider text-sim/80">
+            <span v-else class="text-[10px] font-medium uppercase tracking-wider text-sim/80">
               SLAVE {{ session.definitions[0]?.slaveId ?? 10 }}
             </span>
           </div>
-          <div
-            class="mt-1.5 flex items-center gap-3 pl-[23px] text-[9.5px] text-muted-foreground/55"
-          >
+          <div class="mt-1.5 flex items-center gap-3 pl-[23px] text-[10.5px] text-muted-foreground">
             <span
               >TX <span class="numeric">{{ formatNumber(session.stats.tx) }}</span></span
             >
@@ -151,12 +147,12 @@ function selectSession(sessionId: string): void {
         <div class="flex items-center justify-between px-2.5">
           <span class="label-caps">{{ t("workspace.definitions") }}</span>
           <div class="flex items-center gap-1">
-            <span class="numeric text-[10px] text-muted-foreground/60">
+            <span class="numeric text-[11px] text-muted-foreground">
               {{ sessions.activeDefinitions.length.toString().padStart(2, "0") }}
             </span>
             <button
               type="button"
-              class="flex size-5 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:bg-white/[0.06] hover:text-foreground"
+              class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
               aria-label="新建读取定义"
               @click="openCreateDefinition"
             >
@@ -173,9 +169,7 @@ function selectSession(sessionId: string): void {
             tabindex="0"
             class="group w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition-colors"
             :class="
-              definition.id === sessions.activeDefinitionId
-                ? 'bg-white/[0.055]'
-                : 'hover:bg-white/[0.03]'
+              definition.id === sessions.activeDefinitionId ? 'bg-overlay-2' : 'hover:bg-overlay-1'
             "
             @click="sessions.setActiveDefinition(definition.id)"
             @keydown.enter="sessions.setActiveDefinition(definition.id)"
@@ -183,7 +177,7 @@ function selectSession(sessionId: string): void {
           >
             <div class="flex items-center gap-2">
               <span
-                class="numeric rounded border border-white/[0.07] bg-black/20 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide"
+                class="numeric rounded border border-hairline bg-well px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide"
                 :class="
                   definition.dataType === 'f32' || definition.dataType === 'f64'
                     ? 'text-rx'
@@ -193,14 +187,14 @@ function selectSession(sessionId: string): void {
                 {{ definition.dataType.toUpperCase() }}
               </span>
               <span
-                class="min-w-0 flex-1 truncate text-[11.5px]"
-                :class="definition.enabled ? '' : 'text-muted-foreground/60'"
+                class="min-w-0 flex-1 truncate text-[12px]"
+                :class="definition.enabled ? '' : 'text-muted-foreground'"
               >
                 {{ definition.name }}
               </span>
               <button
                 type="button"
-                class="flex size-5 items-center justify-center rounded text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                class="flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                 aria-label="编辑读取定义"
                 @click.stop="openEditDefinition(definition)"
               >
@@ -215,9 +209,7 @@ function selectSession(sessionId: string): void {
                 "
               />
             </div>
-            <div
-              class="mt-1 flex items-center gap-2 pl-[38px] text-[9.5px] text-muted-foreground/65"
-            >
+            <div class="mt-1 flex items-center gap-2 pl-[38px] text-[10.5px] text-muted-foreground">
               <span class="numeric">{{ formatFunctionCode(definition.functionCode) }}</span>
               <span class="numeric">{{
                 formatRange(definition.startAddress, definition.quantity, settings.addressBase)
@@ -231,16 +223,14 @@ function selectSession(sessionId: string): void {
 
     <DefinitionDialog v-model:open="definitionDialogOpen" :definition="editingDefinition" />
 
-    <div
-      class="flex shrink-0 items-center justify-between border-t border-white/[0.06] px-3.5 py-2.5"
-    >
-      <div class="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
+    <div class="flex shrink-0 items-center justify-between border-t border-hairline px-3.5 py-2.5">
+      <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <Database class="size-3" />
         <span>{{ t("workspace.autosave") }}</span>
       </div>
       <span
         v-if="sessions.demo"
-        class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[9px] font-medium text-sim"
+        class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[10px] font-medium text-sim"
       >
         DEMO
       </span>

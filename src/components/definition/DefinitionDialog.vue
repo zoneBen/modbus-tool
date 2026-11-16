@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SlidersHorizontal, Trash2 } from "@lucide/vue";
+import { Plus, SlidersHorizontal, Trash2, X } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
@@ -44,11 +44,18 @@ const enabled = ref(true);
 const saving = ref(false);
 const confirmDelete = ref(false);
 
+interface AliasRow {
+  address: string;
+  name: string;
+}
+
+const aliasRows = ref<AliasRow[]>([]);
+
 const functionOptions = [
-  { label: "FC01 · 线圈", value: "1" },
-  { label: "FC02 · 离散输入", value: "2" },
-  { label: "FC03 · 保持寄存器", value: "3" },
-  { label: "FC04 · 输入寄存器", value: "4" },
+  { label: "FC01 线圈", value: "1" },
+  { label: "FC02 离散输入", value: "2" },
+  { label: "FC03 保持寄存器", value: "3" },
+  { label: "FC04 输入寄存器", value: "4" },
 ];
 
 const dataTypeOptions: Array<{ label: string; value: DataType }> = [
@@ -101,6 +108,9 @@ watch(
       byteOrder.value = definition.byteOrder;
       intervalMs.value = String(definition.intervalMs);
       enabled.value = definition.enabled;
+      aliasRows.value = Object.entries(definition.aliases)
+        .map(([address, alias]) => ({ address, name: alias }))
+        .sort((left, right) => Number(left.address) - Number(right.address));
     } else {
       name.value = "保持寄存器 · 新定义";
       functionCode.value = "3";
@@ -111,10 +121,21 @@ watch(
       byteOrder.value = "abcd";
       intervalMs.value = "1000";
       enabled.value = true;
+      aliasRows.value = [];
     }
   },
   { immediate: true },
 );
+
+function addAliasRow(): void {
+  const start = Math.max(0, Number(startAddress.value) || 0);
+  const nextAddress = start + aliasRows.value.length;
+  aliasRows.value = [...aliasRows.value, { address: String(nextAddress), name: "" }];
+}
+
+function removeAliasRow(index: number): void {
+  aliasRows.value = aliasRows.value.filter((_, rowIndex) => rowIndex !== index);
+}
 
 watch(functionCode, (value) => {
   if (value === "1" || value === "2") {
@@ -126,17 +147,26 @@ watch(functionCode, (value) => {
 
 async function submit(): Promise<void> {
   if (saving.value) return;
+  const start = Math.max(0, Number(startAddress.value) || 0);
+  const count = Math.max(1, Number(quantity.value) || 1);
+  const aliases: Record<number, string> = {};
+  for (const row of aliasRows.value) {
+    const address = Number(row.address);
+    const alias = row.name.trim();
+    if (!Number.isFinite(address) || address < start || address >= start + count) continue;
+    if (alias) aliases[address] = alias;
+  }
   const input: DefinitionInput = {
     name: name.value.trim() || "未命名定义",
     functionCode: Number(functionCode.value) as FunctionCode,
     slaveId: Number(slaveId.value) || 1,
-    startAddress: Math.max(0, Number(startAddress.value) || 0),
-    quantity: Math.max(1, Number(quantity.value) || 1),
+    startAddress: start,
+    quantity: count,
     dataType: isBitFunction.value ? "bool" : dataType.value,
     byteOrder: byteOrder.value,
     intervalMs: Math.max(10, Number(intervalMs.value) || 1000),
     enabled: enabled.value,
-    aliases: props.definition?.aliases ?? {},
+    aliases,
   };
   saving.value = true;
   try {
@@ -178,9 +208,9 @@ async function remove(): Promise<void> {
 <template>
   <Dialog v-model:open="open">
     <DialogContent
-      class="gap-0 overflow-hidden border-white/[0.08] bg-[color:var(--glass-strong)] p-0 shadow-2xl shadow-black/60 backdrop-blur-2xl sm:max-w-[580px]"
+      class="gap-0 overflow-hidden border-hairline-strong bg-[color:var(--glass-strong)] p-0 shadow-2xl shadow-black/25 backdrop-blur-2xl sm:max-w-[600px]"
     >
-      <DialogHeader class="border-b border-white/[0.06] px-5 py-4">
+      <DialogHeader class="border-b border-hairline px-5 py-4">
         <DialogTitle class="flex items-center gap-2 text-[13.5px]">
           <span
             class="flex size-7 items-center justify-center rounded-lg border border-signal/20 bg-signal/10 text-signal"
@@ -189,73 +219,70 @@ async function remove(): Promise<void> {
           </span>
           {{ definition ? "编辑读取定义" : "新建读取定义" }}
         </DialogTitle>
-        <DialogDescription class="text-[10.5px] text-muted-foreground/65">
+        <DialogDescription class="text-[11.5px] text-muted-foreground">
           功能码、地址、数据类型与端序由 Rust 核心执行；保存后立即按新规则轮询。
         </DialogDescription>
       </DialogHeader>
 
-      <div class="space-y-4 px-5 py-4">
+      <div class="scrollbar-thin max-h-[62vh] space-y-4 overflow-y-auto px-5 py-4">
         <div class="space-y-1.5">
-          <Label class="text-[10px] text-muted-foreground/70">定义名称</Label>
-          <Input
-            v-model="name"
-            class="h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
-          />
+          <Label class="text-[11px] text-muted-foreground">定义名称</Label>
+          <Input v-model="name" class="h-9 rounded-lg border-hairline-strong bg-well text-[12px]" />
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">功能码</Label>
+            <Label class="text-[11px] text-muted-foreground">功能码</Label>
             <FormSelect v-model="functionCode" :options="functionOptions" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">从站 ID</Label>
+            <Label class="text-[11px] text-muted-foreground">从站 ID</Label>
             <Input
               v-model="slaveId"
               inputmode="numeric"
-              class="numeric h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
+              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">起始地址</Label>
+            <Label class="text-[11px] text-muted-foreground">起始地址</Label>
             <Input
               v-model="startAddress"
               inputmode="numeric"
-              class="numeric h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
+              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">
-              数量 <span class="text-muted-foreground/40">（≤ {{ quantityLimit }}）</span>
+            <Label class="text-[11px] text-muted-foreground">
+              数量 <span class="text-muted-foreground">（≤ {{ quantityLimit }}）</span>
             </Label>
             <Input
               v-model="quantity"
               inputmode="numeric"
-              class="numeric h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
+              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">数据类型</Label>
+            <Label class="text-[11px] text-muted-foreground">数据类型</Label>
             <FormSelect v-model="dataType" :options="dataTypeOptions" :disabled="isBitFunction" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">字节 / 字序</Label>
+            <Label class="text-[11px] text-muted-foreground">字节 / 字序</Label>
             <FormSelect v-model="byteOrder" :options="byteOrderOptions" :disabled="isBitFunction" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">轮询周期 (ms)</Label>
+            <Label class="text-[11px] text-muted-foreground">轮询周期 (ms)</Label>
             <Input
               v-model="intervalMs"
               inputmode="numeric"
-              class="numeric h-9 rounded-lg border-white/[0.08] bg-black/20 text-[11.5px]"
+              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[10px] text-muted-foreground/70">启用轮询</Label>
+            <Label class="text-[11px] text-muted-foreground">启用轮询</Label>
             <div
-              class="flex h-9 items-center justify-between rounded-lg border border-white/[0.08] bg-black/20 px-3"
+              class="flex h-9 items-center justify-between rounded-lg border border-hairline-strong bg-well px-3"
             >
-              <span class="text-[10px] text-muted-foreground/60">
+              <span class="text-[11px] text-muted-foreground">
                 {{ enabled ? "已启用" : "已停用" }}
               </span>
               <Switch v-model="enabled" />
@@ -263,20 +290,69 @@ async function remove(): Promise<void> {
           </div>
         </div>
 
+        <div class="space-y-2 rounded-xl border border-hairline bg-overlay-1 p-3">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-[12px] font-medium text-foreground">寄存器别名 / 含义</p>
+              <p class="mt-0.5 text-[11px] text-muted-foreground">
+                为地址维护名称，表格、报文与曲线会显示别名。
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 shrink-0 gap-1 border-hairline-strong bg-overlay-2 text-[11.5px]"
+              @click="addAliasRow"
+            >
+              <Plus class="size-3" />
+              添加
+            </Button>
+          </div>
+          <div v-if="aliasRows.length" class="space-y-1.5">
+            <div v-for="(row, index) in aliasRows" :key="index" class="flex items-center gap-2">
+              <Input
+                v-model="row.address"
+                inputmode="numeric"
+                placeholder="地址"
+                class="numeric h-8 w-[86px] shrink-0 rounded-lg border-hairline-strong bg-well text-[12px]"
+              />
+              <Input
+                v-model="row.name"
+                placeholder="含义，例如 电机温度"
+                class="h-8 min-w-0 flex-1 rounded-lg border-hairline-strong bg-well text-[12px]"
+              />
+              <button
+                type="button"
+                class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-error/10 hover:text-error"
+                aria-label="删除别名"
+                @click="removeAliasRow(index)"
+              >
+                <X class="size-3.5" />
+              </button>
+            </div>
+          </div>
+          <p
+            v-else
+            class="rounded-lg border border-dashed border-hairline px-3 py-2 text-center text-[11px] text-muted-foreground"
+          >
+            暂无别名，表格将显示地址。
+          </p>
+        </div>
+
         <p
-          class="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2 text-[9.5px] leading-relaxed text-muted-foreground/55"
+          class="rounded-lg border border-hairline bg-overlay-1 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground"
         >
           {{ dataTypeHint }} · 数据将以原始字 + 格式化值 + 数值同时返回。
         </p>
       </div>
 
-      <DialogFooter class="border-t border-white/[0.06] bg-black/10 px-5 py-3">
+      <DialogFooter class="border-t border-hairline bg-well-soft px-5 py-3">
         <Button
           v-if="definition"
           variant="ghost"
           size="sm"
-          class="mr-auto h-8 gap-1.5 text-[10.5px]"
-          :class="confirmDelete ? 'text-error' : 'text-muted-foreground/60'"
+          class="mr-auto h-8 gap-1.5 text-[11.5px]"
+          :class="confirmDelete ? 'text-error' : 'text-muted-foreground'"
           @click="remove"
         >
           <Trash2 class="size-3" />
@@ -286,12 +362,12 @@ async function remove(): Promise<void> {
           <Button
             variant="outline"
             size="sm"
-            class="h-8 border-white/[0.08] bg-transparent text-[11px]"
+            class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
             取消
           </Button>
         </DialogClose>
-        <Button size="sm" class="h-8 min-w-[84px] text-[11px]" :disabled="saving" @click="submit">
+        <Button size="sm" class="h-8 min-w-[84px] text-[12px]" :disabled="saving" @click="submit">
           {{ saving ? "保存中…" : "保存定义" }}
         </Button>
       </DialogFooter>

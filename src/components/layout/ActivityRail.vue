@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { FlaskConical, LayoutDashboard, ScanLine, Settings2, Sparkles } from "@lucide/vue";
+import {
+  FlaskConical,
+  LayoutDashboard,
+  Moon,
+  ScanLine,
+  Settings2,
+  Sparkles,
+  Sun,
+} from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -33,14 +41,14 @@ function openSimulator(): void {
 <template>
   <TooltipProvider :delay-duration="180">
     <aside
-      class="relative flex h-full w-[60px] shrink-0 flex-col items-center border-r border-white/[0.06] bg-black/20 py-3"
+      class="relative flex h-full w-[60px] shrink-0 flex-col items-center border-r border-hairline bg-well py-3"
     >
       <div class="relative mb-5 flex size-11 items-center justify-center">
         <div class="absolute inset-0 rounded-2xl bg-signal/15 blur-xl" aria-hidden="true" />
         <img
           src="/logo.svg"
           alt="Modbus Tool"
-          class="relative size-9 rounded-xl shadow-lg shadow-black/40"
+          class="relative size-9 rounded-xl shadow-lg shadow-black/25"
         />
       </div>
 
@@ -49,7 +57,7 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="relative flex size-10 items-center justify-center rounded-xl text-foreground transition-colors hover:bg-white/[0.06]"
+              class="relative flex size-10 items-center justify-center rounded-xl text-foreground transition-colors hover:bg-overlay-3"
               aria-label="工作台"
             >
               <span class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-signal" />
@@ -63,7 +71,7 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="relative flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-white/[0.06]"
+              class="relative flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
               :class="
                 scans.running
                   ? 'bg-signal/10 text-signal'
@@ -86,7 +94,7 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-white/[0.06]"
+              class="flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
               :class="
                 simulatorActive
                   ? 'bg-sim/10 text-sim'
@@ -107,7 +115,24 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-white/[0.06]"
+              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
+              :aria-label="settings.resolvedTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题'"
+              @click="settings.toggleTheme()"
+            >
+              <Sun v-if="settings.resolvedTheme === 'dark'" class="size-[17px]" />
+              <Moon v-else class="size-[17px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {{ settings.resolvedTheme === "dark" ? "切换到浅色主题" : "切换到深色主题" }}
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
               :class="
                 settings.reduceEffects ? 'text-warn' : 'text-muted-foreground hover:text-foreground'
               "
@@ -124,7 +149,7 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
+              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
               aria-label="设置"
               @click="emit('open-settings')"
             >
@@ -135,7 +160,7 @@ function openSimulator(): void {
         </Tooltip>
 
         <div
-          class="mt-2 flex size-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]"
+          class="mt-2 flex size-8 items-center justify-center rounded-full border border-hairline bg-overlay-2"
         >
           <span class="status-dot status-dot-live text-signal" />
         </div>

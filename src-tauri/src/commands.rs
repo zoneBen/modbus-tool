@@ -145,6 +145,14 @@ pub async fn write_register(
 }
 
 #[tauri::command]
+pub async fn session_delete(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.manager.delete_session(&session_id).await
+}
+
+#[tauri::command]
 pub async fn session_disconnect(
     session_id: String,
     state: State<'_, AppState>,

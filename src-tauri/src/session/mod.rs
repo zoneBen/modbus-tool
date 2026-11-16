@@ -211,6 +211,18 @@ impl SessionManager {
         result
     }
 
+    pub async fn delete_session(&self, session_id: &str) -> Result<(), String> {
+        let handle = self
+            .sessions
+            .write()
+            .await
+            .remove(session_id)
+            .ok_or_else(|| "会话不存在".to_owned())?;
+        let _ = handle.commands.send(SessionCommand::Shutdown);
+        self.emit_workspace().await;
+        Ok(())
+    }
+
     pub async fn shutdown_all(&self) {
         let handles: Vec<SessionHandle> = {
             let mut sessions = self.sessions.write().await;

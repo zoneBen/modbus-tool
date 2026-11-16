@@ -103,6 +103,7 @@ pub fn run() {
             commands::definition_delete,
             commands::write_register,
             commands::session_disconnect,
+            commands::session_delete,
             commands::scan_slave_ids,
             commands::scan_addresses,
             commands::scan_baud_rates,

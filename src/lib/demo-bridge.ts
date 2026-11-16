@@ -543,6 +543,16 @@ export function createDemoBridge(): IpcApi {
     return clone(session);
   }
 
+  async function deleteSession(sessionId: string): Promise<void> {
+    const index = sessions.findIndex((session) => session.id === sessionId);
+    if (index < 0) throw new Error("会话不存在");
+    sessions.splice(index, 1);
+    for (const key of [...latestSnapshots.keys()]) {
+      if (key.startsWith(`${sessionId}:`)) latestSnapshots.delete(key);
+    }
+    emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
+  }
+
   async function setPolling(sessionId: string, enabled: boolean): Promise<void> {
     const session = sessionById(sessionId);
     session.polling = enabled;
@@ -871,6 +881,7 @@ export function createDemoBridge(): IpcApi {
     boot,
     listSerialPorts,
     createSession,
+    deleteSession,
     setPolling,
     readOnce,
     setDefinitionEnabled,

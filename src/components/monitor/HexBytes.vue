@@ -12,10 +12,10 @@ const props = withDefaults(
 );
 
 const toneClass: Record<FrameField["tone"], string> = {
-  header: "text-muted-foreground/40",
+  header: "text-muted-foreground",
   unit: "text-warn/90",
   function: "text-rx",
-  data: "text-foreground/85",
+  data: "text-foreground",
   checksum: "text-error/65",
 };
 
@@ -57,11 +57,11 @@ const groups = computed<Group[]>(() => {
 </script>
 
 <template>
-  <span class="numeric inline text-[10.5px] leading-5">
+  <span class="numeric inline text-[11.5px] leading-5">
     <template v-for="(group, index) in groups" :key="`${group.label}-${index}`">
-      <span v-if="index > 0" class="mx-1 text-white/10">·</span>
+      <span v-if="index > 0" class="mx-1 text-foreground/15">·</span>
       <span :class="toneClass[group.tone]" :title="group.label">{{ group.text }}</span>
     </template>
-    <span v-if="!groups.length" class="text-muted-foreground/40">—</span>
+    <span v-if="!groups.length" class="text-muted-foreground">—</span>
   </span>
 </template>

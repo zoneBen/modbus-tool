@@ -6,17 +6,18 @@
 
 技术栈：**Rust + Tauri 2 + Vue 3 + TypeScript + Tailwind CSS v4 + shadcn-vue + uPlot**。核心协议层自研，支持 RTU / ASCII / MBAP 三种帧格式与串口 / TCP / UDP 三种链路。
 
-> 当前状态：**v0.1.2 主站调试版**。真实 TCP/UDP/串口主站引擎、报文监视、定义编辑、写入、四类扫描与 uPlot 曲线已接入 Rust 后端；浏览器 Demo（`pnpm dev`）无需 Rust 即可体验完整 UI。本地与 GitHub Actions 均已通过，Windows Release 已成功产出 NSIS/MSI artifact。真实从站服务端、CSV 日志与工作区持久化仍待后续阶段。
+> 当前状态：**v0.1.3 主站调试版**。真实 TCP/UDP/串口主站引擎、报文监视、定义编辑、写入、四类扫描与 uPlot 曲线已接入 Rust 后端；浏览器 Demo（`pnpm dev`）无需 Rust 即可体验完整 UI。本地与 GitHub Actions 均已通过，Windows Release 已成功产出 NSIS/MSI artifact。真实从站服务端、CSV 日志与工作区持久化仍待后续阶段。
 
 ## 已实现
 
 - **协议核心**（`crates/modbus-core`）：PDU 编解码、CRC16/LRC、RTU/ASCII/MBAP、异常码、INT8/16/32/64、UINT、FLOAT32/64、HEX/BIN/ASCII、ABCD/DCBA/BADC/CDAB、从站模拟引擎；39 个单元与属性测试
 - **主站引擎**：TCP / UDP / 串口；RTU / ASCII / MBAP；周期轮询、单次读、FC05/06/0F/10 写、读重试、写不自动重试、自动重连、跨事务 ID 校验、t3.5 串口排空
-- **定义编辑**：FC01–04、从站 ID、地址/数量、数据类型、字节/字序、轮询周期、启停；保存后即时生效
+- **定义编辑**：FC01–04、从站 ID、地址/数量、数据类型、字节/字序、轮询周期、启停；保存后即时生效；可删除定义并集中维护寄存器别名/含义
+- **会话管理**：新建、切换、关闭删除（含定义与缓存清理）；串口为默认链路，默认 9600 8N1 / RTU
 - **报文监控**：双向原始帧、分段着色 HEX、字段解码、时间戳、延时、搜索/方向过滤/跟随/清空、帧详情
 - **四类扫描**：从站 ID、寄存器地址、串口波特率、局域网 IP/端口（CIDR + 并发 + 可选 Modbus 探测）；进度、取消、实时结果
-- **实时曲线**：uPlot 多序列、1/5/15/30 分钟窗口、暂停、跨线提示、图例实时值、数据表视图；分类色板经 dataviz 校验（深色表面 6 色全部通过）
-- **界面**：深色仪器风、毛玻璃静态面板、值变化闪烁、状态呼吸、可拖拽监控抽屉、快捷键预留、地址基址 0/1
+- **实时曲线**：uPlot 多序列、1/5/15/30 分钟窗口、暂停、跨线提示、图例实时值、数据表视图；深色/浅色分类色板分别经 dataviz 校验
+- **界面**：深色仪器风与浅色高对比主题可切换（支持跟随系统），语义化色板/半透明层级、毛玻璃静态面板、值变化闪烁、状态呼吸、可拖拽监控抽屉、快捷键预留、地址基址 0/1
 - **演示运行时**：浏览器内生成真实结构的 MBAP/RTU 帧、主站/从站数据、扫描过程与曲线
 - **工程化**：Windows CI（lint/typecheck/Vitest/build/rustfmt/clippy/cargo test）；Release Windows（NSIS/MSI，可选离线 WebView2）
 

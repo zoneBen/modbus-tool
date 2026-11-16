@@ -254,6 +254,33 @@ export const useSessionsStore = defineStore("sessions", () => {
     return session;
   }
 
+  async function deleteSession(sessionId: string): Promise<void> {
+    const removed = sessions.value.find((session) => session.id === sessionId);
+    await ipc.deleteSession(sessionId);
+    sessions.value = sessions.value.filter((session) => session.id !== sessionId);
+    if (activeSessionId.value === sessionId) {
+      const next = sessions.value.find((session) => session.role === "master") ?? sessions.value[0];
+      activeSessionId.value = next?.id ?? null;
+      activeDefinitionId.value = next?.definitions[0]?.id ?? null;
+    }
+    if (!removed) return;
+    const nextSnapshots = { ...snapshots.value };
+    for (const key of Object.keys(nextSnapshots)) {
+      if (key.startsWith(`${sessionId}:`)) delete nextSnapshots[key];
+    }
+    snapshots.value = nextSnapshots;
+    const nextTimelines = { ...timelines.value };
+    const nextHistory = { ...history.value };
+    for (const definition of removed.definitions) {
+      delete nextTimelines[definition.id];
+      for (const key of Object.keys(nextHistory)) {
+        if (key.startsWith(`${definition.id}:`)) delete nextHistory[key];
+      }
+    }
+    timelines.value = nextTimelines;
+    history.value = nextHistory;
+  }
+
   async function writeRegister(address: number, value: string): Promise<void> {
     const session = activeSession.value;
     const definition = activeDefinition.value;
@@ -294,6 +321,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     updateDefinition,
     deleteDefinition,
     createSession,
+    deleteSession,
     writeRegister,
   };
 });

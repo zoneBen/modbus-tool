@@ -93,22 +93,18 @@ function exportFrames(): void {
 </script>
 
 <template>
-  <section class="flex min-h-0 flex-col border-t border-white/[0.055] bg-[color:var(--surface)]/55">
+  <section class="flex min-h-0 flex-col border-t border-hairline bg-[color:var(--surface)]/55">
     <div class="flex h-[38px] shrink-0 items-center gap-0.5 px-2">
       <button
         type="button"
-        class="relative flex h-full items-center gap-1.5 px-2 text-[11px] transition-colors"
+        class="relative flex h-full items-center gap-1.5 px-2 text-[12px] transition-colors"
         :class="
-          activeTab === 'frames'
-            ? 'text-foreground'
-            : 'text-muted-foreground/65 hover:text-foreground'
+          activeTab === 'frames' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
         "
         @click="openTab('frames')"
       >
         {{ t("monitor.title") }}
-        <span
-          class="numeric rounded bg-white/[0.06] px-1 py-0.5 text-[9px] text-muted-foreground/70"
-        >
+        <span class="numeric rounded bg-overlay-3 px-1 py-0.5 text-[10px] text-muted-foreground">
           {{ count }}
         </span>
         <span
@@ -118,11 +114,9 @@ function exportFrames(): void {
       </button>
       <button
         type="button"
-        class="relative flex h-full items-center gap-1.5 px-2 text-[11px] transition-colors"
+        class="relative flex h-full items-center gap-1.5 px-2 text-[12px] transition-colors"
         :class="
-          activeTab === 'chart'
-            ? 'text-foreground'
-            : 'text-muted-foreground/50 hover:text-foreground'
+          activeTab === 'chart' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
         "
         @click="openTab('chart')"
       >
@@ -132,36 +126,36 @@ function exportFrames(): void {
       </button>
       <button
         type="button"
-        class="flex h-full items-center gap-1.5 px-2 text-[11px] text-muted-foreground/50 transition-colors hover:text-foreground"
+        class="flex h-full items-center gap-1.5 px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
         @click="openTab('log')"
       >
         <ScrollText class="size-3.5" />
         数据日志
-        <span class="rounded border border-white/[0.06] px-1 text-[8px]">P6</span>
+        <span class="rounded border border-hairline px-1 text-[10px]">P6</span>
       </button>
 
       <div v-if="activeTab === 'frames'" class="ml-auto flex items-center gap-1.5">
         <div class="relative hidden md:block">
           <Search
-            class="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/50"
+            class="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             v-model="frames.search"
             placeholder="搜索摘要 / HEX"
-            class="h-7 w-[166px] rounded-lg border-white/[0.06] bg-black/20 pl-7 text-[10.5px] placeholder:text-muted-foreground/40"
+            class="h-7 w-[166px] rounded-lg border-hairline bg-well pl-7 text-[11.5px] placeholder:text-muted-foreground"
           />
         </div>
 
-        <div class="flex rounded-lg border border-white/[0.06] bg-black/20 p-0.5">
+        <div class="flex rounded-lg border border-hairline bg-well p-0.5">
           <button
             v-for="option in directionOptions"
             :key="option"
             type="button"
-            class="numeric rounded-md px-1.5 py-0.5 text-[9px] uppercase transition-colors"
+            class="numeric rounded-md px-1.5 py-0.5 text-[10px] uppercase transition-colors"
             :class="
               frames.direction === option
-                ? 'bg-white/[0.08] text-foreground'
-                : 'text-muted-foreground/55 hover:text-foreground'
+                ? 'bg-overlay-3 text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
             "
             @click="frames.direction = option"
           >
@@ -172,7 +166,7 @@ function exportFrames(): void {
         <Button
           variant="ghost"
           size="icon-xs"
-          class="rounded-md text-muted-foreground/70 hover:text-foreground"
+          class="rounded-md text-muted-foreground hover:text-foreground"
           :aria-label="settings.monitorFollow ? t('monitor.pause') : t('monitor.resume')"
           @click="settings.monitorFollow = !settings.monitorFollow"
         >
@@ -182,7 +176,7 @@ function exportFrames(): void {
         <Button
           variant="ghost"
           size="icon-xs"
-          class="rounded-md text-muted-foreground/70 hover:text-foreground"
+          class="rounded-md text-muted-foreground hover:text-foreground"
           aria-label="导出报文"
           @click="exportFrames"
         >
@@ -191,7 +185,7 @@ function exportFrames(): void {
         <Button
           variant="ghost"
           size="icon-xs"
-          class="rounded-md text-muted-foreground/70 hover:text-foreground"
+          class="rounded-md text-muted-foreground hover:text-foreground"
           aria-label="清空报文"
           @click="frames.clearFrames()"
         >
@@ -201,7 +195,7 @@ function exportFrames(): void {
       <Button
         variant="ghost"
         size="icon-xs"
-        class="rounded-md text-muted-foreground/70 hover:text-foreground"
+        class="rounded-md text-muted-foreground hover:text-foreground"
         :class="activeTab === 'frames' ? '' : 'ml-auto'"
         :aria-label="collapsed ? '展开监控面板' : '收起监控面板'"
         @click="emit('toggle')"
@@ -211,7 +205,7 @@ function exportFrames(): void {
       </Button>
     </div>
 
-    <div v-if="!collapsed" class="flex min-h-0 flex-1 border-t border-white/[0.05]">
+    <div v-if="!collapsed" class="flex min-h-0 flex-1 border-t border-hairline">
       <ChartPanel v-if="activeTab === 'chart'" class="min-h-0 min-w-0 flex-1" />
       <template v-else>
         <div ref="listEl" class="scrollbar-thin min-h-0 flex-1 overflow-auto">
@@ -220,31 +214,31 @@ function exportFrames(): void {
               v-for="frame in frames.filteredFrames"
               :key="frame.seq"
               type="button"
-              class="relative grid h-[28px] w-full grid-cols-[84px_36px_112px_minmax(130px,1fr)_minmax(170px,1.35fr)_58px_18px] items-center gap-2 border-b border-white/[0.03] px-3 text-left transition-colors hover:bg-white/[0.03]"
-              :class="frame.seq === frames.selectedFrame?.seq ? 'bg-white/[0.045]' : ''"
+              class="relative grid h-[28px] w-full grid-cols-[84px_36px_112px_minmax(130px,1fr)_minmax(170px,1.35fr)_58px_18px] items-center gap-2 border-b border-hairline px-3 text-left transition-colors hover:bg-overlay-1"
+              :class="frame.seq === frames.selectedFrame?.seq ? 'bg-overlay-2' : ''"
               @click="frames.selectFrame(frame.seq)"
             >
               <span
                 v-if="frame.seq === frames.selectedFrame?.seq"
                 class="absolute inset-y-1 left-0 w-[2px] rounded-full bg-rx/70"
               />
-              <span class="numeric text-[9.5px] text-muted-foreground/55">{{
+              <span class="numeric text-[10.5px] text-muted-foreground">{{
                 formatTime(frame.timestamp)
               }}</span>
               <span
-                class="numeric inline-flex h-[15px] items-center justify-center rounded border text-[8px] font-medium"
+                class="numeric inline-flex h-[15px] items-center justify-center rounded border text-[10px] font-medium"
                 :class="directionClass[frame.direction]"
               >
                 {{ frame.direction.toUpperCase() }}
               </span>
-              <span class="truncate text-[10px] text-muted-foreground/75">
+              <span class="truncate text-[11px] text-muted-foreground">
                 {{ sessions.sessionName(frame.sessionId) }}
               </span>
-              <span class="truncate text-[10.5px] text-foreground/80">{{ frame.summary }}</span>
-              <span class="numeric truncate text-[9.5px] text-muted-foreground/60">{{
+              <span class="truncate text-[11.5px] text-foreground">{{ frame.summary }}</span>
+              <span class="numeric truncate text-[10.5px] text-muted-foreground">{{
                 snippet(frame)
               }}</span>
-              <span class="numeric text-right text-[9.5px] text-muted-foreground/55">
+              <span class="numeric text-right text-[10.5px] text-muted-foreground">
                 {{ formatLatency(frame.latencyMs ?? 0) }}
               </span>
               <span class="flex justify-center">
@@ -267,7 +261,7 @@ function exportFrames(): void {
 
         <FrameDetail
           :frame="frames.selectedFrame"
-          class="hidden w-[360px] shrink-0 border-l border-white/[0.05] lg:flex"
+          class="hidden w-[360px] shrink-0 border-l border-hairline lg:flex"
         />
       </template>
     </div>

@@ -14,19 +14,19 @@ defineProps<{
     <select
       v-model="model"
       :disabled="disabled"
-      class="h-9 w-full appearance-none rounded-lg border border-white/[0.08] bg-black/20 px-3 pr-8 text-[11.5px] text-foreground outline-none transition-colors focus:border-signal/40 focus:ring-2 focus:ring-signal/10 disabled:cursor-not-allowed disabled:opacity-50"
+      class="h-9 w-full appearance-none rounded-lg border border-hairline-strong bg-well px-3 pr-8 text-[12px] text-foreground outline-none transition-colors focus:border-signal/40 focus:ring-2 focus:ring-signal/10 disabled:cursor-not-allowed disabled:opacity-50"
     >
       <option
         v-for="option in options"
         :key="option.value"
         :value="option.value"
-        class="bg-[#171b22]"
+        class="bg-popover text-popover-foreground"
       >
         {{ option.label }}
       </option>
     </select>
     <ChevronDown
-      class="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/50"
+      class="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
     />
   </div>
 </template>

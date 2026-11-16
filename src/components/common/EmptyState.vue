@@ -13,7 +13,7 @@ defineProps<{
       <slot name="icon" />
     </div>
     <div class="space-y-1">
-      <p class="text-sm font-medium text-foreground/90">{{ title }}</p>
+      <p class="text-sm font-medium text-foreground">{{ title }}</p>
       <p v-if="description" class="mx-auto max-w-sm text-xs leading-relaxed text-muted-foreground">
         {{ description }}
       </p>

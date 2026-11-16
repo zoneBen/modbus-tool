@@ -17,7 +17,7 @@ const clock = computed(() => formatClock(now.value.getTime()));
 
 <template>
   <footer
-    class="flex h-[28px] shrink-0 items-center gap-3 border-t border-white/[0.06] bg-black/20 px-3 text-[10px] text-muted-foreground/70"
+    class="flex h-[28px] shrink-0 items-center gap-3 border-t border-hairline bg-well px-3 text-[11px] text-muted-foreground"
   >
     <div class="flex items-center gap-1.5">
       <span
@@ -28,7 +28,7 @@ const clock = computed(() => formatClock(now.value.getTime()));
         {{ sessions.demo ? t("status.demo") : "本地运行" }}
       </span>
     </div>
-    <span class="h-3 w-px bg-white/10" />
+    <span class="h-3 w-px bg-overlay-3" />
     <div class="flex min-w-0 items-center gap-1.5">
       <span
         class="status-dot"
@@ -37,22 +37,22 @@ const clock = computed(() => formatClock(now.value.getTime()));
         "
       />
       <span class="truncate">{{ sessions.activeSession?.name ?? "无活动会话" }}</span>
-      <span class="hidden truncate text-muted-foreground/50 sm:inline">
+      <span class="hidden truncate text-muted-foreground sm:inline">
         {{ sessions.activeSession?.endpoint }}
       </span>
     </div>
     <span class="hidden items-center gap-1 md:flex">
       <span>{{ t("status.sessions") }}</span>
-      <span class="numeric text-foreground/80"
+      <span class="numeric text-foreground"
         >{{ sessions.connectedCount }}/{{ sessions.sessions.length }}</span
       >
     </span>
     <span class="hidden items-center gap-1 lg:flex">
       <span>{{ t("status.frames") }}</span>
-      <span class="numeric text-foreground/80">{{ formatNumber(frames.stats.total) }}</span>
-      <span class="text-muted-foreground/40">·</span>
+      <span class="numeric text-foreground">{{ formatNumber(frames.stats.total) }}</span>
+      <span class="text-muted-foreground">·</span>
       <span class="text-tx/80">TX {{ frames.stats.tx }}</span>
-      <span class="text-muted-foreground/40">/</span>
+      <span class="text-muted-foreground">/</span>
       <span class="text-rx/80">RX {{ frames.stats.rx }}</span>
     </span>
     <span v-if="frames.stats.errors > 0" class="flex items-center gap-1 text-error">
@@ -63,16 +63,16 @@ const clock = computed(() => formatClock(now.value.getTime()));
     <div class="ml-auto flex items-center gap-3">
       <span class="hidden items-center gap-1 sm:flex">
         <span>{{ t("status.addressBase") }}</span>
-        <span class="numeric text-foreground/80">{{ settings.addressBase }}</span>
+        <span class="numeric text-foreground">{{ settings.addressBase }}</span>
       </span>
       <span class="hidden items-center gap-1 md:flex">
         <span>latency</span>
-        <span class="numeric text-foreground/80">
+        <span class="numeric text-foreground">
           {{ formatLatency(sessions.activeSession?.stats.latencyMs ?? 0) }}
         </span>
       </span>
-      <span class="numeric text-muted-foreground/60">{{ clock }}</span>
-      <span class="hidden text-muted-foreground/40 lg:inline">
+      <span class="numeric text-muted-foreground">{{ clock }}</span>
+      <span class="hidden text-muted-foreground lg:inline">
         {{ sessions.demo ? "Demo Runtime" : "Tauri 2 · WebView2" }}
       </span>
     </div>
