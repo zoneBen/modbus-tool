@@ -165,8 +165,14 @@ async fn reads_and_writes_over_real_tcp() {
         )
         .await
         .expect("custom write");
-    assert_eq!(simulator.lock().await.unit(1).expect("unit").holding(0), 111);
-    assert_eq!(simulator.lock().await.unit(1).expect("unit").holding(1), 222);
+    assert_eq!(
+        simulator.lock().await.unit(1).expect("unit").holding(0),
+        111
+    );
+    assert_eq!(
+        simulator.lock().await.unit(1).expect("unit").holding(1),
+        222
+    );
 
     let error = manager
         .write_custom(

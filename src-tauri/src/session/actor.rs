@@ -269,12 +269,8 @@ impl Actor {
             )
         };
         if role == SessionRole::Slave {
-            return match SlaveServer::start(
-                self.state.clone(),
-                self.bus.clone(),
-                self.seq.clone(),
-            )
-            .await
+            return match SlaveServer::start(self.state.clone(), self.bus.clone(), self.seq.clone())
+                .await
             {
                 Ok(server) => {
                     self.slave = Some(server);
@@ -940,7 +936,9 @@ fn build_custom_request(input: &CustomWriteInput) -> Result<PduRequest, Transact
 
     let quantity = values.len() as u32;
     if quantity > 1 && u32::from(input.address) + quantity > 0x1_0000 {
-        return Err(TransactionError::Protocol("写入地址范围超出 65535".to_owned()));
+        return Err(TransactionError::Protocol(
+            "写入地址范围超出 65535".to_owned(),
+        ));
     }
 
     match input.function_code {
@@ -1065,9 +1063,7 @@ fn error_values(definition: &DefinitionDto, message: &str) -> Vec<RegisterValueD
     };
     (0..count)
         .map(|index| RegisterValueDto {
-            address: definition
-                .start_address
-                .wrapping_add((index * span) as u16),
+            address: definition.start_address.wrapping_add((index * span) as u16),
             words: Vec::new(),
             formatted: "—".to_owned(),
             numeric: None,

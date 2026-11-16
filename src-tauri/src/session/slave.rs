@@ -78,24 +78,14 @@ pub async fn start(
         LinkConfig::Tcp(network) => {
             let listener = TcpListener::bind((network.host.as_str(), network.port))
                 .await
-                .map_err(|error| {
-                    format!("无法监听 {}:{}：{error}", network.host, network.port)
-                })?;
+                .map_err(|error| format!("无法监听 {}:{}：{error}", network.host, network.port))?;
             set_status(&state, &bus, SessionStatus::Connected, None).await;
             emit(
                 &bus,
                 AppEvent::SessionData(build_snapshot(&session_id, &definition, &simulator)),
             );
             let task = tokio::spawn(tcp_accept_loop(
-                listener,
-                framing,
-                simulator,
-                definition,
-                session_id,
-                state,
-                bus,
-                seq,
-                stop_rx,
+                listener, framing, simulator, definition, session_id, state, bus, seq, stop_rx,
             ));
             Ok(SlaveServer {
                 stop_tx: Some(stop_tx),
@@ -318,14 +308,20 @@ fn process_request(
             "FC{:02} · 从站 {} · {} {} × {}",
             request.function_code(),
             adu.unit_id,
-            if request.is_write() { "写入" } else { "读取" },
+            if request.is_write() {
+                "写入"
+            } else {
+                "读取"
+            },
             request.address(),
             request.quantity()
         ),
         None => format!("从站 {} · 无法解析请求", adu.unit_id),
     };
     let response_pdu = {
-        let mut simulator = simulator.lock().unwrap_or_else(|poison| poison.into_inner());
+        let mut simulator = simulator
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         simulator.handle_request(adu.unit_id, &adu.pdu)
     };
     let mut frames = vec![build_frame(
@@ -370,7 +366,9 @@ fn build_snapshot(
     definition: &DefinitionDto,
     simulator: &Arc<Mutex<Simulator>>,
 ) -> DefinitionSnapshotDto {
-    let simulator = simulator.lock().unwrap_or_else(|poison| poison.into_inner());
+    let simulator = simulator
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let unit = simulator.unit(definition.slave_id);
     let values = (0..definition.quantity.min(MAP_QUANTITY))
         .map(|offset| {
@@ -620,8 +618,8 @@ mod tests {
             address: 0,
             quantity: 2,
         };
-        let read_frame = frame::encode(Framing::Mbap, 1, Some(1), &read.encode().expect("pdu"))
-            .expect("frame");
+        let read_frame =
+            frame::encode(Framing::Mbap, 1, Some(1), &read.encode().expect("pdu")).expect("frame");
         let reply = process_request(
             &read_frame,
             Framing::Mbap,
@@ -647,8 +645,8 @@ mod tests {
             address: 0,
             value: 0x1234,
         };
-        let write_frame = frame::encode(Framing::Mbap, 1, Some(2), &write.encode().expect("pdu"))
-            .expect("frame");
+        let write_frame =
+            frame::encode(Framing::Mbap, 1, Some(2), &write.encode().expect("pdu")).expect("frame");
         let reply = process_request(
             &write_frame,
             Framing::Mbap,

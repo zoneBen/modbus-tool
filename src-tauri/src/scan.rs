@@ -42,7 +42,7 @@ impl ScanManager {
         let tasks = self.tasks.clone();
         let run_id = id.clone();
         let remove_id = id.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             run_slave_scan(run_id, input, cancel, bus).await;
             remove_task(&tasks, &remove_id);
         });
@@ -57,7 +57,7 @@ impl ScanManager {
         let tasks = self.tasks.clone();
         let run_id = id.clone();
         let remove_id = id.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             run_address_scan(run_id, input, cancel, bus).await;
             remove_task(&tasks, &remove_id);
         });
@@ -72,7 +72,7 @@ impl ScanManager {
         let tasks = self.tasks.clone();
         let run_id = id.clone();
         let remove_id = id.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             run_baud_scan(run_id, input, cancel, bus).await;
             remove_task(&tasks, &remove_id);
         });
@@ -87,7 +87,7 @@ impl ScanManager {
         let tasks = self.tasks.clone();
         let run_id = id.clone();
         let remove_id = id.clone();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             run_network_scan(run_id, input, cancel, bus).await;
             remove_task(&tasks, &remove_id);
         });

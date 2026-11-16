@@ -554,6 +554,11 @@ export function createDemoBridge(): IpcApi {
     sessions.push(session);
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
     emit("session:status", statusPayload(session));
+    if (definition) {
+      const snapshot = snapshotFor(session, definition);
+      storeSnapshot(snapshot);
+      emit("session:data", snapshot);
+    }
     setTimeout(() => {
       if (session.role === "master" && session.polling) runSessionTick(session, tick);
     }, 180);
