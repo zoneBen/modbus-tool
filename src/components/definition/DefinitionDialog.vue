@@ -295,7 +295,7 @@ async function remove(): Promise<void> {
             <div>
               <p class="text-[12px] font-medium text-foreground">寄存器别名 / 含义</p>
               <p class="mt-0.5 text-[11px] text-muted-foreground">
-                为地址维护名称，表格、报文与曲线会显示别名。
+                为地址维护名称，寄存器表格、检查器与曲线会显示别名。
               </p>
             </div>
             <Button
