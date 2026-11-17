@@ -344,6 +344,7 @@ async function send(): Promise<void> {
 
           <div
             class="flex shrink-0 items-center gap-2 rounded-lg border border-hairline bg-well px-2 py-1"
+            role="group"
             :aria-label="t('debug.suffix')"
           >
             <span class="text-[10px] text-muted-foreground">{{ t("debug.suffix") }}</span>
