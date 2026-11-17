@@ -27,21 +27,36 @@ const sendMode = ref<RawSendMode>("ascii");
 const displayMode = ref<"ascii" | "hex">("ascii");
 const formats: Array<"ascii" | "hex"> = ["ascii", "hex"];
 const payload = ref("");
+const appendCr = ref(false);
+const appendLf = ref(false);
 const sending = ref(false);
 const follow = ref(true);
 const listEl = ref<HTMLElement | null>(null);
 
 const session = computed(() => sessions.activeSession);
 const preview = computed<{ bytes: number | null; valid: boolean }>(() => {
-  if (!payload.value.length) return { bytes: 0, valid: true };
+  if (!payload.value.length && !appendCr.value && !appendLf.value) {
+    return { bytes: 0, valid: true };
+  }
   try {
-    return { bytes: encodeRawPayload(payload.value, sendMode.value).length, valid: true };
+    return {
+      bytes: encodeRawPayload(payload.value, sendMode.value, {
+        appendCr: appendCr.value,
+        appendLf: appendLf.value,
+      }).length,
+      valid: true,
+    };
   } catch {
     return { bytes: null, valid: false };
   }
 });
 const canSend = computed(
-  () => debug.active && !sending.value && payload.value.length > 0 && preview.value.valid,
+  () =>
+    debug.active &&
+    !sending.value &&
+    preview.value.valid &&
+    preview.value.bytes !== null &&
+    preview.value.bytes > 0,
 );
 const rxBytes = computed(() =>
   debug.entries
@@ -118,7 +133,12 @@ async function send(): Promise<void> {
   if (!canSend.value || sending.value) return;
   sending.value = true;
   try {
-    const count = await debug.send({ data: payload.value, mode: sendMode.value });
+    const count = await debug.send({
+      data: payload.value,
+      mode: sendMode.value,
+      appendCr: appendCr.value,
+      appendLf: appendLf.value,
+    });
     toast.success(t("debug.sent", { count }), {
       description: t("debug.sentDescription"),
     });
@@ -304,7 +324,7 @@ async function send(): Promise<void> {
           <span class="ml-auto text-right text-muted-foreground/80">{{ t("debug.note") }}</span>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <span class="numeric shrink-0 text-[13px] text-signal/70">›</span>
           <Input
             v-model="payload"
@@ -313,7 +333,7 @@ async function send(): Promise<void> {
             spellcheck="false"
             autocomplete="off"
             :aria-label="t('debug.inputLabel')"
-            class="numeric h-8 min-w-0 flex-1 rounded-lg border-hairline bg-well px-2.5 text-[11.5px] placeholder:font-sans placeholder:text-muted-foreground/80 focus-visible:border-signal/40 focus-visible:ring-signal/10"
+            class="numeric h-8 min-w-[220px] flex-1 rounded-lg border-hairline bg-well px-2.5 text-[11.5px] placeholder:font-sans placeholder:text-muted-foreground/80 focus-visible:border-signal/40 focus-visible:ring-signal/10"
             :class="preview.valid ? '' : 'border-error/45 focus-visible:border-error/60'"
             @keydown.enter.prevent="send"
           />
@@ -321,6 +341,31 @@ async function send(): Promise<void> {
           <span class="numeric hidden shrink-0 text-[10.5px] text-muted-foreground md:inline">
             {{ preview.bytes === null ? "ERR" : `${preview.bytes} B` }}
           </span>
+
+          <div
+            class="flex shrink-0 items-center gap-2 rounded-lg border border-hairline bg-well px-2 py-1"
+            :aria-label="t('debug.suffix')"
+          >
+            <span class="text-[10px] text-muted-foreground">{{ t("debug.suffix") }}</span>
+            <label class="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
+              <input
+                v-model="appendCr"
+                type="checkbox"
+                :disabled="!debug.active || sending"
+                class="size-3 accent-[var(--signal)]"
+              />
+              <span class="numeric">\r</span>
+            </label>
+            <label class="flex cursor-pointer items-center gap-1 text-[10px] text-muted-foreground">
+              <input
+                v-model="appendLf"
+                type="checkbox"
+                :disabled="!debug.active || sending"
+                class="size-3 accent-[var(--signal)]"
+              />
+              <span class="numeric">\n</span>
+            </label>
+          </div>
 
           <div
             class="flex shrink-0 rounded-lg border border-hairline bg-well p-0.5"

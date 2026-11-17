@@ -53,6 +53,8 @@ export type RawSendMode = "ascii" | "hex";
 export interface RawSendInput {
   data: string;
   mode: RawSendMode;
+  appendCr: boolean;
+  appendLf: boolean;
 }
 
 export interface DebugData {

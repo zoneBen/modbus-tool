@@ -29,6 +29,25 @@ describe("manual raw send encoding", () => {
     expect(rawByteLength("xyz", "hex")).toBeNull();
   });
 
+  it("appends configurable CR/LF suffixes", () => {
+    expect(
+      Array.from(
+        encodeRawPayload("ls", "ascii", {
+          appendCr: true,
+          appendLf: true,
+        }),
+      ),
+    ).toEqual([0x6c, 0x73, 0x0d, 0x0a]);
+    expect(
+      Array.from(
+        encodeRawPayload("", "ascii", {
+          appendLf: true,
+        }),
+      ),
+    ).toEqual([0x0a]);
+    expect(rawByteLength("ls", "ascii", { appendCr: true })).toBe(3);
+  });
+
   it("formats debug bytes as text or hex", () => {
     const bytes = [0x41, 0x42, 0x0d, 0x0a, 0x00, 0xff];
     expect(formatDebugBytes(bytes, "ascii")).toBe("AB\n··");

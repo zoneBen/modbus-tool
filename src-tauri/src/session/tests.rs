@@ -100,14 +100,34 @@ fn encodes_manual_send_payloads() {
     let ascii = RawSendInput {
         data: "AT+INFO\r\n".to_owned(),
         mode: RawSendMode::Ascii,
+        append_cr: false,
+        append_lf: false,
     };
     assert_eq!(ascii.encode().expect("ascii"), b"AT+INFO\r\n");
 
     let hex = RawSendInput {
         data: "0x01 03, 00-0A".to_owned(),
         mode: RawSendMode::Hex,
+        append_cr: false,
+        append_lf: false,
     };
     assert_eq!(hex.encode().expect("hex"), vec![0x01, 0x03, 0x00, 0x0A]);
+
+    let crlf = RawSendInput {
+        data: "ls".to_owned(),
+        mode: RawSendMode::Ascii,
+        append_cr: true,
+        append_lf: true,
+    };
+    assert_eq!(crlf.encode().expect("crlf"), b"ls\r\n");
+
+    let bare_lf = RawSendInput {
+        data: String::new(),
+        mode: RawSendMode::Ascii,
+        append_cr: false,
+        append_lf: true,
+    };
+    assert_eq!(bare_lf.encode().expect("bare lf"), vec![0x0A]);
 
     for (data, mode) in [
         ("", RawSendMode::Ascii),
@@ -118,6 +138,8 @@ fn encodes_manual_send_payloads() {
         let input = RawSendInput {
             data: data.to_owned(),
             mode,
+            append_cr: false,
+            append_lf: false,
         };
         assert!(input.encode().is_err(), "payload should be rejected");
     }
@@ -182,6 +204,8 @@ async fn debug_mode_reads_continuously_and_sends_manually() {
             RawSendInput {
                 data: "PING".to_owned(),
                 mode: RawSendMode::Ascii,
+                append_cr: false,
+                append_lf: false,
             },
         )
         .await
@@ -224,6 +248,8 @@ async fn debug_mode_reads_continuously_and_sends_manually() {
             RawSendInput {
                 data: "PING".to_owned(),
                 mode: RawSendMode::Ascii,
+                append_cr: false,
+                append_lf: false,
             },
         )
         .await

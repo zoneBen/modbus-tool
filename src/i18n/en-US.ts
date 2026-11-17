@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "Industrial bus console",
-    version: "v0.1.7",
+    version: "v0.1.8",
   },
   nav: {
     workspace: "Workspace",
@@ -104,6 +104,7 @@ export default {
     active: "Receiving live",
     inactive: "Stopped",
     pollingOff: "Polling is off",
+    suffix: "Suffix",
     display: "View",
     sendFormat: "Send format",
     ascii: "ASCII",
@@ -113,7 +114,7 @@ export default {
     entries: "Entries: {count}",
     empty: "Waiting for device data…",
     emptyHint: "Debug mode keeps reading the link and shows incoming bytes here.",
-    inputPlaceholder: "Enter text to send, press Enter",
+    inputPlaceholder: "Enter text; use a suffix to add a line ending",
     inputPlaceholderHex: "Enter hex bytes, e.g. 01 03 00 00 00 0A",
     inputLabel: "Debug send data",
     inputDisabled: "Debug link is not active",
@@ -130,7 +131,7 @@ export default {
     prerequisitePolling: "Stop polling before entering debug mode",
     prerequisiteConnect: "Start the session link first",
     masterOnly: "Raw debug is unavailable for slave sessions",
-    note: "Debug mode owns the current link; sends do not wait for a response.",
+    note: "Debug owns the link; sends are fire-and-forget, and RX may include terminal echo.",
   },
   serial: {
     label: "Serial port",

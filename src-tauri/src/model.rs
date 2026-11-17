@@ -678,11 +678,15 @@ const MAX_RAW_SEND_BYTES: usize = 4096;
 pub struct RawSendInput {
     pub data: String,
     pub mode: RawSendMode,
+    #[serde(default)]
+    pub append_cr: bool,
+    #[serde(default)]
+    pub append_lf: bool,
 }
 
 impl RawSendInput {
     pub fn encode(&self) -> Result<Vec<u8>, String> {
-        let bytes = match self.mode {
+        let mut bytes = match self.mode {
             RawSendMode::Ascii => self.data.as_bytes().to_vec(),
             RawSendMode::Hex => {
                 let cleaned = self
@@ -695,28 +699,33 @@ impl RawSendInput {
                     })
                     .collect::<String>();
                 if cleaned.is_empty() {
-                    return Err("HEX 内容为空".to_owned());
-                }
-                if !cleaned
+                    Vec::new()
+                } else if !cleaned
                     .chars()
                     .all(|character| character.is_ascii_hexdigit())
                 {
                     return Err("HEX 包含非法字符，仅支持 0–9 / A–F".to_owned());
-                }
-                if !cleaned.len().is_multiple_of(2) {
+                } else if !cleaned.len().is_multiple_of(2) {
                     return Err("HEX 内容需为偶数个十六进制字符".to_owned());
+                } else {
+                    cleaned
+                        .as_bytes()
+                        .chunks(2)
+                        .map(|pair| {
+                            let text =
+                                std::str::from_utf8(pair).map_err(|_| "HEX 编码失败".to_owned())?;
+                            u8::from_str_radix(text, 16).map_err(|_| "HEX 解析失败".to_owned())
+                        })
+                        .collect::<Result<Vec<_>, _>>()?
                 }
-                cleaned
-                    .as_bytes()
-                    .chunks(2)
-                    .map(|pair| {
-                        let text =
-                            std::str::from_utf8(pair).map_err(|_| "HEX 编码失败".to_owned())?;
-                        u8::from_str_radix(text, 16).map_err(|_| "HEX 解析失败".to_owned())
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
             }
         };
+        if self.append_cr {
+            bytes.push(0x0d);
+        }
+        if self.append_lf {
+            bytes.push(0x0a);
+        }
         if bytes.is_empty() {
             return Err("发送内容为空".to_owned());
         }

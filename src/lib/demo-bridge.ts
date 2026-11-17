@@ -1132,7 +1132,12 @@ export function createDemoBridge(): IpcApi {
   async function sendDebug(sessionId: string, input: RawSendInput): Promise<number> {
     if (debugSessionId !== sessionId) throw new Error("调试模式未开启");
     const session = sessionById(sessionId);
-    const payload = Array.from(encodeRawPayload(input.data, input.mode));
+    const payload = Array.from(
+      encodeRawPayload(input.data, input.mode, {
+        appendCr: input.appendCr,
+        appendLf: input.appendLf,
+      }),
+    );
     emitDebug(sessionId, "tx", payload);
     session.stats.tx += 1;
     emit("session:status", statusPayload(session));

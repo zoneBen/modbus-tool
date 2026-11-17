@@ -5,18 +5,40 @@ export const MAX_RAW_SEND_BYTES = 4096;
 
 const HEX_SEPARATORS = /[\s,_:-]+/g;
 
-export function encodeRawPayload(data: string, mode: RawSendMode): Uint8Array {
-  const bytes = mode === "ascii" ? new TextEncoder().encode(data) : decodeHex(data);
-  if (!bytes.length) throw new Error("发送内容为空");
+export interface RawSendSuffix {
+  appendCr?: boolean;
+  appendLf?: boolean;
+}
+
+export function encodeRawPayload(
+  data: string,
+  mode: RawSendMode,
+  suffix: RawSendSuffix = {},
+): Uint8Array {
+  const base = mode === "ascii" ? new TextEncoder().encode(data) : decodeHex(data);
+  const hasSuffix = Boolean(suffix.appendCr || suffix.appendLf);
+  if (!base.length && !hasSuffix) {
+    throw new Error(mode === "hex" ? "HEX 内容为空" : "发送内容为空");
+  }
+  const extra = (suffix.appendCr ? 1 : 0) + (suffix.appendLf ? 1 : 0);
+  const bytes = new Uint8Array(base.length + extra);
+  bytes.set(base);
+  let offset = base.length;
+  if (suffix.appendCr) bytes[offset++] = 0x0d;
+  if (suffix.appendLf) bytes[offset] = 0x0a;
   if (bytes.length > MAX_RAW_SEND_BYTES) {
     throw new Error(`单次发送不能超过 ${MAX_RAW_SEND_BYTES} 字节，当前 ${bytes.length} 字节`);
   }
   return bytes;
 }
 
-export function rawByteLength(data: string, mode: RawSendMode): number | null {
+export function rawByteLength(
+  data: string,
+  mode: RawSendMode,
+  suffix: RawSendSuffix = {},
+): number | null {
   try {
-    return encodeRawPayload(data, mode).length;
+    return encodeRawPayload(data, mode, suffix).length;
   } catch {
     return null;
   }
@@ -37,7 +59,7 @@ export function formatDebugBytes(data: readonly number[], mode: "ascii" | "hex")
 
 function decodeHex(data: string): Uint8Array {
   const cleaned = data.replace(/0x/gi, "").replace(HEX_SEPARATORS, "");
-  if (!cleaned) throw new Error("HEX 内容为空");
+  if (!cleaned) return new Uint8Array();
   if (!/^[0-9a-f]+$/i.test(cleaned)) {
     throw new Error("HEX 包含非法字符，仅支持 0–9 / A–F");
   }

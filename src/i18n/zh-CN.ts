@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "工业总线调试台",
-    version: "v0.1.7",
+    version: "v0.1.8",
   },
   nav: {
     workspace: "工作台",
@@ -104,6 +104,7 @@ export default {
     active: "持续接收中",
     inactive: "已停止",
     pollingOff: "轮询已关闭",
+    suffix: "后缀",
     display: "显示",
     sendFormat: "发送格式",
     ascii: "ASCII",
@@ -113,7 +114,7 @@ export default {
     entries: "记录 {count} 条",
     empty: "等待设备数据…",
     emptyHint: "调试模式会持续读取链路，设备发送的数据将实时显示在这里。",
-    inputPlaceholder: "输入要发送的文本，按 Enter 发送",
+    inputPlaceholder: "输入要发送的文本，可勾选后缀追加换行",
     inputPlaceholderHex: "输入十六进制字节，例如 01 03 00 00 00 0A",
     inputLabel: "调试发送数据",
     inputDisabled: "调试链路未开启",
@@ -130,7 +131,7 @@ export default {
     prerequisitePolling: "请先停止轮询后再进入调试模式",
     prerequisiteConnect: "请先启动会话链路",
     masterOnly: "从站模拟会话不支持原始调试",
-    note: "调试期间持续占用当前链路，命令发送不会等待响应。",
+    note: "调试独占链路，发送不等待响应；RX 为设备实际返回，可能包含终端回显。",
   },
   serial: {
     label: "串口端口",
