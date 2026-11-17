@@ -16,9 +16,9 @@ use modbus_core::{BytePos, DataType, ExceptionCode, Framing, PduRequest, PduResp
 use crate::event::{AppEvent, EventBus, emit};
 use crate::frames::{FrameInfo, build_frame};
 use crate::model::{
-    CustomWriteInput, DefinitionDto, DefinitionInput, DefinitionSnapshotDto, FrameDto, LinkConfig,
-    RawSendInput, RawSendResultDto, RegisterValueDto, SessionRole, SessionState, SessionStatus,
-    SlaveValueInput, UpdateSessionInput, now_ms,
+    CustomWriteInput, DebugDataDto, DebugStateDto, DefinitionDto, DefinitionInput,
+    DefinitionSnapshotDto, FrameDto, LinkConfig, RawSendInput, RegisterValueDto, SessionRole,
+    SessionState, SessionStatus, SlaveValueInput, UpdateSessionInput, now_ms,
 };
 use crate::transport::{Transport, TransportError};
 
@@ -68,9 +68,15 @@ pub enum SessionCommand {
         input: CustomWriteInput,
         reply: oneshot::Sender<Result<(), String>>,
     },
-    SendRaw {
+    DebugStart {
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    DebugStop {
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    DebugSend {
         input: RawSendInput,
-        reply: oneshot::Sender<Result<RawSendResultDto, String>>,
+        reply: oneshot::Sender<Result<usize, String>>,
     },
     UpdateConfig {
         input: UpdateSessionInput,
@@ -128,6 +134,10 @@ pub struct Actor {
     slave_map: Option<Arc<StdMutex<Simulator>>>,
     next_tid: u16,
     last_run: HashMap<String, Instant>,
+    debug_active: bool,
+    debug_pending: Vec<u8>,
+    last_debug_emit: Option<Instant>,
+    last_debug_status: Option<Instant>,
 }
 
 impl Actor {
@@ -147,6 +157,10 @@ impl Actor {
             slave_map: None,
             next_tid: 0,
             last_run: HashMap::new(),
+            debug_active: false,
+            debug_pending: Vec::new(),
+            last_debug_emit: None,
+            last_debug_status: None,
         }
     }
 
@@ -154,7 +168,23 @@ impl Actor {
         let Some(mut commands) = self.commands.take() else {
             return;
         };
-        loop {
+        'run: loop {
+            if self.debug_active {
+                self.debug_tick().await;
+                loop {
+                    match commands.try_recv() {
+                        Ok(command) => {
+                            if !self.handle_command(command).await {
+                                break 'run;
+                            }
+                        }
+                        Err(mpsc::error::TryRecvError::Empty) => break,
+                        Err(mpsc::error::TryRecvError::Disconnected) => break 'run,
+                    }
+                }
+                continue;
+            }
+
             let next_due = self.next_due().await;
             let command = tokio::select! {
                 command = commands.recv() => command,
@@ -178,6 +208,15 @@ impl Actor {
     }
 
     async fn handle_command(&mut self, command: SessionCommand) -> bool {
+        if self.debug_active
+            && !matches!(
+                &command,
+                SessionCommand::DebugSend { .. } | SessionCommand::DebugStop { .. }
+            )
+        {
+            return reject_debug_command(command);
+        }
+
         match command {
             SessionCommand::Connect { reply } => {
                 let result = self.connect().await;
@@ -266,12 +305,19 @@ impl Actor {
                 let _ = reply.send(result.map_err(TransactionError::message));
                 true
             }
-            SessionCommand::SendRaw { input, reply } => {
-                let result = self.send_raw(input).await;
-                if matches!(&result, Err(TransactionError::Transport(_))) {
-                    self.reconnect().await;
-                }
-                let _ = reply.send(result.map_err(TransactionError::message));
+            SessionCommand::DebugStart { reply } => {
+                let result = self.start_debug().await;
+                let _ = reply.send(result);
+                true
+            }
+            SessionCommand::DebugStop { reply } => {
+                let result = self.stop_debug().await;
+                let _ = reply.send(result);
+                true
+            }
+            SessionCommand::DebugSend { input, reply } => {
+                let result = self.send_debug(input).await;
+                let _ = reply.send(result);
                 true
             }
             SessionCommand::UpdateConfig { input, reply } => {
@@ -620,96 +666,175 @@ impl Actor {
         }
     }
 
-    async fn send_raw(
-        &mut self,
-        input: RawSendInput,
-    ) -> Result<RawSendResultDto, TransactionError> {
-        let (role, status, session_id, framing, timeout_ms) = {
+    async fn start_debug(&mut self) -> Result<(), String> {
+        let (role, status, polling, session_id) = {
             let state = self.state.read().await;
             (
                 state.config.role,
                 state.status,
+                state.polling,
                 state.config.id.clone(),
-                state.config.framing,
-                state.config.timeout_ms,
             )
         };
         if role != SessionRole::Master {
-            return Err(TransactionError::Protocol(
-                "从站模拟会话不支持手动发送".to_owned(),
-            ));
+            return Err("从站模拟会话不支持原始调试".to_owned());
         }
         if status != SessionStatus::Connected || self.transport.is_none() {
-            return Err(TransactionError::Protocol("会话未连接".to_owned()));
+            return Err("会话未连接，请先启动链路".to_owned());
+        }
+        if polling {
+            return Err("请先停止轮询后再进入调试模式".to_owned());
+        }
+        if self.debug_active {
+            return Err("调试模式已开启".to_owned());
         }
 
-        let payload = input.encode().map_err(TransactionError::Protocol)?;
+        self.debug_active = true;
+        self.debug_pending.clear();
+        self.last_debug_emit = Some(Instant::now());
+        self.last_debug_status = Some(Instant::now());
+        emit(
+            &self.bus,
+            AppEvent::DebugState(DebugStateDto {
+                session_id,
+                active: true,
+                error: None,
+            }),
+        );
+        Ok(())
+    }
+
+    async fn stop_debug(&mut self) -> Result<(), String> {
+        if !self.debug_active {
+            return Ok(());
+        }
+        self.flush_debug_pending().await;
+        self.debug_active = false;
+        self.debug_pending.clear();
+        self.last_debug_emit = None;
+        self.last_debug_status = None;
+        self.emit_debug_state(None).await;
+        Ok(())
+    }
+
+    async fn send_debug(&mut self, input: RawSendInput) -> Result<usize, String> {
+        if !self.debug_active {
+            return Err("调试模式未开启".to_owned());
+        }
+        let payload = input.encode()?;
         let bytes_sent = payload.len();
+        let (session_id, timeout_ms) = {
+            let state = self.state.read().await;
+            (state.config.id.clone(), state.config.timeout_ms)
+        };
         let timeout = Duration::from_millis(timeout_ms.clamp(100, 5000));
         let result = match self.transport.as_mut() {
-            Some(transport) => transport.send_raw(&payload, timeout).await,
+            Some(transport) => transport.write_raw(&payload, timeout).await,
             None => Err(TransportError::Closed),
         };
+        if let Err(error) = result {
+            let message = error.to_string();
+            self.fail_debug(message.clone()).await;
+            return Err(message);
+        }
 
-        match result {
-            Ok(reply) => {
-                let bytes_received = reply.data.len();
-                let latency_ms = reply.latency_ms.unwrap_or(0.0);
-                let mut frames = vec![build_frame(
-                    self.next_seq(),
-                    &session_id,
-                    &payload,
-                    framing,
-                    FrameInfo {
-                        direction: "tx",
-                        summary: format!("手动发送 · {} · {bytes_sent} B", input.mode.label()),
-                        latency_ms: None,
-                        status: "ok",
-                    },
-                )];
-                if !reply.data.is_empty() {
-                    frames.push(build_frame(
-                        self.next_seq(),
-                        &session_id,
-                        &reply.data,
-                        framing,
-                        FrameInfo {
-                            direction: "rx",
-                            summary: format!("手动接收 · {bytes_received} B"),
-                            latency_ms: Some(round1(latency_ms)),
-                            status: "ok",
-                        },
-                    ));
+        {
+            let mut state = self.state.write().await;
+            state.stats.tx += 1;
+        }
+        emit(
+            &self.bus,
+            AppEvent::DebugData(DebugDataDto {
+                session_id,
+                direction: "tx".to_owned(),
+                data: payload,
+                timestamp: now_ms(),
+            }),
+        );
+        self.last_debug_status = Some(Instant::now());
+        self.emit_status(None).await;
+        Ok(bytes_sent)
+    }
+
+    async fn debug_tick(&mut self) {
+        let read = match self.transport.as_mut() {
+            Some(transport) => transport.read_debug(Duration::from_millis(30)).await,
+            None => Err(TransportError::Closed),
+        };
+        match read {
+            Ok(bytes) => {
+                if !bytes.is_empty() {
+                    self.debug_pending.extend_from_slice(&bytes);
                 }
-                let rx = if bytes_received == 0 { 0 } else { 1 };
-                self.finish_transaction(frames, 1, rx, 0, latency_ms, None)
-                    .await;
-                self.wait_inter_frame().await;
-                Ok(RawSendResultDto {
-                    bytes_sent,
-                    bytes_received,
-                    latency_ms: round1(latency_ms),
-                })
+                let due = self
+                    .last_debug_emit
+                    .map(|last| last.elapsed() >= Duration::from_millis(40))
+                    .unwrap_or(true);
+                if !self.debug_pending.is_empty() && (self.debug_pending.len() >= 2048 || due) {
+                    self.flush_debug_pending().await;
+                }
             }
             Err(error) => {
-                let message = error.to_string();
-                let frames = vec![build_frame(
-                    self.next_seq(),
-                    &session_id,
-                    &payload,
-                    framing,
-                    FrameInfo {
-                        direction: "tx",
-                        summary: format!("手动发送失败 · {message}"),
-                        latency_ms: None,
-                        status: "error",
-                    },
-                )];
-                self.finish_transaction(frames, 0, 0, 1, 0.0, Some(message.clone()))
-                    .await;
-                Err(TransactionError::Transport(message))
+                self.flush_debug_pending().await;
+                self.fail_debug(error.to_string()).await;
             }
         }
+    }
+
+    async fn flush_debug_pending(&mut self) {
+        if self.debug_pending.is_empty() {
+            return;
+        }
+        let data = std::mem::take(&mut self.debug_pending);
+        let session_id = self.state.read().await.config.id.clone();
+        {
+            let mut state = self.state.write().await;
+            state.stats.rx += 1;
+        }
+        emit(
+            &self.bus,
+            AppEvent::DebugData(DebugDataDto {
+                session_id,
+                direction: "rx".to_owned(),
+                data,
+                timestamp: now_ms(),
+            }),
+        );
+        self.last_debug_emit = Some(Instant::now());
+        let status_due = self
+            .last_debug_status
+            .map(|last| last.elapsed() >= Duration::from_secs(1))
+            .unwrap_or(true);
+        if status_due {
+            self.last_debug_status = Some(Instant::now());
+            self.emit_status(None).await;
+        }
+    }
+
+    async fn fail_debug(&mut self, message: String) {
+        self.debug_active = false;
+        self.debug_pending.clear();
+        self.last_debug_emit = None;
+        self.last_debug_status = None;
+        self.transport = None;
+        {
+            let mut state = self.state.write().await;
+            state.status = SessionStatus::Error;
+        }
+        self.emit_debug_state(Some(message.clone())).await;
+        self.emit_status(Some(message)).await;
+    }
+
+    async fn emit_debug_state(&self, error: Option<String>) {
+        let session_id = self.state.read().await.config.id.clone();
+        emit(
+            &self.bus,
+            AppEvent::DebugState(DebugStateDto {
+                session_id,
+                active: self.debug_active,
+                error,
+            }),
+        );
     }
 
     async fn update_config(&mut self, input: UpdateSessionInput) -> Result<(), String> {
@@ -1127,6 +1252,37 @@ impl Actor {
     fn next_seq(&self) -> u64 {
         self.seq.fetch_add(1, Ordering::Relaxed)
     }
+}
+
+fn reject_debug_command(command: SessionCommand) -> bool {
+    let message = "调试模式进行中，请先关闭调试".to_owned();
+    match command {
+        SessionCommand::Connect { reply }
+        | SessionCommand::Disconnect { reply }
+        | SessionCommand::SetPolling { reply, .. }
+        | SessionCommand::ReadOnce { reply, .. }
+        | SessionCommand::SetDefinitionEnabled { reply, .. }
+        | SessionCommand::DeleteDefinition { reply, .. }
+        | SessionCommand::WriteRegister { reply, .. }
+        | SessionCommand::WriteCustom { reply, .. }
+        | SessionCommand::UpdateConfig { reply, .. }
+        | SessionCommand::DebugStart { reply }
+        | SessionCommand::DebugStop { reply } => {
+            let _ = reply.send(Err(message));
+        }
+        SessionCommand::CreateDefinition { reply, .. }
+        | SessionCommand::UpdateDefinition { reply, .. } => {
+            let _ = reply.send(Err(message));
+        }
+        SessionCommand::SlaveWriteValue { reply, .. } => {
+            let _ = reply.send(Err(message));
+        }
+        SessionCommand::DebugSend { reply, .. } => {
+            let _ = reply.send(Err(message));
+        }
+        SessionCommand::Shutdown => return false,
+    }
+    true
 }
 
 fn build_custom_request(input: &CustomWriteInput) -> Result<PduRequest, TransactionError> {

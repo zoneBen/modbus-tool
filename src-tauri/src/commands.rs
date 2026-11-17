@@ -5,8 +5,8 @@ use tauri::State;
 
 use crate::model::{
     AddressScanInput, BaudScanInput, CustomWriteInput, DefinitionDto, DefinitionInput,
-    NetworkScanInput, NewSessionInput, RawSendInput, RawSendResultDto, SerialPortInfoDto,
-    SessionDto, SlaveIdScanInput, SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
+    NetworkScanInput, NewSessionInput, RawSendInput, SerialPortInfoDto, SessionDto,
+    SlaveIdScanInput, SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
 };
 use crate::state::AppState;
 
@@ -60,7 +60,7 @@ pub fn list_serial_ports() -> Result<Vec<SerialPortInfoDto>, String> {
         })
         .map_err(|error| {
             tracing::warn!(%error, "failed to enumerate serial ports");
-            format!("串口枚举失败：{error}")
+            error.to_string()
         })
 }
 
@@ -201,12 +201,22 @@ pub async fn slave_write_value(
 }
 
 #[tauri::command]
-pub async fn session_send_raw(
+pub async fn debug_start(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.manager.debug_start(&session_id).await
+}
+
+#[tauri::command]
+pub async fn debug_stop(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.manager.debug_stop(&session_id).await
+}
+
+#[tauri::command]
+pub async fn debug_send(
     session_id: String,
     input: RawSendInput,
     state: State<'_, AppState>,
-) -> Result<RawSendResultDto, String> {
-    state.manager.send_raw(&session_id, input).await
+) -> Result<usize, String> {
+    state.manager.debug_send(&session_id, input).await
 }
 
 #[tauri::command]

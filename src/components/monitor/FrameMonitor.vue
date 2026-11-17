@@ -17,7 +17,6 @@ import { toast } from "vue-sonner";
 import EmptyState from "@/components/common/EmptyState.vue";
 import ChartPanel from "@/components/chart/ChartPanel.vue";
 import FrameDetail from "@/components/monitor/FrameDetail.vue";
-import RawSendBar from "@/components/monitor/RawSendBar.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatHexBytes, formatLatency, formatTime } from "@/lib/format";
@@ -152,8 +151,6 @@ async function exportFrames(): Promise<void> {
 
 <template>
   <section class="flex min-h-0 flex-col border-t border-hairline bg-[color:var(--surface)]/55">
-    <RawSendBar />
-
     <div class="flex h-[38px] shrink-0 items-center gap-0.5 px-2">
       <button
         type="button"

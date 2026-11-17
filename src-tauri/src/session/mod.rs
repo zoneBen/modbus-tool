@@ -13,9 +13,8 @@ use uuid::Uuid;
 
 use crate::event::{AppEvent, EventBus, emit};
 use crate::model::{
-    CustomWriteInput, DefinitionDto, DefinitionInput, NewSessionInput, RawSendInput,
-    RawSendResultDto, SessionDto, SessionState, SlaveValueInput, UpdateSessionInput,
-    WorkspaceSnapshotDto,
+    CustomWriteInput, DefinitionDto, DefinitionInput, NewSessionInput, RawSendInput, SessionDto,
+    SessionState, SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
 };
 
 use actor::{Actor, SessionCommand};
@@ -255,13 +254,22 @@ impl SessionManager {
         .await
     }
 
-    pub async fn send_raw(
-        &self,
-        session_id: &str,
-        input: RawSendInput,
-    ) -> Result<RawSendResultDto, String> {
-        self.ask(session_id, |reply| SessionCommand::SendRaw { input, reply })
+    pub async fn debug_start(&self, session_id: &str) -> Result<(), String> {
+        self.ask(session_id, |reply| SessionCommand::DebugStart { reply })
             .await
+    }
+
+    pub async fn debug_stop(&self, session_id: &str) -> Result<(), String> {
+        self.ask(session_id, |reply| SessionCommand::DebugStop { reply })
+            .await
+    }
+
+    pub async fn debug_send(&self, session_id: &str, input: RawSendInput) -> Result<usize, String> {
+        self.ask(session_id, |reply| SessionCommand::DebugSend {
+            input,
+            reply,
+        })
+        .await
     }
 
     pub async fn disconnect(&self, session_id: &str) -> Result<(), String> {

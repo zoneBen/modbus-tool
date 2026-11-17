@@ -8,11 +8,8 @@ use tokio::time::{Instant, timeout, timeout_at};
 
 use modbus_core::Framing;
 
+use super::TransportError;
 use super::stream::read_frame;
-use super::{RawReply, TransportError};
-
-const RAW_IDLE: Duration = Duration::from_millis(60);
-const RAW_REPLY_LIMIT: usize = 8192;
 
 pub struct TcpTransport {
     stream: TcpStream,
@@ -74,11 +71,11 @@ impl TcpTransport {
         }
     }
 
-    pub async fn send_raw(
+    pub async fn write_raw(
         &mut self,
         data: &[u8],
         timeout_duration: Duration,
-    ) -> Result<RawReply, TransportError> {
+    ) -> Result<(), TransportError> {
         let deadline = Instant::now() + timeout_duration;
         timeout_at(deadline, self.stream.write_all(data))
             .await
@@ -92,37 +89,19 @@ impl TcpTransport {
                 partial: Vec::new(),
             })?
             .map_err(|error| TransportError::Io(error.to_string()))?;
+        Ok(())
+    }
 
-        let started = Instant::now();
-        let mut buffer = [0u8; 1024];
-        let mut response = Vec::new();
-        match timeout_at(deadline, self.stream.read(&mut buffer)).await {
-            Err(_) => {
-                return Ok(RawReply {
-                    data: response,
-                    latency_ms: None,
-                });
-            }
-            Ok(Ok(0)) => return Err(TransportError::Closed),
-            Ok(Ok(read)) => {
-                response.extend_from_slice(&buffer[..read]);
-            }
-            Ok(Err(error)) => return Err(TransportError::Io(error.to_string())),
+    pub async fn read_debug(
+        &mut self,
+        timeout_duration: Duration,
+    ) -> Result<Vec<u8>, TransportError> {
+        let mut buffer = [0u8; 2048];
+        match timeout(timeout_duration, self.stream.read(&mut buffer)).await {
+            Err(_) => Ok(Vec::new()),
+            Ok(Ok(0)) => Err(TransportError::Closed),
+            Ok(Ok(read)) => Ok(buffer[..read].to_vec()),
+            Ok(Err(error)) => Err(TransportError::Io(error.to_string())),
         }
-        let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
-
-        while response.len() < RAW_REPLY_LIMIT {
-            let idle_deadline = (Instant::now() + RAW_IDLE).min(deadline);
-            match timeout_at(idle_deadline, self.stream.read(&mut buffer)).await {
-                Err(_) | Ok(Ok(0)) => break,
-                Ok(Ok(read)) => response.extend_from_slice(&buffer[..read]),
-                Ok(Err(error)) => return Err(TransportError::Io(error.to_string())),
-            }
-        }
-        response.truncate(RAW_REPLY_LIMIT);
-        Ok(RawReply {
-            data: response,
-            latency_ms: Some(latency_ms),
-        })
     }
 }

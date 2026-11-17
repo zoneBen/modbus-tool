@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AboutOverlay from "@/components/about/AboutOverlay.vue";
 import TrendOverlay from "@/components/chart/TrendOverlay.vue";
+import DebugDialog from "@/components/debug/DebugDialog.vue";
 import ActivityRail from "@/components/layout/ActivityRail.vue";
 import SessionSidebar from "@/components/layout/SessionSidebar.vue";
 import SessionTabs from "@/components/layout/SessionTabs.vue";
@@ -26,6 +28,7 @@ useRealtimeEvents();
 
 const settings = useSettingsStore();
 const sessions = useSessionsStore();
+const { t } = useI18n();
 const initialDialog = new URLSearchParams(window.location.search).get("dialog");
 const newSessionOpen = ref(initialDialog === "session");
 const settingsOpen = ref(initialDialog === "settings");
@@ -34,11 +37,30 @@ const writeOpen = ref(false);
 const writeTarget = ref<WriteTarget | null>(null);
 const trendOpen = ref(false);
 const editSessionOpen = ref(false);
+const debugOpen = ref(false);
 const aboutOpen = ref(false);
 
 const monitorStyle = computed(() => ({
-  height: settings.monitorCollapsed ? "79px" : `${settings.monitorHeight}px`,
+  height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
 }));
+
+function openDebug(): void {
+  const session = sessions.activeSession;
+  if (!session) return;
+  if (session.role !== "master") {
+    toast.info(t("debug.masterOnly"));
+    return;
+  }
+  if (session.status !== "connected") {
+    toast.info(t("debug.prerequisiteConnect"));
+    return;
+  }
+  if (session.polling) {
+    toast.info(t("debug.prerequisitePolling"));
+    return;
+  }
+  debugOpen.value = true;
+}
 
 function openWrite(target: WriteTarget): void {
   writeTarget.value = target;
@@ -116,6 +138,7 @@ function startResize(event: PointerEvent): void {
         <SessionTabs />
         <SessionToolbar
           @write="openWriteFromToolbar"
+          @debug="openDebug"
           @edit-session="editSessionOpen = true"
           @open-settings="settingsOpen = true"
         />
@@ -154,6 +177,7 @@ function startResize(event: PointerEvent): void {
 
     <NewSessionDialog v-model:open="newSessionOpen" />
     <EditSessionDialog v-model:open="editSessionOpen" />
+    <DebugDialog v-model:open="debugOpen" />
     <SettingsDialog v-model:open="settingsOpen" />
     <ScanDialog v-model:open="scanOpen" />
     <WriteDialog v-model:open="writeOpen" :target="writeTarget" />

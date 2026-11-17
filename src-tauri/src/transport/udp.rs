@@ -8,7 +8,7 @@ use tokio::time::{Instant, timeout, timeout_at};
 
 use modbus_core::Framing;
 
-use super::{RawReply, TransportError};
+use super::TransportError;
 
 const UDP_BUFFER: usize = 2048;
 
@@ -78,38 +78,29 @@ impl UdpTransport {
         }
     }
 
-    pub async fn send_raw(
+    pub async fn write_raw(
         &mut self,
         data: &[u8],
         timeout_duration: Duration,
-    ) -> Result<RawReply, TransportError> {
+    ) -> Result<(), TransportError> {
         let deadline = Instant::now() + timeout_duration;
-        let mut buffer = [0u8; UDP_BUFFER];
-        loop {
-            match self.socket.try_recv(&mut buffer) {
-                Ok(_) => continue,
-                Err(error) if error.kind() == ErrorKind::WouldBlock => break,
-                Err(_) => break,
-            }
-        }
-
         timeout_at(deadline, self.socket.send(data))
             .await
             .map_err(|_| TransportError::Timeout {
                 partial: Vec::new(),
             })?
             .map_err(|error| TransportError::Io(error.to_string()))?;
+        Ok(())
+    }
 
-        let started = Instant::now();
-        match timeout_at(deadline, self.socket.recv(&mut buffer)).await {
-            Err(_) => Ok(RawReply {
-                data: Vec::new(),
-                latency_ms: None,
-            }),
-            Ok(Ok(read)) => Ok(RawReply {
-                data: buffer[..read].to_vec(),
-                latency_ms: Some(started.elapsed().as_secs_f64() * 1000.0),
-            }),
+    pub async fn read_debug(
+        &mut self,
+        timeout_duration: Duration,
+    ) -> Result<Vec<u8>, TransportError> {
+        let mut buffer = [0u8; UDP_BUFFER];
+        match timeout(timeout_duration, self.socket.recv(&mut buffer)).await {
+            Err(_) => Ok(Vec::new()),
+            Ok(Ok(read)) => Ok(buffer[..read].to_vec()),
             Ok(Err(error)) => Err(TransportError::Io(error.to_string())),
         }
     }

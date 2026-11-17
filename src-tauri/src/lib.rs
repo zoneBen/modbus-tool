@@ -31,6 +31,12 @@ fn forward(app: &tauri::AppHandle, event: AppEvent) {
                 SessionFramesEventDto { session_id, frames },
             );
         }
+        AppEvent::DebugData(payload) => {
+            let _ = app.emit("debug:data", payload);
+        }
+        AppEvent::DebugState(payload) => {
+            let _ = app.emit("debug:state", payload);
+        }
         AppEvent::WorkspaceUpdated(payload) => {
             let _ = app.emit("workspace:updated", payload);
         }
@@ -104,7 +110,9 @@ pub fn run() {
             commands::definition_delete,
             commands::write_register,
             commands::write_custom,
-            commands::session_send_raw,
+            commands::debug_start,
+            commands::debug_stop,
+            commands::debug_send,
             commands::session_connect,
             commands::session_disconnect,
             commands::session_update,

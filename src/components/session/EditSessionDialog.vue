@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { SlidersHorizontal, Usb, Network } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import SerialPortField from "./SerialPortField.vue";
 
 const open = defineModel<boolean>("open", { default: false });
 const sessions = useSessionsStore();
+const { t } = useI18n();
 const session = computed(() => sessions.activeSession);
 
 const name = ref("");
@@ -119,7 +121,7 @@ async function submit(): Promise<void> {
     return;
   }
   if (linkMode.value === "serial" && !serialPort.value.trim()) {
-    toast.error("请选择或输入串口端口");
+    toast.error(t("serial.missing"));
     return;
   }
   const input: UpdateSessionInput = {

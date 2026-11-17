@@ -671,15 +671,6 @@ pub enum RawSendMode {
     Hex,
 }
 
-impl RawSendMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Ascii => "ASCII",
-            Self::Hex => "HEX",
-        }
-    }
-}
-
 const MAX_RAW_SEND_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -739,12 +730,22 @@ impl RawSendInput {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RawSendResultDto {
-    pub bytes_sent: usize,
-    pub bytes_received: usize,
-    pub latency_ms: f64,
+pub struct DebugDataDto {
+    pub session_id: String,
+    pub direction: String,
+    pub data: Vec<u8>,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugStateDto {
+    pub session_id: String,
+    pub active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]

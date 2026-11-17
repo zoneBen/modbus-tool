@@ -34,12 +34,6 @@ impl TransportError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RawReply {
-    pub data: Vec<u8>,
-    pub latency_ms: Option<f64>,
-}
-
 pub enum Transport {
     Tcp(tcp::TcpTransport),
     Udp(udp::UdpTransport),
@@ -72,15 +66,23 @@ impl Transport {
         }
     }
 
-    pub async fn send_raw(
+    pub async fn write_raw(
         &mut self,
         data: &[u8],
         timeout: Duration,
-    ) -> Result<RawReply, TransportError> {
+    ) -> Result<(), TransportError> {
         match self {
-            Self::Tcp(transport) => transport.send_raw(data, timeout).await,
-            Self::Udp(transport) => transport.send_raw(data, timeout).await,
-            Self::Serial(transport) => transport.send_raw(data, timeout).await,
+            Self::Tcp(transport) => transport.write_raw(data, timeout).await,
+            Self::Udp(transport) => transport.write_raw(data, timeout).await,
+            Self::Serial(transport) => transport.write_raw(data, timeout).await,
+        }
+    }
+
+    pub async fn read_debug(&mut self, timeout: Duration) -> Result<Vec<u8>, TransportError> {
+        match self {
+            Self::Tcp(transport) => transport.read_debug(timeout).await,
+            Self::Udp(transport) => transport.read_debug(timeout).await,
+            Self::Serial(transport) => transport.read_debug(timeout).await,
         }
     }
 }

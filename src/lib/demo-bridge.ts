@@ -12,7 +12,6 @@ import type {
   NetworkScanInput,
   NewSessionInput,
   RawSendInput,
-  RawSendResult,
   RegisterValue,
   ScanKind,
   ScanProgress,
@@ -382,6 +381,9 @@ export function createDemoBridge(): IpcApi {
     { kind: ScanKind; total: number; done: number; found: number }
   >();
   let scanSequence = 0;
+  let debugSessionId: string | null = null;
+  let debugTimer: ReturnType<typeof setInterval> | null = null;
+  let debugHeartbeat = 0;
 
   function emit<K extends AppEventName>(event: K, payload: AppEventMap[K]): void {
     listeners.get(event)?.forEach((handler) => handler(payload));
@@ -391,6 +393,22 @@ export function createDemoBridge(): IpcApi {
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (!session) throw new Error(`会话不存在: ${sessionId}`);
     return session;
+  }
+
+  function emitDebug(sessionId: string, direction: "tx" | "rx", data: number[]): void {
+    emit("debug:data", { sessionId, direction, data, timestamp: Date.now() });
+  }
+
+  function stopDebugLoop(notify: boolean): void {
+    if (debugTimer) {
+      clearInterval(debugTimer);
+      debugTimer = null;
+    }
+    const sessionId = debugSessionId;
+    debugSessionId = null;
+    if (notify && sessionId) {
+      emit("debug:state", { sessionId, active: false });
+    }
   }
 
   function statusPayload(session: Session): SessionStatusEvent {
@@ -685,6 +703,7 @@ export function createDemoBridge(): IpcApi {
   async function deleteSession(sessionId: string): Promise<void> {
     const index = sessions.findIndex((session) => session.id === sessionId);
     if (index < 0) throw new Error("会话不存在");
+    if (debugSessionId === sessionId) stopDebugLoop(true);
     sessions.splice(index, 1);
     for (const key of [...latestSnapshots.keys()]) {
       if (key.startsWith(`${sessionId}:`)) latestSnapshots.delete(key);
@@ -693,6 +712,7 @@ export function createDemoBridge(): IpcApi {
   }
 
   async function connectSession(sessionId: string): Promise<void> {
+    if (debugSessionId === sessionId) throw new Error("调试模式进行中，请先关闭调试");
     const session = sessionById(sessionId);
     session.status = "connected";
     session.polling = session.role === "master";
@@ -705,6 +725,7 @@ export function createDemoBridge(): IpcApi {
 
   async function disconnectSession(sessionId: string): Promise<void> {
     const session = sessionById(sessionId);
+    if (debugSessionId === sessionId) stopDebugLoop(true);
     session.status = "disconnected";
     session.polling = false;
     emit("session:status", statusPayload(session));
@@ -712,6 +733,7 @@ export function createDemoBridge(): IpcApi {
   }
 
   async function updateSession(sessionId: string, input: UpdateSessionInput): Promise<void> {
+    if (debugSessionId === sessionId) throw new Error("调试模式进行中，请先关闭调试");
     const session = sessionById(sessionId);
     session.name = input.name.trim() || session.name;
     session.transport = input.transport;
@@ -767,6 +789,9 @@ export function createDemoBridge(): IpcApi {
   }
 
   async function setPolling(sessionId: string, enabled: boolean): Promise<void> {
+    if (debugSessionId === sessionId && enabled) {
+      throw new Error("调试模式进行中，请先关闭调试");
+    }
     const session = sessionById(sessionId);
     session.polling = enabled;
     emit("session:status", statusPayload(session));
@@ -1077,31 +1102,47 @@ export function createDemoBridge(): IpcApi {
     emit("session:status", statusPayload(session));
   }
 
-  async function sendRaw(sessionId: string, input: RawSendInput): Promise<RawSendResult> {
+  async function startDebug(sessionId: string): Promise<void> {
     const session = sessionById(sessionId);
-    if (session.role !== "master") throw new Error("从站模拟会话不支持手动发送");
-    if (session.status !== "connected") throw new Error("会话未连接");
-    const payload = Array.from(encodeRawPayload(input.data, input.mode));
-    if (!payload.length) throw new Error("发送内容为空");
+    if (session.role !== "master") throw new Error("从站模拟会话不支持原始调试");
+    if (session.status !== "connected") throw new Error("会话未连接，请先启动链路");
+    if (session.polling) throw new Error("请先停止轮询后再进入调试模式");
+    if (debugSessionId) throw new Error("调试模式已开启");
 
-    const latencyMs = Number((3 + Math.random() * 9).toFixed(1));
-    const tx = makeFrame(
-      session,
-      "tx",
-      payload,
-      `手动发送 · ${input.mode === "ascii" ? "ASCII" : "HEX"} · ${payload.length} B`,
-    );
-    const rx = makeFrame(session, "rx", payload, `手动接收 · ${payload.length} B`, latencyMs);
+    debugSessionId = sessionId;
+    debugHeartbeat = 0;
+    emit("debug:state", { sessionId, active: true });
+    debugTimer = setInterval(() => {
+      if (!debugSessionId) return;
+      debugHeartbeat += 1;
+      const text = `DEVICE READY ${debugHeartbeat.toString().padStart(4, "0")}\r\n`;
+      const data = Array.from(new TextEncoder().encode(text));
+      emitDebug(debugSessionId, "rx", data);
+      session.stats.rx += 1;
+      emit("session:status", statusPayload(session));
+    }, 1600);
+  }
+
+  async function stopDebug(sessionId: string): Promise<void> {
+    if (!debugSessionId) return;
+    if (debugSessionId !== sessionId) throw new Error("调试会话不匹配");
+    stopDebugLoop(true);
+  }
+
+  async function sendDebug(sessionId: string, input: RawSendInput): Promise<number> {
+    if (debugSessionId !== sessionId) throw new Error("调试模式未开启");
+    const session = sessionById(sessionId);
+    const payload = Array.from(encodeRawPayload(input.data, input.mode));
+    emitDebug(sessionId, "tx", payload);
     session.stats.tx += 1;
-    session.stats.rx += 1;
-    session.stats.latencyMs = latencyMs;
-    emit("session:frames", { sessionId, frames: [tx, rx] });
     emit("session:status", statusPayload(session));
-    return {
-      bytesSent: payload.length,
-      bytesReceived: payload.length,
-      latencyMs,
-    };
+    setTimeout(() => {
+      if (debugSessionId !== sessionId) return;
+      emitDebug(sessionId, "rx", payload);
+      session.stats.rx += 1;
+      emit("session:status", statusPayload(session));
+    }, 120);
+    return payload.length;
   }
 
   async function writeCustom(
@@ -1287,7 +1328,9 @@ export function createDemoBridge(): IpcApi {
     cancelScan,
     writeRegister,
     writeCustom,
-    sendRaw,
+    startDebug,
+    stopDebug,
+    sendDebug,
     on,
   };
 }

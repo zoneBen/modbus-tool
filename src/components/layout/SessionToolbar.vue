@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  Bug,
   Gauge,
   Pause,
   PencilLine,
@@ -26,6 +27,7 @@ import { useSettingsStore } from "@/stores/settings";
 
 const emit = defineEmits<{
   (event: "write"): void;
+  (event: "debug"): void;
   (event: "edit-session"): void;
   (event: "open-settings"): void;
 }>();
@@ -166,6 +168,22 @@ async function toggleConnection(): Promise<void> {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">编辑会话参数</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-8 gap-1.5 border-warn/25 bg-warn/10 text-[12px] text-warn hover:bg-warn/15"
+            :disabled="!session || isSlave"
+            :aria-label="t('toolbar.debug')"
+            @click="emit('debug')"
+          >
+            <Bug class="size-3.5" />
+            <span class="hidden lg:inline">{{ t("toolbar.debug") }}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{{ t("toolbar.debugHint") }}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger as-child>

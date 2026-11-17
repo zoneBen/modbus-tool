@@ -2,6 +2,8 @@ import type {
   AddressScanInput,
   BaudScanInput,
   CustomWriteInput,
+  DebugData,
+  DebugState,
   Definition,
   DefinitionInput,
   DefinitionSnapshot,
@@ -9,7 +11,6 @@ import type {
   NetworkScanInput,
   NewSessionInput,
   RawSendInput,
-  RawSendResult,
   ScanDone,
   ScanProgress,
   ScanResult,
@@ -26,6 +27,8 @@ export type AppEventName =
   | "session:data"
   | "session:frames"
   | "session:status"
+  | "debug:data"
+  | "debug:state"
   | "workspace:updated"
   | "scan:progress"
   | "scan:result"
@@ -35,6 +38,8 @@ export interface AppEventMap {
   "session:data": DefinitionSnapshot;
   "session:frames": { sessionId: string; frames: Frame[] };
   "session:status": SessionStatusEvent;
+  "debug:data": DebugData;
+  "debug:state": DebugState;
   "workspace:updated": WorkspaceSnapshot;
   "scan:progress": ScanProgress;
   "scan:result": ScanResult;
@@ -78,7 +83,9 @@ export interface IpcApi {
     definitionId: string | null,
     input: CustomWriteInput,
   ): Promise<void>;
-  sendRaw(sessionId: string, input: RawSendInput): Promise<RawSendResult>;
+  startDebug(sessionId: string): Promise<void>;
+  stopDebug(sessionId: string): Promise<void>;
+  sendDebug(sessionId: string, input: RawSendInput): Promise<number>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

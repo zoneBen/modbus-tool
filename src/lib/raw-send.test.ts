@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_RAW_SEND_BYTES, encodeRawPayload, rawByteLength } from "./raw-send";
+import { MAX_RAW_SEND_BYTES, encodeRawPayload, formatDebugBytes, rawByteLength } from "./raw-send";
 
 describe("manual raw send encoding", () => {
   it("sends ASCII text verbatim", () => {
@@ -27,5 +27,11 @@ describe("manual raw send encoding", () => {
     expect(() => encodeRawPayload("A".repeat(MAX_RAW_SEND_BYTES + 1), "ascii")).toThrow("4096");
     expect(rawByteLength("01 02", "hex")).toBe(2);
     expect(rawByteLength("xyz", "hex")).toBeNull();
+  });
+
+  it("formats debug bytes as text or hex", () => {
+    const bytes = [0x41, 0x42, 0x0d, 0x0a, 0x00, 0xff];
+    expect(formatDebugBytes(bytes, "ascii")).toBe("AB\n··");
+    expect(formatDebugBytes(bytes, "hex")).toBe("41 42 0D 0A 00 FF");
   });
 });

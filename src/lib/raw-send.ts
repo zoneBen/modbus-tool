@@ -1,3 +1,4 @@
+import { formatHexBytes } from "@/lib/format";
 import type { RawSendMode } from "@/types/models";
 
 export const MAX_RAW_SEND_BYTES = 4096;
@@ -19,6 +20,19 @@ export function rawByteLength(data: string, mode: RawSendMode): number | null {
   } catch {
     return null;
   }
+}
+
+export function formatDebugBytes(data: readonly number[], mode: "ascii" | "hex"): string {
+  if (mode === "hex") return formatHexBytes(data);
+  let text = "";
+  for (const byte of data) {
+    if (byte === 0x0a) text += "\n";
+    else if (byte === 0x0d) continue;
+    else if (byte === 0x09) text += "  ";
+    else if (byte >= 0x20 && byte <= 0x7e) text += String.fromCharCode(byte);
+    else text += "·";
+  }
+  return text;
 }
 
 function decodeHex(data: string): Uint8Array {

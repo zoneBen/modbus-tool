@@ -55,10 +55,17 @@ export interface RawSendInput {
   mode: RawSendMode;
 }
 
-export interface RawSendResult {
-  bytesSent: number;
-  bytesReceived: number;
-  latencyMs: number;
+export interface DebugData {
+  sessionId: string;
+  direction: "tx" | "rx";
+  data: number[];
+  timestamp: number;
+}
+
+export interface DebugState {
+  sessionId: string;
+  active: boolean;
+  error?: string;
 }
 
 export interface SessionStats {

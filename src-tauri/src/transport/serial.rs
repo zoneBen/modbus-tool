@@ -10,10 +10,10 @@ use modbus_core::frame::{self, MAX_ASCII_FRAME_LEN, MAX_RTU_ADU_LEN};
 
 use crate::model::{SerialLinkConfig, SerialParity};
 
-use super::{RawReply, TransportError};
+use super::TransportError;
 
-const RAW_IDLE: Duration = Duration::from_millis(30);
-const RAW_REPLY_LIMIT: usize = 8192;
+const DEBUG_READ_IDLE: Duration = Duration::from_millis(6);
+const DEBUG_READ_LIMIT: usize = 2048;
 
 enum SerialCommand {
     Transaction {
@@ -22,10 +22,14 @@ enum SerialCommand {
         timeout: Duration,
         reply: oneshot::Sender<Result<Vec<u8>, TransportError>>,
     },
-    SendRaw {
+    WriteRaw {
         data: Vec<u8>,
         timeout: Duration,
-        reply: oneshot::Sender<Result<RawReply, TransportError>>,
+        reply: oneshot::Sender<Result<(), TransportError>>,
+    },
+    ReadDebug {
+        timeout: Duration,
+        reply: oneshot::Sender<Result<Vec<u8>, TransportError>>,
     },
     Shutdown,
 }
@@ -77,14 +81,14 @@ impl SerialTransport {
         }
     }
 
-    pub async fn send_raw(
+    pub async fn write_raw(
         &mut self,
         data: &[u8],
         timeout_duration: Duration,
-    ) -> Result<RawReply, TransportError> {
+    ) -> Result<(), TransportError> {
         let (reply, response) = oneshot::channel();
         self.sender
-            .send(SerialCommand::SendRaw {
+            .send(SerialCommand::WriteRaw {
                 data: data.to_vec(),
                 timeout: timeout_duration,
                 reply,
@@ -97,6 +101,25 @@ impl SerialTransport {
             Err(_) => Err(TransportError::Timeout {
                 partial: Vec::new(),
             }),
+        }
+    }
+
+    pub async fn read_debug(
+        &mut self,
+        timeout_duration: Duration,
+    ) -> Result<Vec<u8>, TransportError> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(SerialCommand::ReadDebug {
+                timeout: timeout_duration,
+                reply,
+            })
+            .map_err(|_| TransportError::Serial("串口线程已退出".to_owned()))?;
+
+        match tokio::time::timeout(timeout_duration + Duration::from_millis(250), response).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(TransportError::Serial("串口线程未返回结果".to_owned())),
+            Err(_) => Ok(Vec::new()),
         }
     }
 }
@@ -122,12 +145,16 @@ fn serial_loop(
                 let result = serial_transaction(&mut *port, &request, framing, timeout);
                 let _ = reply.send(result);
             }
-            SerialCommand::SendRaw {
+            SerialCommand::WriteRaw {
                 data,
                 timeout,
                 reply,
             } => {
-                let result = serial_send_raw(&mut *port, &data, timeout);
+                let result = serial_write_raw(&mut *port, &data, timeout);
+                let _ = reply.send(result);
+            }
+            SerialCommand::ReadDebug { timeout, reply } => {
+                let result = serial_read_debug(&mut *port, timeout);
                 let _ = reply.send(result);
             }
             SerialCommand::Shutdown => break,
@@ -155,30 +182,39 @@ fn serial_transaction(
     result
 }
 
-fn serial_send_raw(
+fn serial_write_raw(
     port: &mut dyn SerialPort,
     data: &[u8],
     timeout: Duration,
-) -> Result<RawReply, TransportError> {
+) -> Result<(), TransportError> {
     let deadline = Instant::now() + timeout;
-    let _ = port.clear(ClearBuffer::Input);
+    let _ = port.clear(ClearBuffer::Output);
     port.write_all(data)
         .map_err(|error| TransportError::Serial(error.to_string()))?;
     port.flush()
         .map_err(|error| TransportError::Serial(error.to_string()))?;
+    if Instant::now() > deadline {
+        return Err(TransportError::Timeout {
+            partial: Vec::new(),
+        });
+    }
+    Ok(())
+}
 
-    let started = Instant::now();
+fn serial_read_debug(
+    port: &mut dyn SerialPort,
+    timeout: Duration,
+) -> Result<Vec<u8>, TransportError> {
+    let deadline = Instant::now() + timeout;
     let mut buffer = [0u8; 1024];
     let mut response = Vec::new();
-    let mut first_byte_at = None;
     loop {
         if Instant::now() >= deadline {
-            break;
+            return Ok(response);
         }
         match port.read(&mut buffer) {
             Ok(0) => std::thread::sleep(Duration::from_millis(1)),
             Ok(read) => {
-                first_byte_at = Some(started.elapsed().as_secs_f64() * 1000.0);
                 response.extend_from_slice(&buffer[..read]);
                 break;
             }
@@ -187,35 +223,30 @@ fn serial_send_raw(
         }
     }
 
-    if first_byte_at.is_some() {
-        loop {
-            if response.len() >= RAW_REPLY_LIMIT {
-                break;
-            }
-            let idle_deadline = (Instant::now() + RAW_IDLE).min(deadline);
-            match port.read(&mut buffer) {
-                Ok(0) => {
-                    if Instant::now() >= idle_deadline {
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_millis(1));
+    loop {
+        if response.len() >= DEBUG_READ_LIMIT {
+            break;
+        }
+        let idle_deadline = (Instant::now() + DEBUG_READ_IDLE).min(deadline);
+        match port.read(&mut buffer) {
+            Ok(0) => {
+                if Instant::now() >= idle_deadline {
+                    break;
                 }
-                Ok(read) => response.extend_from_slice(&buffer[..read]),
-                Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
-                    if Instant::now() >= idle_deadline {
-                        break;
-                    }
-                }
-                Err(error) => return Err(TransportError::Serial(error.to_string())),
+                std::thread::sleep(Duration::from_millis(1));
             }
+            Ok(read) => response.extend_from_slice(&buffer[..read]),
+            Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
+                if Instant::now() >= idle_deadline {
+                    break;
+                }
+            }
+            Err(error) => return Err(TransportError::Serial(error.to_string())),
         }
     }
 
-    response.truncate(RAW_REPLY_LIMIT);
-    Ok(RawReply {
-        data: response,
-        latency_ms: first_byte_at,
-    })
+    response.truncate(DEBUG_READ_LIMIT);
+    Ok(response)
 }
 
 fn read_frame_blocking(

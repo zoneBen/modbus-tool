@@ -145,7 +145,7 @@ async fn echo_tcp_server(listener: TcpListener) {
 }
 
 #[tokio::test]
-async fn sends_and_logs_manual_raw_data_over_tcp() {
+async fn debug_mode_reads_continuously_and_sends_manually() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let port = listener.local_addr().expect("addr").port();
     let server = tokio::spawn(echo_tcp_server(listener));
@@ -155,8 +155,29 @@ async fn sends_and_logs_manual_raw_data_over_tcp() {
     let manager = SessionManager::new(bus);
     let session = manager.create_session(input(port)).await.expect("create");
 
-    let result = manager
-        .send_raw(
+    manager
+        .set_polling(&session.id, true)
+        .await
+        .expect("enable polling");
+    let error = manager
+        .debug_start(&session.id)
+        .await
+        .expect_err("polling must block debug mode");
+    assert!(error.contains("停止轮询"), "unexpected error: {error}");
+    manager
+        .set_polling(&session.id, false)
+        .await
+        .expect("disable polling");
+
+    manager.debug_start(&session.id).await.expect("start debug");
+    let error = manager
+        .debug_start(&session.id)
+        .await
+        .expect_err("debug cannot start twice");
+    assert!(error.contains("调试模式"), "unexpected error: {error}");
+
+    let sent = manager
+        .debug_send(
             &session.id,
             RawSendInput {
                 data: "PING".to_owned(),
@@ -164,44 +185,63 @@ async fn sends_and_logs_manual_raw_data_over_tcp() {
             },
         )
         .await
-        .expect("raw send");
-    assert_eq!(result.bytes_sent, 4);
-    assert_eq!(result.bytes_received, 4);
-    assert!(result.latency_ms.is_finite());
+        .expect("debug send");
+    assert_eq!(sent, 4);
 
-    let mut frames = Vec::new();
-    for _ in 0..20 {
+    let mut tx = false;
+    let mut rx_received = Vec::new();
+    let mut active_state = false;
+    for _ in 0..40 {
         match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
-            Ok(Ok(AppEvent::SessionFrames {
-                frames: mut batch, ..
-            })) => {
-                frames.append(&mut batch);
-                if frames
-                    .iter()
-                    .any(|frame| frame.summary.contains("手动发送"))
-                    && frames
-                        .iter()
-                        .any(|frame| frame.summary.contains("手动接收"))
-                {
-                    break;
+            Ok(Ok(AppEvent::DebugData(data))) => {
+                if data.direction == "tx" && data.data.as_slice() == b"PING" {
+                    tx = true;
+                } else if data.direction == "rx" {
+                    rx_received.extend_from_slice(&data.data);
                 }
+            }
+            Ok(Ok(AppEvent::DebugState(state))) => {
+                active_state |= state.active;
+            }
+            Ok(Ok(_)) => continue,
+            Ok(Err(_)) | Err(_) => break,
+        }
+        if tx && rx_received.windows(4).any(|window| window == &b"PING"[..]) && active_state {
+            break;
+        }
+    }
+    assert!(tx, "manual debug TX should be emitted");
+    assert!(
+        rx_received.windows(4).any(|window| window == &b"PING"[..]),
+        "continuous debug read should emit the echoed bytes"
+    );
+    assert!(active_state, "debug active state should be emitted");
+
+    manager.debug_stop(&session.id).await.expect("stop debug");
+    let error = manager
+        .debug_send(
+            &session.id,
+            RawSendInput {
+                data: "PING".to_owned(),
+                mode: RawSendMode::Ascii,
+            },
+        )
+        .await
+        .expect_err("debug send must stop after debug mode ends");
+    assert!(error.contains("未开启"), "unexpected error: {error}");
+
+    let mut stopped_state = false;
+    for _ in 0..10 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::DebugState(state))) if !state.active => {
+                stopped_state = true;
+                break;
             }
             Ok(Ok(_)) => continue,
             Ok(Err(_)) | Err(_) => break,
         }
     }
-    assert!(
-        frames.iter().any(|frame| frame.summary.contains("手动发送")
-            && frame.direction == "tx"
-            && frame.raw.as_slice() == b"PING"),
-        "manual TX frame should be logged"
-    );
-    assert!(
-        frames.iter().any(|frame| frame.summary.contains("手动接收")
-            && frame.direction == "rx"
-            && frame.raw.as_slice() == b"PING"),
-        "manual RX frame should be logged"
-    );
+    assert!(stopped_state, "debug inactive state should be emitted");
 
     manager.shutdown_all().await;
     server.abort();

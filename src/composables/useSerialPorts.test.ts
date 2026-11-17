@@ -30,7 +30,7 @@ describe("useSerialPorts", () => {
   });
 
   it("surfaces enumeration errors instead of fake ports", async () => {
-    mocks.listSerialPorts.mockRejectedValue("串口枚举失败：拒绝访问");
+    mocks.listSerialPorts.mockRejectedValue("拒绝访问");
     const { useSerialPorts } = await import("./useSerialPorts");
     const { ports, loading, error, refresh } = useSerialPorts();
 
@@ -38,6 +38,6 @@ describe("useSerialPorts", () => {
 
     expect(loading.value).toBe(false);
     expect(ports.value).toEqual([]);
-    expect(error.value).toBe("串口枚举失败：拒绝访问");
+    expect(error.value).toBe("拒绝访问");
   });
 });
