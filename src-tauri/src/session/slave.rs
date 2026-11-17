@@ -22,8 +22,6 @@ use crate::model::{
     now_ms, scale_decoded,
 };
 
-const MAP_QUANTITY: u16 = 16;
-
 pub struct SlaveServer {
     stop_tx: Option<watch::Sender<bool>>,
     stop_flag: Arc<AtomicBool>,
@@ -156,17 +154,7 @@ pub async fn start(
 }
 
 pub fn build_simulator(unit_id: u8) -> Simulator {
-    let mut unit = SlaveUnit::new(unit_id);
-    for address in 0..MAP_QUANTITY {
-        unit.set_holding(address, 1000 + address);
-        unit.set_input(address, 2000 + address);
-    }
-    for address in 0..8u16 {
-        unit.set_coil(address, address.is_multiple_of(2));
-        unit.discrete_inputs
-            .insert(address, !address.is_multiple_of(2));
-    }
-    Simulator::new([unit])
+    Simulator::new([SlaveUnit::new(unit_id)])
 }
 
 struct GeneratorState {
@@ -574,18 +562,22 @@ pub fn build_snapshot(
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
     let unit = simulator.unit(definition.slave_id);
-    let raw_words: Vec<u16> = (0..definition.quantity.min(MAP_QUANTITY))
-        .map(|offset| {
-            let address = definition.start_address.wrapping_add(offset);
-            unit.map_or(0, |unit| unit.holding(address))
-        })
-        .collect();
     let values = definition
         .effective_points()
         .into_iter()
         .map(|point| {
+            let Some(unit) = unit else {
+                return RegisterValueDto {
+                    address: point.address,
+                    words: Vec::new(),
+                    formatted: "—".to_owned(),
+                    numeric: None,
+                    stale: true,
+                    error: Some("从站模拟单元不存在".to_owned()),
+                };
+            };
             if point.data_type == DataType::Bool {
-                let value = unit.is_some_and(|unit| unit.coil(point.address));
+                let value = unit.coil(point.address);
                 let (formatted, numeric) = scale_decoded(
                     &point,
                     if value { "ON" } else { "OFF" }.to_owned(),
@@ -600,20 +592,11 @@ pub fn build_snapshot(
                     error: None,
                 };
             }
-            let offset = usize::from(point.address.saturating_sub(definition.start_address));
             let span = point.span();
-            if offset + span > raw_words.len() {
-                return RegisterValueDto {
-                    address: point.address,
-                    words: Vec::new(),
-                    formatted: "—".to_owned(),
-                    numeric: None,
-                    stale: true,
-                    error: Some("模拟寄存器范围不足以解析该点位".to_owned()),
-                };
-            }
-            let chunk = &raw_words[offset..offset + span];
-            match decode_words(&point.rule(), chunk) {
+            let words: Vec<u16> = (0..span)
+                .map(|offset| unit.holding(point.address.wrapping_add(offset as u16)))
+                .collect();
+            match decode_words(&point.rule(), &words) {
                 Ok(value) => {
                     let (formatted, numeric) =
                         scale_decoded(&point, value.formatted, value.numeric);
@@ -628,7 +611,7 @@ pub fn build_snapshot(
                 }
                 Err(error) => RegisterValueDto {
                     address: point.address,
-                    words: chunk.to_vec(),
+                    words,
                     formatted: "—".to_owned(),
                     numeric: None,
                     stale: true,
@@ -832,7 +815,7 @@ mod tests {
             function_code: 0x03,
             slave_id: 1,
             start_address: 0,
-            quantity: MAP_QUANTITY,
+            quantity: 16,
             data_type: DataType::U16,
             byte_order: OrderPreset::Abcd,
             byte_pos: None,
@@ -871,10 +854,10 @@ mod tests {
             decoded,
             PduResponse::ReadRegisters {
                 function_code: 3,
-                values: vec![1000, 1001]
+                values: vec![0, 0]
             }
         );
-        assert_eq!(reply.snapshot.values[0].numeric, Some(1000.0));
+        assert_eq!(reply.snapshot.values[0].numeric, Some(0.0));
 
         let write = PduRequest::WriteSingleRegister {
             address: 0,

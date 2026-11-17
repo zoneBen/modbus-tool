@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "Industrial bus console",
-    version: "v0.2.0",
+    version: "v0.2.1",
   },
   nav: {
     workspace: "Workspace",
@@ -49,6 +49,7 @@ export default {
     exportedCount: "Exported {count} definitions",
     unnamed: "Unnamed",
     masterSlaveCount: "{master} masters · {slave} slaves",
+    mappingUnconfigured: "Not configured",
   },
   monitor: {
     title: "Packet monitor",
@@ -173,9 +174,21 @@ export default {
     title: "Register view",
     values: "{count} values",
     registers: "{count} registers",
+    mappingCount: "{count} mappings",
     writeSelected: "Write selected register",
     writeSelectedHint: "Select a row before opening the write dialog",
     write: "Write value",
+    addMapping: "Add mapping",
+    mappingEmpty: "No simulator mapping configured",
+    mappingEmptyHint:
+      "Add a register mapping with its data type, byte order and generator before starting the slave listener.",
+    editMapping: "Edit mapping",
+    deleteMapping: "Delete mapping",
+    deleteMappingTitle: "Delete simulator mapping",
+    deleteMappingDescription:
+      "Remove “{name}” and its generator configuration. This cannot be undone.",
+    mappingDeleted: "Simulator mapping deleted",
+    mappingDeleteFailed: "Could not delete the simulator mapping",
     readError: "Read error",
     live: "Live",
     waitingSamples: "Waiting for samples",
@@ -203,6 +216,7 @@ export default {
       max: "Max",
       start: "Start",
       status: "Status",
+      actions: "Actions",
     },
     tips: {
       meaning: "Double-click to edit the meaning / alias",
@@ -300,6 +314,13 @@ export default {
   },
   simulatorPoint: {
     title: "Simulated register configuration",
+    addTitle: "Add simulator mapping",
+    editTitle: "Edit simulator mapping",
+    address: "Register address",
+    invalidAddress: "The address must be an integer from 0 to 65535",
+    overlappingAddress: "The address range overlaps an existing point ({address})",
+    rangeTooLarge: "The mapping spans more than 65535 addresses; reduce the address range",
+    added: "Simulator mapping added",
     description: "{name} · address {address}",
     noDefinition: "No definition selected",
     meaning: "Meaning",
@@ -460,6 +481,13 @@ export default {
     invalidPort: "Port must be an integer from 1 to 65535",
     invalidBaud: "Baud rate must be an integer from 1 to 4,000,000",
     invalidSlaveId: "Slave ID must be between 1 and 247",
+    slaveHint:
+      "After creation, add simulator mappings. The listener cannot start until at least one register is configured.",
+    createSlave: "Create slave",
+    creatingSlave: "Creating…",
+    slaveCreatedHint:
+      "Slave created. Add a register in the simulator mapping before starting the listener.",
+    slaveMappingRequired: "Add at least one simulator mapping before starting the slave listener.",
     createFailed: "Could not create session",
     updateFailed: "Could not update session",
     about: "About",

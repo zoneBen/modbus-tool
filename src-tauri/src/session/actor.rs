@@ -358,15 +358,27 @@ impl Actor {
             )
         };
         if role == SessionRole::Slave {
-            let unit_id = {
+            let (unit_id, mapping_empty) = {
                 let state = self.state.read().await;
-                state
-                    .config
-                    .definitions
-                    .first()
-                    .map(|definition| definition.slave_id)
-                    .unwrap_or(1)
+                let definition = state.config.definitions.first();
+                (
+                    definition
+                        .map(|definition| definition.slave_id)
+                        .unwrap_or(1),
+                    definition
+                        .map(|definition| definition.effective_points().is_empty())
+                        .unwrap_or(true),
+                )
             };
+            if mapping_empty {
+                let message = "请先配置至少一个模拟映射，再启动从站监听".to_owned();
+                {
+                    let mut state = self.state.write().await;
+                    state.status = SessionStatus::Error;
+                }
+                self.emit_status(Some(message.clone())).await;
+                return Err(message);
+            }
             let simulator = self
                 .slave_map
                 .clone()
@@ -928,6 +940,10 @@ impl Actor {
         definition_id: &str,
         input: DefinitionInput,
     ) -> Result<DefinitionDto, String> {
+        let role = {
+            let state = self.state.read().await;
+            state.config.role
+        };
         let definition = {
             let mut state = self.state.write().await;
             let definition = state
@@ -936,18 +952,28 @@ impl Actor {
                 .iter_mut()
                 .find(|definition| definition.id == definition_id)
                 .ok_or_else(|| "定义不存在".to_owned())?;
-            input.apply_to(definition)?;
+            if role == SessionRole::Slave {
+                input.apply_mapping_to(definition)?;
+            } else {
+                input.apply_to(definition)?;
+            }
             definition.clone()
         };
         self.last_run.remove(definition_id);
         self.clear_alerts_for(definition_id);
-        let (role, connected) = {
+        let connected = {
             let state = self.state.read().await;
-            (state.config.role, state.status == SessionStatus::Connected)
+            state.status == SessionStatus::Connected
         };
+        if role == SessionRole::Slave {
+            self.slave_map = None;
+        }
         if role == SessionRole::Slave && connected {
+            let mapping_empty = definition.effective_points().is_empty();
             self.disconnect().await;
-            self.connect().await?;
+            if !mapping_empty {
+                self.connect().await?;
+            }
         } else {
             self.emit_status(None).await;
         }

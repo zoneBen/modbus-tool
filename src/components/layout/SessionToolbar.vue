@@ -21,6 +21,7 @@ import {
   formatRange,
   formatTime,
 } from "@/lib/format";
+import { mappingPoints } from "@/lib/simulator-mapping";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -44,10 +45,17 @@ const connecting = computed(() => session.value?.status === "connecting");
 const debugReady = computed(
   () => session.value?.role === "master" && connected.value && !session.value?.polling,
 );
+const mappingEmpty = computed(
+  () => isSlave.value && (!definition.value || mappingPoints(definition.value).length === 0),
+);
 
 async function toggleConnection(): Promise<void> {
   const current = session.value;
   if (!current) return;
+  if (!connected.value && mappingEmpty.value) {
+    toast.info(t("dialog.slaveMappingRequired"));
+    return;
+  }
   try {
     if (connected.value) await sessions.disconnectSession(current.id);
     else await sessions.connectSession(current.id);
@@ -80,7 +88,11 @@ async function toggleConnection(): Promise<void> {
           <span
             class="numeric hidden rounded border border-hairline bg-well px-1.5 py-0.5 text-[11px] text-muted-foreground sm:inline"
           >
-            {{ formatRange(definition.startAddress, definition.quantity, settings.addressBase) }}
+            {{
+              isSlave && definition.quantity === 0
+                ? t("workspace.mappingUnconfigured")
+                : formatRange(definition.startAddress, definition.quantity, settings.addressBase)
+            }}
           </span>
           <span
             class="numeric rounded px-1.5 py-0.5 text-[11px] font-medium uppercase"

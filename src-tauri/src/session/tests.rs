@@ -12,7 +12,8 @@ use tokio::sync::Mutex;
 use crate::event::{AppEvent, event_bus};
 use crate::model::{
     AlertOperator, AlertRuleDto, CustomWriteInput, DefinitionInput, NewSessionInput, RawSendInput,
-    RawSendMode, RegisterPointDto, SessionRole, SessionStatus, SlaveValueInput, TransportKind,
+    RawSendMode, RegisterPointDto, SessionRole, SessionStatus, SimulatorMode, SimulatorPointDto,
+    SlaveValueInput, TransportKind,
 };
 use crate::session::SessionManager;
 
@@ -529,7 +530,78 @@ async fn tcp_slave_serves_modbus_requests() {
         .await
         .expect("start slave");
     assert_eq!(session.role, SessionRole::Slave);
+    assert_eq!(session.status, SessionStatus::Disconnected);
     assert_eq!(session.definitions.len(), 1);
+    let definition = session.definitions[0].clone();
+    assert!(definition.points.is_empty());
+    assert_eq!(definition.quantity, 0);
+
+    let error = manager
+        .connect(&session.id)
+        .await
+        .expect_err("empty mapping must not start");
+    assert!(error.contains("模拟映射"), "unexpected error: {error}");
+
+    let updated = manager
+        .update_definition(
+            &session.id,
+            &definition.id,
+            DefinitionInput {
+                name: definition.name.clone(),
+                function_code: 0x03,
+                slave_id: 1,
+                start_address: 0,
+                quantity: 2,
+                data_type: DataType::U16,
+                byte_order: OrderPreset::Abcd,
+                byte_pos: None,
+                interval_ms: 500,
+                enabled: true,
+                aliases: BTreeMap::new(),
+                points: vec![
+                    RegisterPointDto {
+                        address: 0,
+                        data_type: DataType::U16,
+                        byte_order: OrderPreset::Abcd,
+                        byte_pos: None,
+                        meaning: "温度".to_owned(),
+                        unit: "C".to_owned(),
+                        scale: 1.0,
+                        offset: 0.0,
+                        alerts: Vec::new(),
+                        simulator: Some(SimulatorPointDto {
+                            mode: SimulatorMode::Fixed,
+                            refresh_ms: 1000,
+                            min: 1000.0,
+                            max: 1000.0,
+                            enabled: false,
+                        }),
+                    },
+                    RegisterPointDto {
+                        address: 1,
+                        data_type: DataType::U16,
+                        byte_order: OrderPreset::Abcd,
+                        byte_pos: None,
+                        meaning: "压力".to_owned(),
+                        unit: "bar".to_owned(),
+                        scale: 1.0,
+                        offset: 0.0,
+                        alerts: Vec::new(),
+                        simulator: Some(SimulatorPointDto {
+                            mode: SimulatorMode::Fixed,
+                            refresh_ms: 1000,
+                            min: 1001.0,
+                            max: 1001.0,
+                            enabled: false,
+                        }),
+                    },
+                ],
+            },
+        )
+        .await
+        .expect("update simulator mapping");
+    assert_eq!(updated.points.len(), 2);
+    manager.connect(&session.id).await.expect("connect slave");
 
     let connect = TcpStream::connect(("127.0.0.1", port));
     let mut socket = tokio::time::timeout(Duration::from_secs(2), connect)

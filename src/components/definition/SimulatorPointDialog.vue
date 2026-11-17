@@ -20,10 +20,18 @@ import { Switch } from "@/components/ui/switch";
 import {
   BYTE_ORDER_OPTIONS,
   DATA_TYPE_OPTIONS,
-  resolvePoints,
+  dataTypeSpan,
   toDefinitionInput,
 } from "@/lib/definition";
 import { formatAddress } from "@/lib/format";
+import {
+  cloneMappingPoint,
+  mappingPoints,
+  mappingRange,
+  mappingRangeValid,
+  overlappingPoint,
+  pointEnd,
+} from "@/lib/simulator-mapping";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import type {
@@ -38,12 +46,13 @@ import type {
 const open = defineModel<boolean>("open", { default: false });
 const props = defineProps<{
   definition: Definition | null;
-  address: number;
+  address: number | null;
 }>();
 
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
 const { t } = useI18n();
+const targetAddress = ref(0);
 const dataType = ref<DataType>("u16");
 const byteOrder = ref<ByteOrder>("abcd");
 const meaning = ref("");
@@ -67,33 +76,38 @@ const modeOptions = computed<Array<{ label: string; value: SimulatorMode }>>(() 
   { label: t("simulatorPoint.modes.random"), value: "random" },
 ]);
 
-const addressLabel = computed(() => formatAddress(props.address, settings.addressBase));
-const point = computed<RegisterPoint | null>(() => {
+const isEditing = computed(() => props.address !== null);
+const addressLabel = computed(() => formatAddress(targetAddress.value, settings.addressBase));
+const title = computed(() =>
+  isEditing.value ? t("simulatorPoint.editTitle") : t("simulatorPoint.addTitle"),
+);
+
+const existingPoint = computed<RegisterPoint | null>(() => {
   const definition = props.definition;
-  if (!definition) return null;
-  const points = definition.points.length ? definition.points : resolvePoints(definition);
-  const existing = points.find((entry) => entry.address === props.address);
-  if (existing) return existing;
-  return {
-    address: props.address,
-    dataType: definition.dataType,
-    byteOrder: definition.byteOrder,
-    meaning: definition.aliases[props.address] ?? "",
-    unit: "",
-    scale: 1,
-    offset: 0,
-    alerts: [],
-  };
+  if (!definition || props.address === null) return null;
+  return mappingPoints(definition).find((entry) => entry.address === props.address) ?? null;
 });
+
+function nextFreeAddress(points: readonly RegisterPoint[]): number {
+  let candidate = 0;
+  while (points.some((point) => candidate >= point.address && candidate < pointEnd(point))) {
+    candidate += 1;
+  }
+  return Math.min(candidate, 0xffff);
+}
 
 watch(
   () => [open.value, props.address, props.definition?.id] as const,
   () => {
-    if (!open.value || !point.value) return;
-    dataType.value = point.value.dataType;
-    byteOrder.value = point.value.byteOrder;
-    meaning.value = point.value.meaning;
-    const simulator = point.value.simulator ?? {
+    const definition = props.definition;
+    if (!open.value || !definition) return;
+    const points = mappingPoints(definition);
+    const point = existingPoint.value;
+    targetAddress.value = point?.address ?? nextFreeAddress(points);
+    dataType.value = point?.dataType ?? definition.dataType;
+    byteOrder.value = point?.byteOrder ?? definition.byteOrder;
+    meaning.value = point?.meaning ?? "";
+    const simulator = point?.simulator ?? {
       mode: "fixed",
       refreshMs: 1000,
       min: 0,
@@ -109,15 +123,35 @@ watch(
   { immediate: true },
 );
 
+function fail(message: string): void {
+  toast.error(message);
+}
+
 async function save(): Promise<void> {
   const definition = props.definition;
   if (!definition || saving.value) return;
+  const address = Number(targetAddress.value);
+  if (!Number.isInteger(address) || address < 0 || address > 0xffff) {
+    fail(t("simulatorPoint.invalidAddress"));
+    return;
+  }
   if (!Number.isFinite(min.value) || !Number.isFinite(max.value)) {
-    toast.error(t("simulatorPoint.invalidRange"));
+    fail(t("simulatorPoint.invalidRange"));
     return;
   }
   if (min.value > max.value) {
-    toast.error(t("simulatorPoint.minGreaterMax"));
+    fail(t("simulatorPoint.minGreaterMax"));
+    return;
+  }
+  const span = dataTypeSpan(dataType.value);
+  const basePoints = mappingPoints(definition);
+  const overlap = overlappingPoint(basePoints, address, span, props.address ?? undefined);
+  if (overlap) {
+    fail(
+      t("simulatorPoint.overlappingAddress", {
+        address: formatAddress(overlap.address, settings.addressBase),
+      }),
+    );
     return;
   }
   const simulator: SimulatorPointConfig = {
@@ -127,30 +161,48 @@ async function save(): Promise<void> {
     max: Number(max.value),
     enabled: enabled.value,
   };
-  const basePoint = point.value;
-  if (!basePoint) return;
+  const basePoint = existingPoint.value;
   const updated: RegisterPoint = {
-    ...basePoint,
+    ...(basePoint ?? {
+      address,
+      dataType: dataType.value,
+      byteOrder: byteOrder.value,
+      meaning: "",
+      unit: "",
+      scale: 1,
+      offset: 0,
+      alerts: [],
+    }),
+    address,
     dataType: dataType.value,
     byteOrder: byteOrder.value,
     meaning: meaning.value.trim(),
     simulator,
   };
-  const basePoints = definition.points.length ? definition.points : resolvePoints(definition);
-  const points = basePoints.some((entry) => entry.address === props.address)
-    ? basePoints.map((entry) => (entry.address === props.address ? updated : entry))
-    : [...basePoints, updated].sort((left, right) => left.address - right.address);
-  const aliases = { ...definition.aliases };
-  if (updated.meaning) aliases[props.address] = updated.meaning;
-  else delete aliases[props.address];
+  const points = [
+    ...basePoints.filter((entry) => entry.address !== props.address).map(cloneMappingPoint),
+    cloneMappingPoint(updated),
+  ].sort((left, right) => left.address - right.address);
+  if (!mappingRangeValid(points)) {
+    fail(t("simulatorPoint.rangeTooLarge"));
+    return;
+  }
+  const range = mappingRange(points);
+  const aliases = Object.fromEntries(
+    points
+      .filter((point) => point.meaning.trim())
+      .map((point) => [point.address, point.meaning.trim()]),
+  );
   saving.value = true;
   try {
     await sessions.updateDefinition(definition.id, {
       ...toDefinitionInput(definition),
+      startAddress: range.startAddress,
+      quantity: range.quantity,
       aliases,
       points,
     });
-    toast.success(t("simulatorPoint.updated"), {
+    toast.success(isEditing.value ? t("simulatorPoint.updated") : t("simulatorPoint.added"), {
       description: t("simulatorPoint.updatedDescription"),
     });
     open.value = false;
@@ -176,7 +228,7 @@ async function save(): Promise<void> {
           >
             <Activity class="size-3.5" />
           </span>
-          {{ t("simulatorPoint.title") }}
+          {{ title }}
         </DialogTitle>
         <DialogDescription class="text-[11.5px] text-muted-foreground">
           {{
@@ -190,6 +242,18 @@ async function save(): Promise<void> {
 
       <div class="scrollbar-thin max-h-[65vh] space-y-4 overflow-y-auto px-5 py-4">
         <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <Label class="text-[11px] text-muted-foreground">
+              {{ t("simulatorPoint.address") }}
+            </Label>
+            <Input
+              v-model.number="targetAddress"
+              type="number"
+              min="0"
+              max="65535"
+              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+            />
+          </div>
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">
               {{ t("simulatorPoint.meaning") }}
@@ -229,12 +293,6 @@ async function save(): Promise<void> {
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
-          <div class="flex items-end justify-between gap-2 pb-1">
-            <span class="text-[11px] text-muted-foreground">
-              {{ t("simulatorPoint.startRefresh") }}
-            </span>
-            <Switch v-model="enabled" />
-          </div>
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">
               {{ t("simulatorPoint.min") }}
@@ -256,6 +314,14 @@ async function save(): Promise<void> {
               step="any"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
+          </div>
+          <div
+            class="col-span-2 flex items-center justify-between rounded-lg border border-hairline bg-overlay-1 px-3 py-2"
+          >
+            <span class="text-[11px] text-muted-foreground">
+              {{ t("simulatorPoint.startRefresh") }}
+            </span>
+            <Switch v-model="enabled" />
           </div>
         </div>
 

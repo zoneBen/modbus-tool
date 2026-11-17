@@ -390,9 +390,17 @@ function selectSession(sessionId: string): void {
             </div>
             <div class="mt-1 flex items-center gap-2 pl-[38px] text-[11px] text-muted-foreground">
               <span class="numeric">{{ formatFunctionCode(definition.functionCode) }}</span>
-              <span class="numeric">{{
-                formatRange(definition.startAddress, definition.quantity, settings.addressBase)
-              }}</span>
+              <span class="numeric">
+                {{
+                  isSlaveSession && definition.quantity === 0
+                    ? t("workspace.mappingUnconfigured")
+                    : formatRange(
+                        definition.startAddress,
+                        definition.quantity,
+                        settings.addressBase,
+                      )
+                }}
+              </span>
               <span class="ml-auto numeric">{{ formatInterval(definition.intervalMs) }}</span>
             </div>
           </div>

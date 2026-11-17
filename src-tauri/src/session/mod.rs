@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::event::{AppEvent, EventBus, emit};
 use crate::model::{
     CustomWriteInput, DefinitionDto, DefinitionInput, NewSessionInput, RawSendInput, SessionDto,
-    SessionState, SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
+    SessionRole, SessionState, SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
 };
 
 use actor::{Actor, SessionCommand};
@@ -42,7 +42,7 @@ impl SessionManager {
 
     pub async fn create_session(&self, input: NewSessionInput) -> Result<SessionDto, String> {
         let id = Uuid::new_v4().to_string();
-        let auto_connect = input.auto_connect;
+        let auto_connect = input.auto_connect && input.role == SessionRole::Master;
         let config = input.into_config(id.clone())?;
         let state = Arc::new(RwLock::new(SessionState::new(config)));
         let (commands, command_rx) = mpsc::unbounded_channel();

@@ -14,6 +14,7 @@ import type {
   NetworkState,
   NewSessionInput,
   RawSendInput,
+  RegisterPoint,
   RegisterValue,
   ScanKind,
   ScanProgress,
@@ -49,7 +50,13 @@ const MAX_FRAME_HISTORY = 400;
 type AnyHandler = (payload: unknown) => void;
 
 function clone<T>(value: T): T {
-  return structuredClone(value);
+  try {
+    return structuredClone(value);
+  } catch {
+    // Vue reactive proxies are not structured-cloneable; JSON keeps the demo
+    // bridge usable when dialogs pass reactive mapping objects through IPC.
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
 }
 
 function spanOf(dataType: DataType): number {
@@ -438,11 +445,96 @@ export function createDemoBridge(): IpcApi {
     return value;
   }
 
+  function mappingValue(
+    definition: Definition,
+    point: RegisterPoint,
+    index: number,
+    currentTick: number,
+  ): RegisterValue {
+    const generated = generateValue(
+      {
+        ...definition,
+        startAddress: point.address,
+        dataType: point.dataType,
+        byteOrder: point.byteOrder,
+      },
+      0,
+      currentTick,
+      point.address * 0.13 + definition.slaveId,
+    );
+    const simulator = point.simulator;
+    if (!simulator) {
+      return {
+        address: point.address,
+        words: generated.words,
+        formatted: generated.formatted,
+        numeric: generated.numeric,
+      };
+    }
+    const span = simulator.max - simulator.min;
+    let numeric = simulator.min;
+    if (simulator.enabled) {
+      if (simulator.mode === "increment") {
+        const steps = Math.max(1, Math.floor(span) + 1);
+        numeric = simulator.min + ((Math.floor(currentTick / 3) + index) % steps);
+      } else if (simulator.mode === "decrement") {
+        const steps = Math.max(1, Math.floor(span) + 1);
+        numeric = simulator.max - ((Math.floor(currentTick / 3) + index) % steps);
+      } else if (simulator.mode === "random") {
+        numeric = simulator.min + Math.random() * span;
+      }
+    }
+    numeric = Math.min(simulator.max, Math.max(simulator.min, numeric));
+    if (point.dataType === "bool") {
+      const on = numeric >= 0.5;
+      return {
+        address: point.address,
+        words: [on ? 1 : 0],
+        formatted: on ? "ON" : "OFF",
+        numeric: on ? 1 : 0,
+      };
+    }
+    if (point.dataType === "f32") {
+      return {
+        address: point.address,
+        words: floatToWords(numeric, point.byteOrder),
+        formatted: numeric.toFixed(2),
+        numeric,
+      };
+    }
+    if (point.dataType === "f64" || point.dataType === "i64" || point.dataType === "u64") {
+      return {
+        address: point.address,
+        words: generated.words,
+        formatted: formatNumber(Math.round(numeric)),
+        numeric,
+      };
+    }
+    const rounded = Math.round(numeric);
+    return {
+      address: point.address,
+      words: uint16Words(((rounded % 0x10000) + 0x10000) % 0x10000, point.byteOrder),
+      formatted: formatNumber(rounded),
+      numeric,
+    };
+  }
+
   function snapshotFor(
     session: Session,
     definition: Definition,
     currentTick = tick,
   ): DefinitionSnapshot {
+    if (session.role === "slave" && definition.points.length) {
+      return {
+        sessionId: session.id,
+        definitionId: definition.id,
+        timestamp: Date.now(),
+        values: definition.points.map((point, index) =>
+          mappingValue(definition, point, index, currentTick),
+        ),
+        latencyMs: 0,
+      };
+    }
     const count = Math.min(valueCount(definition), 32);
     const seed = definition.startAddress * 0.13 + definition.slaveId;
     const values: RegisterValue[] = Array.from({ length: count }, (_, index) => {
@@ -704,14 +796,15 @@ export function createDemoBridge(): IpcApi {
             `${id}-map`,
             "保持寄存器映射",
             0,
-            16,
+            0,
             "u16",
             "abcd",
             900,
-            { 0: "设定温度 ×10", 1: "设定压力 ×100", 2: "运行模式", 3: "心跳计数" },
+            {},
             input.slaveId ?? 10,
           )
         : null;
+    const connected = role !== "slave" && input.autoConnect !== false;
     const session: Session = {
       id,
       name: input.name || (role === "slave" ? "模拟器 · 新从站" : "新会话"),
@@ -719,8 +812,8 @@ export function createDemoBridge(): IpcApi {
       transport: input.transport,
       framing: input.framing,
       endpoint: input.endpoint,
-      status: "connected",
-      polling: role === "master",
+      status: connected ? "connected" : "disconnected",
+      polling: role === "master" && connected,
       accent,
       stats: { tx: 0, rx: 0, errors: 0, latencyMs: input.transport === "serial" ? 18 : 6 },
       startedAt: Date.now(),
@@ -740,7 +833,7 @@ export function createDemoBridge(): IpcApi {
     sessions.push(session);
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
     emit("session:status", statusPayload(session));
-    if (definition) {
+    if (definition && session.status === "connected") {
       const snapshot = snapshotFor(session, definition);
       storeSnapshot(snapshot);
       emit("session:data", snapshot);
@@ -765,12 +858,18 @@ export function createDemoBridge(): IpcApi {
   async function connectSession(sessionId: string): Promise<void> {
     if (debugSessionId === sessionId) throw new Error("调试模式进行中，请先关闭调试");
     const session = sessionById(sessionId);
+    const definition = session.definitions[0];
+    if (session.role === "slave" && (!definition || !definition.points.length)) {
+      throw new Error("请先配置至少一个模拟映射，再启动从站监听");
+    }
     session.status = "connected";
     session.polling = session.role === "master";
     emit("session:status", statusPayload(session));
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
     if (session.role === "master") {
       setTimeout(() => runSessionTick(session, tick), 120);
+    } else if (definition) {
+      emitSnapshot(session, definition);
     }
   }
 
@@ -1103,6 +1202,15 @@ export function createDemoBridge(): IpcApi {
     };
     session.definitions[index] = definition;
     lastRun.delete(definitionId);
+    if (session.role === "slave" && session.status === "connected") {
+      if (!definition.points.length) {
+        session.status = "disconnected";
+        session.polling = false;
+      } else {
+        emitSnapshot(session, definition);
+      }
+      emit("session:status", statusPayload(session));
+    }
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
     return clone(definition);
   }

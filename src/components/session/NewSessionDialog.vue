@@ -175,11 +175,12 @@ async function submit(): Promise<void> {
       parity: parity.value as "none" | "even" | "odd",
       stopBits: stopBits.value,
       slaveId: role.value === "slave" ? Math.max(1, Number(slaveId.value) || 1) : undefined,
+      autoConnect: role.value !== "slave",
     });
     toast.success(`已创建会话「${session.name}」`, {
       description:
         role.value === "slave"
-          ? "从站模拟器已启动监听。"
+          ? t("dialog.slaveCreatedHint")
           : sessions.demo
             ? "演示模式已自动建立连接。"
             : "正在连接设备…",
@@ -293,7 +294,7 @@ async function submit(): Promise<void> {
             <div
               class="col-span-2 flex items-center rounded-lg border border-sim/20 bg-sim/5 px-3 text-[11px] leading-relaxed text-muted-foreground"
             >
-              模拟映射：保持/输入寄存器 0–15、线圈/离散输入 0–7；主站写入会实时回显。
+              {{ t("dialog.slaveHint") }}
             </div>
           </div>
 
@@ -397,7 +398,15 @@ async function submit(): Promise<void> {
         </DialogClose>
         <Button size="sm" class="h-8 gap-1.5 text-[12px]" :disabled="busy" @click="submit">
           <Network class="size-3.5" />
-          {{ busy ? "连接中…" : "连接会话" }}
+          {{
+            role === "slave"
+              ? busy
+                ? t("dialog.creatingSlave")
+                : t("dialog.createSlave")
+              : busy
+                ? "连接中…"
+                : "连接会话"
+          }}
         </Button>
       </DialogFooter>
     </DialogContent>

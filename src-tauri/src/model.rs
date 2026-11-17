@@ -321,7 +321,15 @@ pub struct DefinitionInput {
 
 impl DefinitionInput {
     pub fn into_dto(self, id: String) -> Result<DefinitionDto, String> {
-        self.validate()?;
+        self.into_dto_validated(id, Self::validate)
+    }
+
+    fn into_dto_validated(
+        self,
+        id: String,
+        validate: fn(&Self) -> Result<(), String>,
+    ) -> Result<DefinitionDto, String> {
+        validate(&self)?;
         let (points, aliases) = self.normalized_points()?;
         Ok(DefinitionDto {
             id,
@@ -341,7 +349,20 @@ impl DefinitionInput {
     }
 
     pub fn apply_to(&self, definition: &mut DefinitionDto) -> Result<(), String> {
-        self.validate()?;
+        self.apply_to_validated(definition, Self::validate)
+    }
+
+    /// Simulator mappings accept sparse point addresses and an empty mapping.
+    pub fn apply_mapping_to(&self, definition: &mut DefinitionDto) -> Result<(), String> {
+        self.apply_to_validated(definition, Self::validate_mapping)
+    }
+
+    fn apply_to_validated(
+        &self,
+        definition: &mut DefinitionDto,
+        validate: fn(&Self) -> Result<(), String>,
+    ) -> Result<(), String> {
+        validate(self)?;
         let (points, aliases) = self.normalized_points()?;
         definition.name = self.name.trim().to_owned();
         definition.function_code = self.function_code;
@@ -496,6 +517,25 @@ impl DefinitionInput {
         };
         if self.quantity > limit {
             return Err(format!("数量超出限制，最多 {limit}"));
+        }
+        if u32::from(self.start_address) + u32::from(self.quantity) > 65_536 {
+            return Err("地址范围超出 16 位地址空间".to_owned());
+        }
+        if !(10..=600_000).contains(&self.interval_ms) {
+            return Err("轮询周期必须在 10 ms – 600 s 之间".to_owned());
+        }
+        Ok(())
+    }
+
+    fn validate_mapping(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("模拟映射名称不能为空".to_owned());
+        }
+        if !(1..=4).contains(&self.function_code) {
+            return Err("模拟映射功能码仅支持 FC01–FC04".to_owned());
+        }
+        if !(1..=247).contains(&self.slave_id) {
+            return Err("从站 ID 必须在 1–247 之间".to_owned());
         }
         if u32::from(self.start_address) + u32::from(self.quantity) > 65_536 {
             return Err("地址范围超出 16 位地址空间".to_owned());
@@ -1421,22 +1461,14 @@ fn simulator_definition(unit_id: u8) -> DefinitionDto {
         function_code: 0x03,
         slave_id: unit_id,
         start_address: 0,
-        quantity: 16,
+        quantity: 0,
         data_type: DataType::U16,
         byte_order: OrderPreset::Abcd,
         byte_pos: None,
         interval_ms: 500,
         enabled: true,
         aliases: BTreeMap::new(),
-        points: default_points(
-            0,
-            16,
-            0x03,
-            DataType::U16,
-            OrderPreset::Abcd,
-            None,
-            &BTreeMap::new(),
-        ),
+        points: Vec::new(),
     }
 }
 
