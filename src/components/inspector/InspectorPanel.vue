@@ -12,7 +12,9 @@ import { computed, ref } from "vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import DefinitionDialog from "@/components/definition/DefinitionDialog.vue";
 import { Separator } from "@/components/ui/separator";
+import { parseCandidates } from "@/lib/decode-preview";
 import {
+  formatAddress,
   formatFunctionCode,
   formatInterval,
   formatLatency,
@@ -33,6 +35,24 @@ const session = computed(() => sessions.activeSession);
 const isSlave = computed(() => session.value?.role === "slave");
 const snapshot = computed(() => sessions.activeSnapshot);
 const firstValue = computed(() => snapshot.value?.values[0] ?? null);
+const selectedAddress = computed(
+  () => sessions.selectedAddress ?? firstValue.value?.address ?? null,
+);
+const selectedValue = computed(
+  () =>
+    snapshot.value?.values.find((value) => value.address === selectedAddress.value) ??
+    firstValue.value,
+);
+const selectedMeaning = computed(() => {
+  const address = selectedAddress.value;
+  if (address === null) return "等待采样";
+  return definition.value?.aliases[address] ?? `寄存器 ${address}`;
+});
+const candidates = computed(() =>
+  snapshot.value && selectedAddress.value !== null
+    ? parseCandidates(snapshot.value.values, selectedAddress.value)
+    : [],
+);
 
 const presetLabel: Record<ByteOrder, string> = {
   abcd: "ABCD · 大端",
@@ -54,7 +74,7 @@ interface ByteBox {
 }
 
 const byteBoxes = computed<ByteBox[]>(() => {
-  const words = firstValue.value?.words ?? [];
+  const words = selectedValue.value?.words ?? [];
   if (!words.length || !definition.value) return [];
   const bytes = words.flatMap((word) => [(word >> 8) & 0xff, word & 0xff]);
   const canonical = ["A", "B", "C", "D"].map((letter, index) => ({
@@ -175,6 +195,52 @@ const fields = computed(() => {
         <Separator class="my-4 bg-overlay-3" />
 
         <div class="space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="label-caps">解析参考</span>
+            <span class="numeric text-[10.5px] text-muted-foreground">
+              @{{
+                selectedAddress === null
+                  ? "—"
+                  : formatAddress(selectedAddress, settings.addressBase)
+              }}
+            </span>
+          </div>
+          <p class="text-[11px] leading-relaxed text-muted-foreground">
+            基于当前选中寄存器的原始字，尝试多种数据类型与端序，便于对照修改配置。
+          </p>
+          <div
+            v-if="candidates.length"
+            class="scrollbar-thin max-h-[236px] space-y-1 overflow-y-auto"
+          >
+            <div
+              v-for="candidate in candidates"
+              :key="`${candidate.dataType}-${candidate.byteOrder}`"
+              class="flex items-center gap-2 rounded-lg border border-hairline bg-overlay-1 px-2 py-1.5"
+            >
+              <span
+                class="numeric rounded border border-hairline bg-well px-1.5 py-0.5 text-[10px] font-medium text-signal-dim"
+              >
+                {{ candidate.label }}
+              </span>
+              <span class="numeric text-[10px] text-muted-foreground">
+                {{ candidate.byteOrder.toUpperCase() }}
+              </span>
+              <span class="numeric ml-auto truncate text-[11.5px] text-foreground">
+                {{ candidate.value }}
+              </span>
+            </div>
+          </div>
+          <p
+            v-else
+            class="rounded-lg border border-dashed border-hairline px-2.5 py-2 text-[11px] text-muted-foreground"
+          >
+            等待选中寄存器采样…
+          </p>
+        </div>
+
+        <Separator class="my-4 bg-overlay-3" />
+
+        <div class="space-y-2">
           <div class="flex items-center gap-1.5">
             <Gauge class="size-3 text-muted-foreground" />
             <span class="label-caps">实时采样</span>
@@ -185,16 +251,12 @@ const fields = computed(() => {
             <div class="flex items-end justify-between gap-2">
               <div class="min-w-0">
                 <p class="truncate text-[11px] text-muted-foreground">
-                  {{
-                    firstValue
-                      ? (definition.aliases[firstValue.address] ?? `寄存器 ${firstValue.address}`)
-                      : "等待采样"
-                  }}
+                  {{ selectedValue ? selectedMeaning : "等待采样" }}
                 </p>
                 <p
                   class="numeric mt-1 text-[22px] font-semibold leading-none tracking-tight text-foreground"
                 >
-                  {{ firstValue?.formatted ?? "—" }}
+                  {{ selectedValue?.formatted ?? "—" }}
                 </p>
               </div>
               <div class="shrink-0 text-right">
@@ -208,11 +270,13 @@ const fields = computed(() => {
             </div>
             <div class="mt-3 flex items-center gap-2 border-t border-hairline pt-2">
               <span class="numeric text-[11px] text-muted-foreground">
-                {{ firstValue?.words.length ? firstValue.words.map(formatWord).join(" ") : "—" }}
+                {{
+                  selectedValue?.words.length ? selectedValue.words.map(formatWord).join(" ") : "—"
+                }}
               </span>
               <ArrowRight class="size-3 text-muted-foreground/70" />
               <span class="numeric text-[11px] text-foreground">{{
-                firstValue?.formatted ?? "—"
+                selectedValue?.formatted ?? "—"
               }}</span>
             </div>
             <p

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, SlidersHorizontal, X } from "@lucide/vue";
+import { CircleAlert, Plus, SlidersHorizontal, X } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
@@ -42,6 +42,7 @@ const byteOrder = ref<ByteOrder>("abcd");
 const intervalMs = ref("1000");
 const enabled = ref(true);
 const saving = ref(false);
+const errorMessage = ref("");
 
 interface AliasRow {
   address: string;
@@ -95,6 +96,7 @@ watch(
   () => [open.value, props.definition] as const,
   ([isOpen]) => {
     if (!isOpen) return;
+    errorMessage.value = "";
     const definition = props.definition;
     if (definition) {
       name.value = definition.name;
@@ -143,26 +145,59 @@ watch(functionCode, (value) => {
   }
 });
 
+function fail(message: string): void {
+  errorMessage.value = message;
+  toast.error(message);
+}
+
 async function submit(): Promise<void> {
   if (saving.value) return;
-  const start = Math.max(0, Number(startAddress.value) || 0);
-  const count = Math.max(1, Number(quantity.value) || 1);
+  errorMessage.value = "";
+  const definitionName = name.value.trim();
+  if (!definitionName) {
+    fail("定义名称不能为空");
+    return;
+  }
+  const slave = Number(slaveId.value);
+  if (!Number.isInteger(slave) || slave < 1 || slave > 247) {
+    fail("从站 ID 需在 1–247 之间");
+    return;
+  }
+  const start = Number(startAddress.value);
+  if (!Number.isInteger(start) || start < 0 || start > 65535) {
+    fail("起始地址需为 0–65535 的整数");
+    return;
+  }
+  const count = Number(quantity.value);
+  if (!Number.isInteger(count) || count < 1 || count > quantityLimit.value) {
+    fail(`数量需为 1–${quantityLimit.value} 的整数`);
+    return;
+  }
+  if (start + count > 65536) {
+    fail("地址范围超出 16 位地址空间");
+    return;
+  }
+  const interval = Number(intervalMs.value);
+  if (!Number.isInteger(interval) || interval < 10 || interval > 600_000) {
+    fail("轮询周期需为 10–600000 ms 的整数");
+    return;
+  }
   const aliases: Record<number, string> = {};
   for (const row of aliasRows.value) {
     const address = Number(row.address);
     const alias = row.name.trim();
-    if (!Number.isFinite(address) || address < start || address >= start + count) continue;
+    if (!Number.isInteger(address) || address < start || address >= start + count) continue;
     if (alias) aliases[address] = alias;
   }
   const input: DefinitionInput = {
-    name: name.value.trim() || "未命名定义",
+    name: definitionName,
     functionCode: Number(functionCode.value) as FunctionCode,
-    slaveId: Number(slaveId.value) || 1,
+    slaveId: slave,
     startAddress: start,
     quantity: count,
     dataType: isBitFunction.value ? "bool" : dataType.value,
     byteOrder: byteOrder.value,
-    intervalMs: Math.max(10, Number(intervalMs.value) || 1000),
+    intervalMs: interval,
     enabled: enabled.value,
     aliases,
   };
@@ -177,9 +212,9 @@ async function submit(): Promise<void> {
     }
     open.value = false;
   } catch (error: unknown) {
-    toast.error("保存定义失败", {
-      description: error instanceof Error ? error.message : String(error),
-    });
+    const message = error instanceof Error ? error.message : String(error);
+    errorMessage.value = message;
+    toast.error("保存定义失败", { description: message });
   } finally {
     saving.value = false;
   }
@@ -204,6 +239,14 @@ async function submit(): Promise<void> {
           功能码、地址、数据类型与端序由 Rust 核心执行；保存后立即按新规则轮询。
         </DialogDescription>
       </DialogHeader>
+
+      <div
+        v-if="errorMessage"
+        class="flex shrink-0 items-start gap-2 border-b border-error/25 bg-error/10 px-5 py-2.5 text-[11px] leading-relaxed text-error"
+      >
+        <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+        <span class="break-words">{{ errorMessage }}</span>
+      </div>
 
       <div class="scrollbar-thin max-h-[62vh] space-y-4 overflow-y-auto px-5 py-4">
         <div class="space-y-1.5">

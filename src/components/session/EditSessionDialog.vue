@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SlidersHorizontal, Usb, Network } from "@lucide/vue";
+import { CircleAlert, SlidersHorizontal, Usb, Network } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -21,6 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSerialPorts } from "@/composables/useSerialPorts";
 import { useSessionsStore } from "@/stores/sessions";
 import type { Framing, UpdateSessionInput } from "@/types/models";
+import BaudRateField from "./BaudRateField.vue";
 import SerialPortField from "./SerialPortField.vue";
 
 const open = defineModel<boolean>("open", { default: false });
@@ -49,6 +50,7 @@ const {
   refresh: refreshSerialPorts,
 } = useSerialPorts();
 const busy = ref(false);
+const errorMessage = ref("");
 
 const isSlave = computed(() => session.value?.role === "slave");
 
@@ -77,6 +79,7 @@ const endpoint = computed(() => {
 
 watch(open, async (isOpen) => {
   if (!isOpen || !session.value) return;
+  errorMessage.value = "";
   const current = session.value;
   name.value = current.name;
   linkMode.value = current.transport === "serial" ? "serial" : "network";
@@ -113,16 +116,35 @@ watch(isSlave, (value) => {
   }
 });
 
+function fail(message: string): void {
+  errorMessage.value = message;
+  toast.error(message);
+}
+
 async function submit(): Promise<void> {
   const current = session.value;
   if (!current || busy.value) return;
+  errorMessage.value = "";
   if (linkMode.value === "network" && !isSlave.value && !host.value.trim()) {
-    toast.error("请输入主机地址");
+    fail(t("dialog.hostRequired"));
     return;
   }
-  if (linkMode.value === "serial" && !serialPort.value.trim()) {
-    toast.error(t("serial.missing"));
-    return;
+  if (linkMode.value === "network") {
+    const parsedPort = Number(port.value);
+    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+      fail(t("dialog.invalidPort"));
+      return;
+    }
+  }
+  if (linkMode.value === "serial") {
+    if (!serialPort.value.trim()) {
+      fail(t("serial.missing"));
+      return;
+    }
+    if (!Number.isInteger(baudRate.value) || baudRate.value < 1 || baudRate.value > 4_000_000) {
+      fail(t("dialog.invalidBaud"));
+      return;
+    }
   }
   const input: UpdateSessionInput = {
     name: name.value.trim() || current.name,
@@ -148,9 +170,9 @@ async function submit(): Promise<void> {
     });
     open.value = false;
   } catch (error: unknown) {
-    toast.error("更新会话失败", {
-      description: error instanceof Error ? error.message : String(error),
-    });
+    const message = error instanceof Error ? error.message : String(error);
+    errorMessage.value = message;
+    toast.error(t("dialog.updateFailed"), { description: message });
   } finally {
     busy.value = false;
   }
@@ -177,6 +199,14 @@ async function submit(): Promise<void> {
           保存后如果会话正在运行，会用新参数重启链路。
         </DialogDescription>
       </DialogHeader>
+
+      <div
+        v-if="errorMessage"
+        class="flex shrink-0 items-start gap-2 border-b border-error/25 bg-error/10 px-5 py-2.5 text-[11px] leading-relaxed text-error"
+      >
+        <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+        <span class="break-words">{{ errorMessage }}</span>
+      </div>
 
       <div class="scrollbar-thin max-h-[68vh] space-y-4 overflow-y-auto px-5 py-4">
         <div class="grid grid-cols-2 gap-3">
@@ -256,15 +286,7 @@ async function submit(): Promise<void> {
           />
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">波特率</Label>
-            <FormSelect
-              v-model="baudRate"
-              :options="
-                [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map((value) => ({
-                  label: value.toString(),
-                  value,
-                }))
-              "
-            />
+            <BaudRateField v-model="baudRate" />
           </div>
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">校验 / 数据位 / 停止位</Label>

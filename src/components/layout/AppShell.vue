@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AboutOverlay from "@/components/about/AboutOverlay.vue";
@@ -39,10 +39,26 @@ const trendOpen = ref(false);
 const editSessionOpen = ref(false);
 const debugOpen = ref(false);
 const aboutOpen = ref(false);
+const railView = ref<"workspace" | "scan" | "settings" | "about">("workspace");
 
 const monitorStyle = computed(() => ({
   height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
 }));
+
+watch(scanOpen, (open) => {
+  if (open) railView.value = "scan";
+  else if (railView.value === "scan") railView.value = "workspace";
+});
+
+watch(settingsOpen, (open) => {
+  if (open) railView.value = "settings";
+  else if (railView.value === "settings") railView.value = "workspace";
+});
+
+watch(aboutOpen, (open) => {
+  if (open) railView.value = "about";
+  else if (railView.value === "about") railView.value = "workspace";
+});
 
 function openDebug(): void {
   const session = sessions.activeSession;
@@ -128,6 +144,7 @@ function startResize(event: PointerEvent): void {
 
     <div class="relative flex min-h-0 flex-1">
       <ActivityRail
+        :active-view="railView"
         @open-settings="settingsOpen = true"
         @open-scan="scanOpen = true"
         @open-about="aboutOpen = true"
@@ -140,7 +157,6 @@ function startResize(event: PointerEvent): void {
           @write="openWriteFromToolbar"
           @debug="openDebug"
           @edit-session="editSessionOpen = true"
-          @open-settings="settingsOpen = true"
         />
 
         <div class="flex min-h-0 flex-1">

@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "工业总线调试台",
-    version: "v0.1.8",
+    version: "v0.1.9",
   },
   nav: {
     workspace: "工作台",
@@ -110,6 +110,10 @@ export default {
     ascii: "ASCII",
     hex: "HEX",
     clear: "清空记录",
+    export: "导出日志",
+    exportEmpty: "当前没有可导出的调试日志",
+    exported: "已导出 {count} 条调试日志",
+    exportFailed: "导出调试日志失败",
     follow: "跟随最新",
     entries: "记录 {count} 条",
     empty: "等待设备数据…",
@@ -188,6 +192,13 @@ export default {
     languageZh: "简体中文",
     languageEn: "English",
     languagePreview: "English 预览版：部分弹窗仍在翻译中。",
+    udpSlaveUnsupported: "从站模拟暂不支持 UDP，请选择 TCP",
+    hostRequired: "请输入主机地址",
+    invalidPort: "端口需为 1–65535 的整数",
+    invalidBaud: "波特率需为 1–4,000,000 的整数",
+    invalidSlaveId: "从站 ID 需在 1–247 之间",
+    createFailed: "创建会话失败",
+    updateFailed: "更新会话失败",
     about: "关于",
   },
 } as const;

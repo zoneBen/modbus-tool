@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "Industrial bus console",
-    version: "v0.1.8",
+    version: "v0.1.9",
   },
   nav: {
     workspace: "Workspace",
@@ -110,6 +110,10 @@ export default {
     ascii: "ASCII",
     hex: "HEX",
     clear: "Clear log",
+    export: "Export log",
+    exportEmpty: "No debug log to export",
+    exported: "Exported {count} debug entries",
+    exportFailed: "Could not export debug log",
     follow: "Follow latest",
     entries: "Entries: {count}",
     empty: "Waiting for device data…",
@@ -188,6 +192,13 @@ export default {
     languageZh: "简体中文",
     languageEn: "English",
     languagePreview: "English preview: some dialogs are still being translated.",
+    udpSlaveUnsupported: "Slave simulation does not support UDP; choose TCP",
+    hostRequired: "Enter a host address",
+    invalidPort: "Port must be an integer from 1 to 65535",
+    invalidBaud: "Baud rate must be an integer from 1 to 4,000,000",
+    invalidSlaveId: "Slave ID must be between 1 and 247",
+    createFailed: "Could not create session",
+    updateFailed: "Could not update session",
     about: "About",
   },
 } as const;

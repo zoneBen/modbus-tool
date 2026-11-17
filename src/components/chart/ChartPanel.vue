@@ -34,6 +34,7 @@ const definition = computed(() => sessions.activeDefinition);
 const timeline = computed(() =>
   definition.value ? sessions.timelines[definition.value.id] : undefined,
 );
+const focusAddress = computed(() => sessions.chartFocusAddress);
 const palette = computed(() => (settings.resolvedTheme === "dark" ? DARK_PALETTE : LIGHT_PALETTE));
 
 interface SeriesEntry {
@@ -53,22 +54,45 @@ const allSeries = computed<SeriesEntry[]>(() => {
   const tl = timeline.value;
   const def = definition.value;
   if (!tl || !def) return [];
-  return Object.entries(tl.series)
+  const ordered = Object.entries(tl.series)
     .map(([address, values]) => ({ address: Number(address), values }))
     .filter((entry) => entry.values.some((value) => value !== null))
-    .sort((left, right) => left.address - right.address)
-    .slice(0, MAX_SERIES)
-    .map((entry, index) => ({
-      ...entry,
-      label:
-        def.aliases[entry.address] ?? `地址 ${formatAddress(entry.address, settings.addressBase)}`,
-      color: palette.value[index] ?? palette.value[0],
-    }));
+    .sort((left, right) => left.address - right.address);
+  if (!ordered.length) return [];
+  const focusIndex = ordered.findIndex((entry) => entry.address === focusAddress.value);
+  const start =
+    focusIndex >= 0
+      ? Math.max(0, Math.min(focusIndex - Math.floor(MAX_SERIES / 2), ordered.length - MAX_SERIES))
+      : 0;
+  return ordered.slice(start, start + MAX_SERIES).map((entry, index) => ({
+    ...entry,
+    label:
+      def.aliases[entry.address] ?? `地址 ${formatAddress(entry.address, settings.addressBase)}`,
+    color: palette.value[index] ?? palette.value[0],
+  }));
 });
 
+let lastFocusAddress: number | null | undefined;
+let lastFocusDefinition: string | null | undefined;
+
 watch(
-  allSeries,
-  (series) => {
+  [allSeries, focusAddress, () => definition.value?.id] as const,
+  ([series, focus, definitionId]) => {
+    const focusChanged = focus !== lastFocusAddress || definitionId !== lastFocusDefinition;
+    lastFocusAddress = focus;
+    lastFocusDefinition = definitionId;
+    const hadSelection = selectedAddresses.value.some((address) =>
+      series.some((entry) => entry.address === address),
+    );
+    if (focus !== null && (focusChanged || !hadSelection)) {
+      const index = series.findIndex((entry) => entry.address === focus);
+      if (index >= 0) {
+        selectedAddresses.value = [series[index - 1], series[index], series[index + 1]]
+          .filter((entry): entry is SeriesEntry => Boolean(entry))
+          .map((entry) => entry.address);
+        return;
+      }
+    }
     const valid = selectedAddresses.value.filter((address) =>
       series.some((entry) => entry.address === address),
     );
@@ -199,7 +223,7 @@ const tableRows = computed(() => {
         v-if="numericCount > MAX_SERIES"
         class="rounded border border-hairline px-1 py-0.5 text-[11px] text-muted-foreground"
       >
-        仅显示前 {{ MAX_SERIES }} 条
+        仅显示邻近 {{ MAX_SERIES }} 条
       </span>
 
       <div class="ml-auto flex items-center gap-1.5">

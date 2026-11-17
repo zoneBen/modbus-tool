@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ArrowDownToLine, CircleAlert, Eraser, LoaderCircle, Send, Terminal } from "@lucide/vue";
+import {
+  ArrowDownToLine,
+  CircleAlert,
+  Download,
+  Eraser,
+  LoaderCircle,
+  Send,
+  Terminal,
+} from "@lucide/vue";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -13,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { formatTime } from "@/lib/format";
+import { ipc } from "@/lib/ipc";
 import { encodeRawPayload, formatDebugBytes } from "@/lib/raw-send";
 import { useDebugStore } from "@/stores/debug";
 import { useSessionsStore } from "@/stores/sessions";
@@ -129,6 +138,47 @@ onBeforeUnmount(() => {
   if (debug.active) void debug.stop();
 });
 
+function csvCell(value: unknown): string {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+async function exportLogs(): Promise<void> {
+  if (!debug.entries.length) {
+    toast.info(t("debug.exportEmpty"));
+    return;
+  }
+  const header = ["time", "direction", "bytes", "ascii", "hex"];
+  const lines = [header.map(csvCell).join(",")];
+  for (const entry of debug.entries) {
+    lines.push(
+      [
+        new Date(entry.timestamp).toISOString(),
+        entry.direction.toUpperCase(),
+        entry.data.length,
+        formatDebugBytes(entry.data, "ascii"),
+        formatDebugBytes(entry.data, "hex"),
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const scope = (session.value?.name ?? "debug").replace(/[\\/:*?"<>|\s]+/g, "_");
+  try {
+    const saved = await ipc.saveTextFile(
+      `modbus-debug-${scope}-${stamp}.csv`,
+      `${String.fromCharCode(0xfeff)}${lines.join("\r\n")}`,
+    );
+    if (saved) {
+      toast.success(t("debug.exported", { count: debug.entries.length }));
+    }
+  } catch (cause: unknown) {
+    toast.error(t("debug.exportFailed"), {
+      description: cause instanceof Error ? cause.message : String(cause),
+    });
+  }
+}
+
 async function send(): Promise<void> {
   if (!canSend.value || sending.value) return;
   sending.value = true;
@@ -241,6 +291,15 @@ async function send(): Promise<void> {
           >
             <ArrowDownToLine class="size-3" />
             <span class="hidden sm:inline">{{ t("debug.follow") }}</span>
+          </button>
+          <button
+            type="button"
+            class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10.5px] text-muted-foreground transition-colors hover:text-foreground"
+            :title="t('debug.export')"
+            @click="exportLogs"
+          >
+            <Download class="size-3" />
+            <span class="hidden sm:inline">{{ t("debug.export") }}</span>
           </button>
           <button
             type="button"

@@ -1,21 +1,18 @@
 <script setup lang="ts">
-import {
-  FlaskConical,
-  Info,
-  LayoutDashboard,
-  Moon,
-  ScanLine,
-  Settings2,
-  Sparkles,
-  Sun,
-} from "@lucide/vue";
-import { computed } from "vue";
+import { Info, LayoutDashboard, Moon, ScanLine, Settings2, Sun } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useScansStore } from "@/stores/scans";
-import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
+
+type RailView = "workspace" | "scan" | "settings" | "about";
+
+withDefaults(
+  defineProps<{
+    activeView?: RailView;
+  }>(),
+  { activeView: "workspace" },
+);
 
 const emit = defineEmits<{
   (event: "open-settings"): void;
@@ -23,21 +20,9 @@ const emit = defineEmits<{
   (event: "open-about"): void;
 }>();
 
-const sessions = useSessionsStore();
 const scans = useScansStore();
 const settings = useSettingsStore();
 const { t } = useI18n();
-
-const simulatorActive = computed(() => sessions.activeSession?.role === "slave");
-
-function openSimulator(): void {
-  const simulator = sessions.sessions.find((session) => session.role === "slave");
-  if (simulator) {
-    sessions.setActiveSession(simulator.id);
-  } else {
-    toast.info("还没有模拟器会话，请通过“新建会话”创建从站。");
-  }
-}
 </script>
 
 <template>
@@ -59,10 +44,18 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="relative flex size-10 items-center justify-center rounded-xl text-foreground transition-colors hover:bg-overlay-3"
+              class="relative flex size-10 items-center justify-center rounded-xl transition-colors"
+              :class="
+                activeView === 'workspace'
+                  ? 'bg-signal/10 text-signal'
+                  : 'text-muted-foreground hover:bg-overlay-3 hover:text-foreground'
+              "
               aria-label="工作台"
             >
-              <span class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-signal" />
+              <span
+                v-if="activeView === 'workspace'"
+                class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-signal"
+              />
               <LayoutDashboard class="size-[18px]" />
             </button>
           </TooltipTrigger>
@@ -75,13 +68,17 @@ function openSimulator(): void {
               type="button"
               class="relative flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
               :class="
-                scans.running
+                activeView === 'scan' || scans.running
                   ? 'bg-signal/10 text-signal'
                   : 'text-muted-foreground hover:text-foreground'
               "
               aria-label="设备扫描"
               @click="emit('open-scan')"
             >
+              <span
+                v-if="activeView === 'scan'"
+                class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-signal"
+              />
               <ScanLine class="size-[18px]" />
               <span
                 v-if="scans.running"
@@ -90,25 +87,6 @@ function openSimulator(): void {
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">{{ t("nav.scan") }}</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <button
-              type="button"
-              class="flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
-              :class="
-                simulatorActive
-                  ? 'bg-sim/10 text-sim'
-                  : 'text-muted-foreground hover:text-foreground'
-              "
-              aria-label="从站模拟器"
-              @click="openSimulator"
-            >
-              <FlaskConical class="size-[18px]" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">{{ t("nav.simulator") }}</TooltipContent>
         </Tooltip>
       </nav>
 
@@ -134,27 +112,19 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
+              class="relative flex size-10 items-center justify-center rounded-xl transition-colors"
               :class="
-                settings.reduceEffects ? 'text-warn' : 'text-muted-foreground hover:text-foreground'
+                activeView === 'about'
+                  ? 'bg-signal/10 text-signal'
+                  : 'text-muted-foreground hover:bg-overlay-3 hover:text-foreground'
               "
-              aria-label="减少特效"
-              @click="settings.reduceEffects = !settings.reduceEffects"
-            >
-              <Sparkles class="size-[17px]" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">{{ t("dialog.reduceEffects") }}</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <button
-              type="button"
-              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
               aria-label="关于"
               @click="emit('open-about')"
             >
+              <span
+                v-if="activeView === 'about'"
+                class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-signal"
+              />
               <Info class="size-[18px]" />
             </button>
           </TooltipTrigger>
@@ -165,10 +135,19 @@ function openSimulator(): void {
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
+              class="relative flex size-10 items-center justify-center rounded-xl transition-colors"
+              :class="
+                activeView === 'settings'
+                  ? 'bg-signal/10 text-signal'
+                  : 'text-muted-foreground hover:bg-overlay-3 hover:text-foreground'
+              "
               aria-label="设置"
               @click="emit('open-settings')"
             >
+              <span
+                v-if="activeView === 'settings'"
+                class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-signal"
+              />
               <Settings2 class="size-[18px]" />
             </button>
           </TooltipTrigger>

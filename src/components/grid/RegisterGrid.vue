@@ -18,14 +18,14 @@ import type { WriteTarget } from "@/types/ui";
 const emit = defineEmits<{
   (event: "write", target: WriteTarget): void;
   (event: "new-session"): void;
-  (event: "open-trend"): void;
+  (event: "open-trend", address?: number): void;
 }>();
 
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
 const { t } = useI18n();
 
-const selectedAddress = ref<number | null>(null);
+const selectedAddress = computed(() => sessions.selectedAddress);
 const aliasOpen = ref(false);
 const aliasRow = ref<GridRow | null>(null);
 const formatOpen = ref(false);
@@ -107,7 +107,7 @@ watch(
   () => {
     previousValues = new Map();
     flashMap.value = {};
-    selectedAddress.value = null;
+    sessions.selectAddress(null);
   },
 );
 
@@ -133,8 +133,11 @@ function openSelectedWrite(): void {
   if (selectedRow.value) openWrite(selectedRow.value);
 }
 
-function openTrend(): void {
-  if (definition.value) emit("open-trend");
+function openTrend(address?: number): void {
+  if (!definition.value) return;
+  const target = address ?? selectedAddress.value ?? undefined;
+  if (target !== undefined) sessions.focusChart(target);
+  emit("open-trend", target);
 }
 
 function openAlias(row: GridRow): void {
@@ -153,7 +156,7 @@ function openSlaveValue(row: GridRow): void {
 
 function openValue(row: GridRow): void {
   if (isSlave.value) openSlaveValue(row);
-  else openTrend();
+  else openTrend(row.address);
 }
 
 function openFormatCell(row: GridRow): void {
@@ -218,7 +221,7 @@ function openFormatCell(row: GridRow): void {
                 rowHeightClass,
                 selectedAddress === row.address ? 'bg-overlay-2' : '',
               ]"
-              @click="selectedAddress = row.address"
+              @click="sessions.selectAddress(row.address)"
             >
               <span
                 v-if="selectedAddress === row.address"
@@ -279,7 +282,7 @@ function openFormatCell(row: GridRow): void {
                 v-if="!isSlave"
                 class="flex cursor-pointer justify-center"
                 title="双击打开趋势大图"
-                @dblclick.stop="openTrend"
+                @dblclick.stop="openTrend(row.address)"
               >
                 <Sparkline :points="row.history" :tone="sparkTone" :width="84" :height="22" />
               </div>

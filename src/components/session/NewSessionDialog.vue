@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Cpu, Network, Server, Usb } from "@lucide/vue";
+import { CircleAlert, Cpu, Network, Server, Usb } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSerialPorts } from "@/composables/useSerialPorts";
 import { useSessionsStore } from "@/stores/sessions";
 import type { Framing, SessionRole, TransportKind } from "@/types/models";
+import BaudRateField from "./BaudRateField.vue";
 import SerialPortField from "./SerialPortField.vue";
 
 const open = defineModel<boolean>("open", { default: false });
@@ -48,6 +49,7 @@ const {
   refresh: refreshSerialPorts,
 } = useSerialPorts();
 const busy = ref(false);
+const errorMessage = ref("");
 
 const framingOptions = computed(() =>
   linkMode.value === "serial"
@@ -80,7 +82,9 @@ const endpoint = computed(() => {
 });
 
 watch(open, (isOpen) => {
-  if (isOpen) void refreshSerialPorts();
+  if (!isOpen) return;
+  errorMessage.value = "";
+  void refreshSerialPorts();
 });
 
 watch(
@@ -110,19 +114,45 @@ watch(linkMode, (value) => {
   framing.value = value === "serial" ? "rtu" : "mbap";
 });
 
+function fail(message: string): void {
+  errorMessage.value = message;
+  toast.error(message);
+}
+
 async function submit(): Promise<void> {
   if (busy.value) return;
+  errorMessage.value = "";
   if (role.value === "slave" && linkMode.value === "network" && transport.value === "udp") {
-    toast.error("从站模拟暂不支持 UDP，请选择 TCP");
+    fail(t("dialog.udpSlaveUnsupported"));
     return;
   }
   if (linkMode.value === "network" && role.value === "master" && !host.value.trim()) {
-    toast.error("请输入主机地址");
+    fail(t("dialog.hostRequired"));
     return;
   }
-  if (linkMode.value === "serial" && !serialPort.value.trim()) {
-    toast.error(t("serial.missing"));
-    return;
+  if (linkMode.value === "network") {
+    const parsedPort = Number(port.value);
+    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+      fail(t("dialog.invalidPort"));
+      return;
+    }
+  }
+  if (linkMode.value === "serial") {
+    if (!serialPort.value.trim()) {
+      fail(t("serial.missing"));
+      return;
+    }
+    if (!Number.isInteger(baudRate.value) || baudRate.value < 1 || baudRate.value > 4_000_000) {
+      fail(t("dialog.invalidBaud"));
+      return;
+    }
+  }
+  if (role.value === "slave") {
+    const id = Number(slaveId.value);
+    if (!Number.isInteger(id) || id < 1 || id > 247) {
+      fail(t("dialog.invalidSlaveId"));
+      return;
+    }
   }
   busy.value = true;
   try {
@@ -157,8 +187,10 @@ async function submit(): Promise<void> {
     name.value = "";
     open.value = false;
   } catch (error: unknown) {
-    toast.error("创建会话失败", {
-      description: error instanceof Error ? error.message : String(error),
+    const message = error instanceof Error ? error.message : String(error);
+    errorMessage.value = message;
+    toast.error(t("dialog.createFailed"), {
+      description: message,
     });
   } finally {
     busy.value = false;
@@ -191,6 +223,14 @@ async function submit(): Promise<void> {
           }}
         </DialogDescription>
       </DialogHeader>
+
+      <div
+        v-if="errorMessage"
+        class="flex shrink-0 items-start gap-2 border-b border-error/25 bg-error/10 px-5 py-2.5 text-[11px] leading-relaxed text-error"
+      >
+        <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+        <span class="break-words">{{ errorMessage }}</span>
+      </div>
 
       <div class="space-y-4 px-5 py-4">
         <div class="grid grid-cols-2 gap-3">
@@ -303,15 +343,7 @@ async function submit(): Promise<void> {
             />
             <div class="space-y-1.5">
               <Label class="text-[11px] text-muted-foreground">波特率</Label>
-              <FormSelect
-                v-model="baudRate"
-                :options="
-                  [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map((value) => ({
-                    label: value.toString(),
-                    value,
-                  }))
-                "
-              />
+              <BaudRateField v-model="baudRate" />
             </div>
             <div class="space-y-1.5">
               <Label class="text-[11px] text-muted-foreground">校验 / 数据位 / 停止位</Label>

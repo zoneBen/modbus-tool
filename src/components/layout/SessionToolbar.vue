@@ -7,7 +7,6 @@ import {
   Play,
   Power,
   RefreshCw,
-  Settings2,
   SlidersHorizontal,
 } from "@lucide/vue";
 import { computed } from "vue";
@@ -29,7 +28,6 @@ const emit = defineEmits<{
   (event: "write"): void;
   (event: "debug"): void;
   (event: "edit-session"): void;
-  (event: "open-settings"): void;
 }>();
 
 const sessions = useSessionsStore();
@@ -43,6 +41,9 @@ const lastUpdate = computed(() => sessions.activeSnapshot?.timestamp ?? sessions
 const addressBases = [0, 1] as const;
 const connected = computed(() => session.value?.status === "connected");
 const connecting = computed(() => session.value?.status === "connecting");
+const debugReady = computed(
+  () => session.value?.role === "master" && connected.value && !session.value?.polling,
+);
 
 async function toggleConnection(): Promise<void> {
   const current = session.value;
@@ -174,7 +175,12 @@ async function toggleConnection(): Promise<void> {
           <Button
             variant="outline"
             size="sm"
-            class="h-8 gap-1.5 border-warn/25 bg-warn/10 text-[12px] text-warn hover:bg-warn/15"
+            class="h-8 gap-1.5 text-[12px] transition-colors disabled:opacity-40"
+            :class="
+              debugReady
+                ? 'border-warn/30 bg-warn/12 text-warn hover:bg-warn/18'
+                : 'border-hairline bg-overlay-1 text-muted-foreground hover:text-foreground'
+            "
             :disabled="!session || isSlave"
             :aria-label="t('toolbar.debug')"
             @click="emit('debug')"
@@ -240,22 +246,5 @@ async function toggleConnection(): Promise<void> {
       <Play v-else class="size-3.5" />
       {{ session?.polling ? t("toolbar.stop") : t("toolbar.start") }}
     </Button>
-
-    <TooltipProvider :delay-duration="180">
-      <Tooltip>
-        <TooltipTrigger as-child>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            class="rounded-lg text-muted-foreground hover:text-foreground"
-            aria-label="设置"
-            @click="emit('open-settings')"
-          >
-            <Settings2 class="size-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{{ t("toolbar.settings") }}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   </div>
 </template>

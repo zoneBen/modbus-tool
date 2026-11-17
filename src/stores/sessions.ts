@@ -23,6 +23,8 @@ export const useSessionsStore = defineStore("sessions", () => {
   const sessions = ref<Session[]>([]);
   const activeSessionId = ref<string | null>(null);
   const activeDefinitionId = ref<string | null>(null);
+  const selectedAddress = ref<number | null>(null);
+  const chartFocusAddress = ref<number | null>(null);
   const snapshots = ref<Record<string, DefinitionSnapshot>>({});
   const history = ref<Record<string, number[]>>({});
   const timelines = ref<Record<string, DefinitionTimeline>>({});
@@ -77,6 +79,8 @@ export const useSessionsStore = defineStore("sessions", () => {
         sessions.value.find((session) => session.role === "master") ?? sessions.value[0];
       activeSessionId.value = first?.id ?? null;
       activeDefinitionId.value = first?.definitions[0]?.id ?? null;
+      selectedAddress.value = null;
+      chartFocusAddress.value = null;
     }
   }
 
@@ -154,6 +158,10 @@ export const useSessionsStore = defineStore("sessions", () => {
   function setActiveSession(sessionId: string): void {
     const session = sessions.value.find((candidate) => candidate.id === sessionId);
     if (!session) return;
+    if (activeSessionId.value !== sessionId) {
+      selectedAddress.value = null;
+      chartFocusAddress.value = null;
+    }
     activeSessionId.value = sessionId;
     const currentDefinition = session.definitions.find(
       (definition) => definition.id === activeDefinitionId.value,
@@ -162,7 +170,20 @@ export const useSessionsStore = defineStore("sessions", () => {
   }
 
   function setActiveDefinition(definitionId: string): void {
+    if (activeDefinitionId.value !== definitionId) {
+      selectedAddress.value = null;
+      chartFocusAddress.value = null;
+    }
     activeDefinitionId.value = definitionId;
+  }
+
+  function selectAddress(address: number | null): void {
+    selectedAddress.value = address;
+  }
+
+  function focusChart(address: number | null): void {
+    chartFocusAddress.value = address;
+    if (address !== null) selectedAddress.value = address;
   }
 
   async function togglePolling(): Promise<void> {
@@ -246,6 +267,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     );
     if (activeDefinitionId.value === definitionId) {
       activeDefinitionId.value = remaining[0]?.id ?? null;
+      selectedAddress.value = null;
+      chartFocusAddress.value = null;
     }
 
     const nextSnapshots = { ...snapshots.value };
@@ -270,6 +293,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     }
     activeSessionId.value = session.id;
     activeDefinitionId.value = session.definitions[0]?.id ?? null;
+    selectedAddress.value = null;
+    chartFocusAddress.value = null;
     return session;
   }
 
@@ -281,6 +306,8 @@ export const useSessionsStore = defineStore("sessions", () => {
       const next = sessions.value.find((session) => session.role === "master") ?? sessions.value[0];
       activeSessionId.value = next?.id ?? null;
       activeDefinitionId.value = next?.definitions[0]?.id ?? null;
+      selectedAddress.value = null;
+      chartFocusAddress.value = null;
     }
     if (!removed) return;
     const nextSnapshots = { ...snapshots.value };
@@ -354,6 +381,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     sessions,
     activeSessionId,
     activeDefinitionId,
+    selectedAddress,
+    chartFocusAddress,
     snapshots,
     history,
     timelines,
@@ -376,6 +405,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     boot,
     setActiveSession,
     setActiveDefinition,
+    selectAddress,
+    focusChart,
     togglePolling,
     readOnce,
     toggleDefinition,

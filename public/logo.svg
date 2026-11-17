@@ -1,13 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="16" fill="#0E1116"/>
-  <rect x="1" y="1" width="62" height="62" rx="15" stroke="#2A313D"/>
-  <path d="M13 41V25l10 10 9-15 9 15 10-10v16" stroke="url(#signal)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="13" cy="25" r="2.5" fill="#45F0B0"/>
-  <circle cx="51" cy="41" r="2.5" fill="#39C7FF"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
   <defs>
-    <linearGradient id="signal" x1="13" y1="20" x2="51" y2="44" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#45F0B0"/>
-      <stop offset="1" stop-color="#39C7FF"/>
+    <linearGradient id="shell" x1="160" y1="96" x2="900" y2="960" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101923" />
+      <stop offset="1" stop-color="#080C11" />
     </linearGradient>
+    <linearGradient id="signal" x1="320" y1="420" x2="710" y2="660" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4BF0B2" />
+      <stop offset="0.55" stop-color="#36D7C2" />
+      <stop offset="1" stop-color="#39C7FF" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(300 280) rotate(44) scale(520)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#45F0B0" stop-opacity="0.16" />
+      <stop offset="1" stop-color="#45F0B0" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow2" cx="0" cy="0" r="1" gradientTransform="translate(760 760) rotate(-136) scale(440)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#39C7FF" stop-opacity="0.14" />
+      <stop offset="1" stop-color="#39C7FF" stop-opacity="0" />
+    </radialGradient>
   </defs>
+
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#shell)" />
+  <rect x="32" y="32" width="960" height="960" rx="224" stroke="#223140" stroke-width="8" />
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#glow)" />
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#glow2)" />
+
+  <g stroke="#1C2A37" stroke-width="7" stroke-linecap="round">
+    <path d="M168 344H252M168 344V260" />
+    <path d="M856 344H772M856 344V260" />
+    <path d="M168 680H252M168 680V764" />
+    <path d="M856 680H772M856 680V764" />
+    <path d="M300 168V232M512 168V232M724 168V232" />
+    <path d="M300 856V792M512 856V792M724 856V792" />
+  </g>
+  <g fill="#2B3D4C">
+    <circle cx="168" cy="344" r="15" />
+    <circle cx="856" cy="344" r="15" />
+    <circle cx="168" cy="680" r="15" />
+    <circle cx="856" cy="680" r="15" />
+  </g>
+
+  <rect x="246" y="246" width="532" height="532" rx="118" fill="#0C141D" stroke="#263849" stroke-width="9" />
+  <path
+    d="M330 666V426L512 572L694 426V666"
+    stroke="url(#signal)"
+    stroke-width="62"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="330" cy="426" r="31" fill="#4BF0B2" />
+  <circle cx="694" cy="426" r="31" fill="#39C7FF" />
+
+  <g fill="#2A3A48">
+    <rect x="330" y="724" width="78" height="18" rx="9" />
+    <rect x="444" y="724" width="78" height="18" rx="9" fill="#45F0B0" fill-opacity="0.72" />
+    <rect x="558" y="724" width="78" height="18" rx="9" />
+    <rect x="672" y="724" width="22" height="18" rx="9" fill="#39C7FF" fill-opacity="0.72" />
+  </g>
+
+  <circle cx="746" cy="242" r="12" fill="#4BF0B2" fill-opacity="0.9" />
+  <circle cx="782" cy="242" r="12" fill="#223140" />
 </svg>
