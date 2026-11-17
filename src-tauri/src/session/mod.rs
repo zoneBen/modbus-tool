@@ -42,6 +42,7 @@ impl SessionManager {
 
     pub async fn create_session(&self, input: NewSessionInput) -> Result<SessionDto, String> {
         let id = Uuid::new_v4().to_string();
+        let auto_connect = input.auto_connect;
         let config = input.into_config(id.clone())?;
         let state = Arc::new(RwLock::new(SessionState::new(config)));
         let (commands, command_rx) = mpsc::unbounded_channel();
@@ -58,6 +59,12 @@ impl SessionManager {
             commands: commands.clone(),
         };
         self.sessions.write().await.insert(id.clone(), handle);
+
+        if !auto_connect {
+            let dto = state.read().await.to_dto();
+            self.emit_workspace().await;
+            return Ok(dto);
+        }
 
         let (reply, response) = oneshot::channel();
         if commands.send(SessionCommand::Connect { reply }).is_err() {

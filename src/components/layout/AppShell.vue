@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AboutOverlay from "@/components/about/AboutOverlay.vue";
+import AlertsDialog from "@/components/alerts/AlertsDialog.vue";
 import TrendOverlay from "@/components/chart/TrendOverlay.vue";
 import DebugDialog from "@/components/debug/DebugDialog.vue";
 import ActivityRail from "@/components/layout/ActivityRail.vue";
@@ -14,6 +15,7 @@ import WriteDialog from "@/components/definition/WriteDialog.vue";
 import RegisterGrid from "@/components/grid/RegisterGrid.vue";
 import InspectorPanel from "@/components/inspector/InspectorPanel.vue";
 import FrameMonitor from "@/components/monitor/FrameMonitor.vue";
+import NetworkDialog from "@/components/network/NetworkDialog.vue";
 import ScanDialog from "@/components/scan/ScanDialog.vue";
 import EditSessionDialog from "@/components/session/EditSessionDialog.vue";
 import NewSessionDialog from "@/components/session/NewSessionDialog.vue";
@@ -33,21 +35,35 @@ const initialDialog = new URLSearchParams(window.location.search).get("dialog");
 const newSessionOpen = ref(initialDialog === "session");
 const settingsOpen = ref(initialDialog === "settings");
 const scanOpen = ref(initialDialog === "scan");
+const networkOpen = ref(initialDialog === "network");
+const alertsOpen = ref(false);
 const writeOpen = ref(false);
 const writeTarget = ref<WriteTarget | null>(null);
 const trendOpen = ref(false);
 const editSessionOpen = ref(false);
 const debugOpen = ref(false);
 const aboutOpen = ref(false);
-const railView = ref<"workspace" | "scan" | "settings" | "about">("workspace");
+const railView = ref<"workspace" | "network" | "scan" | "alerts" | "settings" | "about">(
+  "workspace",
+);
 
 const monitorStyle = computed(() => ({
   height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
 }));
 
+watch(networkOpen, (open) => {
+  if (open) railView.value = "network";
+  else if (railView.value === "network") railView.value = "workspace";
+});
+
 watch(scanOpen, (open) => {
   if (open) railView.value = "scan";
   else if (railView.value === "scan") railView.value = "workspace";
+});
+
+watch(alertsOpen, (open) => {
+  if (open) railView.value = "alerts";
+  else if (railView.value === "alerts") railView.value = "workspace";
 });
 
 watch(settingsOpen, (open) => {
@@ -146,7 +162,9 @@ function startResize(event: PointerEvent): void {
       <ActivityRail
         :active-view="railView"
         @open-settings="settingsOpen = true"
+        @open-network="networkOpen = true"
         @open-scan="scanOpen = true"
+        @open-alerts="alertsOpen = true"
         @open-about="aboutOpen = true"
       />
       <SessionSidebar @new-session="newSessionOpen = true" />
@@ -194,6 +212,8 @@ function startResize(event: PointerEvent): void {
     <NewSessionDialog v-model:open="newSessionOpen" />
     <EditSessionDialog v-model:open="editSessionOpen" />
     <DebugDialog v-model:open="debugOpen" />
+    <NetworkDialog v-model:open="networkOpen" />
+    <AlertsDialog v-model:open="alertsOpen" />
     <SettingsDialog v-model:open="settingsOpen" />
     <ScanDialog v-model:open="scanOpen" />
     <WriteDialog v-model:open="writeOpen" :target="writeTarget" />

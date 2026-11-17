@@ -1,5 +1,12 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { toast } from "vue-sonner";
+import {
+  loadPersistedWorkspace,
+  persistedSessionInput,
+  savePersistedWorkspace,
+  workspaceConfigSignature,
+} from "@/lib/persisted-workspace";
 import { ipc } from "@/lib/ipc";
 import type {
   CustomWriteInput,
@@ -32,6 +39,37 @@ export const useSessionsStore = defineStore("sessions", () => {
   const bootError = ref<string | null>(null);
   const demo = ref(false);
   const lastUpdate = ref<number | null>(null);
+  const restoring = ref(false);
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function persistNow(): void {
+    if (!booted.value || demo.value || restoring.value) return;
+    savePersistedWorkspace(sessions.value);
+  }
+
+  function schedulePersist(): void {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      persistNow();
+    }, 180);
+  }
+
+  watch(
+    () => workspaceConfigSignature(sessions.value),
+    () => schedulePersist(),
+    { flush: "post" },
+  );
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", () => {
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
+      }
+      persistNow();
+    });
+  }
 
   const activeSession = computed<Session | null>(
     () => sessions.value.find((session) => session.id === activeSessionId.value) ?? null,
@@ -144,11 +182,65 @@ export const useSessionsStore = defineStore("sessions", () => {
     lastUpdate.value = snapshot.timestamp;
   }
 
+  async function restorePersistedWorkspace(): Promise<string[]> {
+    const saved = loadPersistedWorkspace();
+    if (!saved?.sessions.length) return [];
+    const errors: string[] = [];
+    restoring.value = true;
+    try {
+      for (const persisted of saved.sessions) {
+        try {
+          const created = await ipc.createSession(persistedSessionInput(persisted));
+          if (persisted.role === "slave") {
+            const synthetic = created.definitions[0];
+            const savedDefinition = persisted.definitions[0];
+            if (synthetic && savedDefinition) {
+              await ipc.updateDefinition(created.id, synthetic.id, savedDefinition);
+            }
+          } else {
+            for (const definition of persisted.definitions) {
+              try {
+                await ipc.createDefinition(created.id, definition);
+              } catch (cause: unknown) {
+                errors.push(
+                  `${persisted.name} / ${definition.name}: ${
+                    cause instanceof Error ? cause.message : String(cause)
+                  }`,
+                );
+              }
+            }
+          }
+        } catch (cause: unknown) {
+          errors.push(
+            `${persisted.name}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        }
+      }
+      const workspace = await ipc.boot();
+      applyWorkspace(workspace);
+    } finally {
+      restoring.value = false;
+    }
+    return errors;
+  }
+
   async function boot(): Promise<void> {
     if (booted.value) return;
     try {
       const workspace = await ipc.boot();
-      applyWorkspace(workspace);
+      if (!workspace.demo && workspace.sessions.length === 0) {
+        const errors = await restorePersistedWorkspace();
+        if (errors.length) {
+          bootError.value = errors.join("; ");
+          toast.error("部分会话恢复失败", { description: errors[0] });
+        } else if (sessions.value.length) {
+          toast.success(`已恢复 ${sessions.value.length} 个会话`, {
+            description: "会话默认保持断开，点击启动按钮连接。",
+          });
+        }
+      } else {
+        applyWorkspace(workspace);
+      }
       booted.value = true;
     } catch (error: unknown) {
       bootError.value = error instanceof Error ? error.message : String(error);

@@ -10,6 +10,8 @@ import type {
   DefinitionSnapshot,
   Frame,
   NetworkScanInput,
+  NetworkStartInput,
+  NetworkState,
   NewSessionInput,
   RawSendInput,
   RegisterValue,
@@ -37,6 +39,7 @@ import {
   wordsToDataBytes,
   writeSingleRequestPdu,
 } from "./demo-codec";
+import { resolvePoints } from "./definition";
 import { formatFunctionCode, formatNumber, snapshotKey } from "./format";
 import { encodeRawPayload } from "./raw-send";
 
@@ -194,7 +197,7 @@ function makeDefinition(
   aliases: Record<number, string>,
   slaveId = 1,
 ): Definition {
-  return {
+  const definition: Definition = {
     id,
     name,
     functionCode: 3,
@@ -206,7 +209,9 @@ function makeDefinition(
     intervalMs,
     enabled: true,
     aliases,
+    points: [],
   };
+  return { ...definition, points: resolvePoints(definition) };
 }
 
 function createDemoSessions(): Session[] {
@@ -384,6 +389,13 @@ export function createDemoBridge(): IpcApi {
   let debugSessionId: string | null = null;
   let debugTimer: ReturnType<typeof setInterval> | null = null;
   let debugHeartbeat = 0;
+  let demoNetworkState: NetworkState = {
+    active: false,
+    mode: null,
+    endpoint: null,
+    clients: 0,
+  };
+  let networkEchoTimer: ReturnType<typeof setTimeout> | null = null;
 
   function emit<K extends AppEventName>(event: K, payload: AppEventMap[K]): void {
     listeners.get(event)?.forEach((handler) => handler(payload));
@@ -623,8 +635,14 @@ export function createDemoBridge(): IpcApi {
     return { sessions: clone(sessions), version: 1, demo: true };
   }
 
-  async function saveTextFile(suggestedName: string, contents: string): Promise<boolean> {
-    const blob = new Blob([contents], { type: "text/csv;charset=utf-8" });
+  async function saveTextFile(
+    suggestedName: string,
+    contents: string,
+    format: "csv" | "json" = "csv",
+  ): Promise<boolean> {
+    const blob = new Blob([contents], {
+      type: format === "json" ? "application/json;charset=utf-8" : "text/csv;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -632,6 +650,39 @@ export function createDemoBridge(): IpcApi {
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return true;
+  }
+
+  async function openTextFile(): Promise<string | null> {
+    return new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json,application/json";
+      input.style.display = "none";
+      input.addEventListener(
+        "change",
+        () => {
+          const file = input.files?.[0];
+          if (!file) {
+            input.remove();
+            resolve(null);
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            input.remove();
+            resolve(typeof reader.result === "string" ? reader.result : null);
+          };
+          reader.onerror = () => {
+            input.remove();
+            resolve(null);
+          };
+          reader.readAsText(file);
+        },
+        { once: true },
+      );
+      document.body.appendChild(input);
+      input.click();
+    });
   }
 
   async function listSerialPorts(): Promise<SerialPortInfo[]> {
@@ -1017,10 +1068,15 @@ export function createDemoBridge(): IpcApi {
 
   async function createDefinition(sessionId: string, input: DefinitionInput): Promise<Definition> {
     const session = sessionById(sessionId);
-    const definition: Definition = {
+    const draft: Definition = {
       ...input,
       id: `demo-def-${Date.now().toString(36)}`,
       dataType: input.functionCode === 1 || input.functionCode === 2 ? "bool" : input.dataType,
+      points: input.points ?? [],
+    };
+    const definition: Definition = {
+      ...draft,
+      points: draft.points.length ? draft.points : resolvePoints(draft),
     };
     session.definitions.push(definition);
     emit("workspace:updated", { sessions: clone(sessions), version: 1, demo: true });
@@ -1035,10 +1091,15 @@ export function createDemoBridge(): IpcApi {
     const session = sessionById(sessionId);
     const index = session.definitions.findIndex((definition) => definition.id === definitionId);
     if (index < 0) throw new Error("定义不存在");
-    const definition: Definition = {
+    const draft: Definition = {
       ...input,
       id: definitionId,
       dataType: input.functionCode === 1 || input.functionCode === 2 ? "bool" : input.dataType,
+      points: input.points ?? [],
+    };
+    const definition: Definition = {
+      ...draft,
+      points: draft.points.length ? draft.points : resolvePoints(draft),
     };
     session.definitions[index] = definition;
     lastRun.delete(definitionId);
@@ -1147,6 +1208,77 @@ export function createDemoBridge(): IpcApi {
       session.stats.rx += 1;
       emit("session:status", statusPayload(session));
     }, 120);
+    return payload.length;
+  }
+
+  async function startNetwork(input: NetworkStartInput): Promise<NetworkState> {
+    const serverMode = input.mode === "tcp-server" || input.mode === "udp-server";
+    const relayMode = input.mode === "tcp-relay";
+    if (serverMode && (input.localPort < 1 || input.localPort > 65535)) {
+      throw new Error("监听端口需在 1–65535 之间");
+    }
+    if (!serverMode && !input.remoteHost?.trim()) {
+      throw new Error("请输入远端主机地址");
+    }
+    if (!serverMode && (!input.remotePort || input.remotePort < 1)) {
+      throw new Error("远端端口需在 1–65535 之间");
+    }
+    if (relayMode && (input.localPort < 1 || input.localPort > 65535)) {
+      throw new Error("本地监听端口需在 1–65535 之间");
+    }
+    const localHost = input.localHost.trim() || "0.0.0.0";
+    const endpoint = serverMode
+      ? `${localHost}:${input.localPort}`
+      : relayMode
+        ? `${localHost}:${input.localPort} → ${input.remoteHost}:${input.remotePort}`
+        : `${input.remoteHost}:${input.remotePort}`;
+    demoNetworkState = {
+      active: true,
+      mode: input.mode,
+      endpoint,
+      clients: serverMode ? 1 : 1,
+    };
+    emit("network:state", demoNetworkState);
+    return demoNetworkState;
+  }
+
+  async function stopNetwork(): Promise<void> {
+    if (networkEchoTimer) {
+      clearTimeout(networkEchoTimer);
+      networkEchoTimer = null;
+    }
+    demoNetworkState = {
+      ...demoNetworkState,
+      active: false,
+      clients: 0,
+    };
+    emit("network:state", demoNetworkState);
+  }
+
+  async function sendNetwork(input: RawSendInput): Promise<number> {
+    if (!demoNetworkState.active) throw new Error("网络助手尚未启动");
+    const payload = Array.from(
+      encodeRawPayload(input.data, input.mode, {
+        appendCr: input.appendCr,
+        appendLf: input.appendLf,
+      }),
+    );
+    emit("network:data", {
+      direction: "tx",
+      data: payload,
+      connection: demoNetworkState.endpoint ?? "demo",
+      timestamp: Date.now(),
+    });
+    if (networkEchoTimer) clearTimeout(networkEchoTimer);
+    networkEchoTimer = setTimeout(() => {
+      emit("network:data", {
+        direction: "rx",
+        data: payload,
+        connection: demoNetworkState.endpoint ?? "demo",
+        timestamp: Date.now(),
+      });
+      networkEchoTimer = null;
+    }, 180);
     return payload.length;
   }
 
@@ -1320,6 +1452,7 @@ export function createDemoBridge(): IpcApi {
     updateSession,
     writeSlaveValue,
     saveTextFile,
+    openTextFile,
     setPolling,
     readOnce,
     setDefinitionEnabled,
@@ -1336,6 +1469,9 @@ export function createDemoBridge(): IpcApi {
     startDebug,
     stopDebug,
     sendDebug,
+    startNetwork,
+    stopNetwork,
+    sendNetwork,
     on,
   };
 }

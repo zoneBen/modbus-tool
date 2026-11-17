@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Database, PencilLine, Plus, Trash2 } from "@lucide/vue";
+import { Database, Download, PencilLine, Plus, Trash2, Upload } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toDefinitionInput } from "@/lib/definition";
 import {
   formatFunctionCode,
   formatInterval,
@@ -25,9 +26,10 @@ import {
   formatNumber,
   formatRange,
 } from "@/lib/format";
+import { ipc } from "@/lib/ipc";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
-import type { Definition } from "@/types/models";
+import type { Definition, DefinitionInput } from "@/types/models";
 
 const emit = defineEmits<{
   (event: "new-session"): void;
@@ -89,6 +91,96 @@ const accentClass: Record<string, string> = {
   sim: "bg-sim",
 };
 
+const ioBusy = ref(false);
+
+async function exportDefinitions(): Promise<void> {
+  const session = sessions.activeSession;
+  if (!session || !sessions.activeDefinitions.length) {
+    toast.info(t("workspace.exportEmpty"));
+    return;
+  }
+  ioBusy.value = true;
+  try {
+    const payload = {
+      version: 1,
+      kind: session.role === "slave" ? "modbus-simulator-config" : "modbus-definition-bundle",
+      session: session.name,
+      exportedAt: new Date().toISOString(),
+      definitions: sessions.activeDefinitions.map(toDefinitionInput),
+    };
+    const suffix = session.role === "slave" ? "simulator" : "definitions";
+    const name = `${session.name.replace(/[\\/:*?"<>|\s]+/g, "_")}-${suffix}.json`;
+    const saved = await ipc.saveTextFile(name, JSON.stringify(payload, null, 2), "json");
+    if (saved) {
+      toast.success(t("workspace.exportedDefinitions"), {
+        description: t("workspace.exportedCount", {
+          count: sessions.activeDefinitions.length,
+        }),
+      });
+    }
+  } catch (error: unknown) {
+    toast.error(t("workspace.exportDefinitionsFailed"), {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    ioBusy.value = false;
+  }
+}
+
+async function importDefinitions(): Promise<void> {
+  const session = sessions.activeSession;
+  if (!session) return;
+  ioBusy.value = true;
+  try {
+    const text = await ipc.openTextFile();
+    if (!text) return;
+    const parsed = JSON.parse(text) as { definitions?: unknown } | unknown[];
+    const rawDefinitions = Array.isArray(parsed) ? parsed : parsed.definitions;
+    if (!Array.isArray(rawDefinitions) || !rawDefinitions.length) {
+      toast.error(t("workspace.invalidDefinitionFile"));
+      return;
+    }
+    const definitions = rawDefinitions as DefinitionInput[];
+    const errors: string[] = [];
+    if (session.role === "slave") {
+      const existing = session.definitions[0];
+      if (existing && definitions[0]) {
+        await sessions.updateDefinition(existing.id, definitions[0]);
+      }
+      toast.success(t("workspace.importedDefinitions"), {
+        description: t("workspace.importedSimulatorHint"),
+      });
+    } else {
+      for (const definition of definitions) {
+        try {
+          await sessions.createDefinition(definition);
+        } catch (error: unknown) {
+          errors.push(
+            `${definition.name ?? t("workspace.unnamed")}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+      if (errors.length) {
+        toast.error(t("workspace.importDefinitionsFailed"), {
+          description: errors[0],
+        });
+      } else {
+        toast.success(t("workspace.importedDefinitions"), {
+          description: t("workspace.importedCount", { count: definitions.length }),
+        });
+      }
+    }
+  } catch (error: unknown) {
+    toast.error(t("workspace.importDefinitionsFailed"), {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    ioBusy.value = false;
+  }
+}
+
 function selectSession(sessionId: string): void {
   sessions.setActiveSession(sessionId);
 }
@@ -100,7 +192,12 @@ function selectSession(sessionId: string): void {
       <div>
         <p class="text-[13px] font-semibold tracking-tight">{{ t("workspace.title") }}</p>
         <p class="text-[11px] text-muted-foreground">
-          {{ sessions.masterCount }} 主站 · {{ sessions.slaveCount }} 从站
+          {{
+            t("workspace.masterSlaveCount", {
+              master: sessions.masterCount,
+              slave: sessions.slaveCount,
+            })
+          }}
         </p>
       </div>
       <TooltipProvider :delay-duration="180">
@@ -192,6 +289,26 @@ function selectSession(sessionId: string): void {
             isSlaveSession ? "模拟映射" : t("workspace.definitions")
           }}</span>
           <div class="flex items-center gap-1">
+            <button
+              type="button"
+              class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground disabled:opacity-40"
+              :disabled="ioBusy"
+              :aria-label="t('workspace.importDefinitions')"
+              :title="t('workspace.importDefinitions')"
+              @click="importDefinitions"
+            >
+              <Upload class="size-3" />
+            </button>
+            <button
+              type="button"
+              class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground disabled:opacity-40"
+              :disabled="ioBusy || !sessions.activeDefinitions.length"
+              :aria-label="t('workspace.exportDefinitions')"
+              :title="t('workspace.exportDefinitions')"
+              @click="exportDefinitions"
+            >
+              <Download class="size-3" />
+            </button>
             <span class="numeric text-[11px] text-muted-foreground">
               {{ sessions.activeDefinitions.length.toString().padStart(2, "0") }}
             </span>

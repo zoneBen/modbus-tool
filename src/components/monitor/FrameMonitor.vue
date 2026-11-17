@@ -7,7 +7,6 @@ import {
   Pause,
   Play,
   Radio,
-  ScrollText,
   Search,
   Trash2,
 } from "@lucide/vue";
@@ -41,7 +40,7 @@ const { t } = useI18n();
 
 const listEl = ref<HTMLElement | null>(null);
 const initialTab = new URLSearchParams(window.location.search).get("tab");
-const activeTab = ref<"frames" | "chart" | "log">(initialTab === "chart" ? "chart" : "frames");
+const activeTab = ref<"frames" | "chart">(initialTab === "chart" ? "chart" : "frames");
 const directionOptions = ["all", "tx", "rx"] as const;
 
 const count = computed(() => frames.filteredFrames.length);
@@ -88,11 +87,7 @@ watch(
 
 onMounted(scrollToEnd);
 
-function openTab(tab: "frames" | "chart" | "log"): void {
-  if (tab === "log") {
-    toast.info("CSV 数据日志将在 P6 阶段启用。");
-    return;
-  }
+function openTab(tab: "frames" | "chart"): void {
   activeTab.value = tab;
 }
 
@@ -187,16 +182,6 @@ async function exportFrames(): Promise<void> {
         实时曲线
         <span v-if="activeTab === 'chart'" class="absolute inset-x-1 bottom-0 h-[1.5px] bg-rx/80" />
       </button>
-      <button
-        type="button"
-        class="flex h-full items-center gap-1.5 px-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-        @click="openTab('log')"
-      >
-        <ScrollText class="size-3.5" />
-        数据日志
-        <span class="rounded border border-hairline px-1 text-[11px]">P6</span>
-      </button>
-
       <div v-if="activeTab === 'frames'" class="ml-auto flex items-center gap-1.5">
         <div class="relative hidden md:block">
           <Search

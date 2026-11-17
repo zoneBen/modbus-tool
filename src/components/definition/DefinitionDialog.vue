@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { dataTypeSpan } from "@/lib/definition";
 import { useSessionsStore } from "@/stores/sessions";
 import type {
   ByteOrder,
@@ -189,6 +190,20 @@ async function submit(): Promise<void> {
     if (!Number.isInteger(address) || address < start || address >= start + count) continue;
     if (alias) aliases[address] = alias;
   }
+  const end = start + count;
+  const points = (props.definition?.points ?? [])
+    .filter(
+      (point) =>
+        point.address >= start &&
+        point.address < end &&
+        point.address + dataTypeSpan(point.dataType) <= end,
+    )
+    .map((point) => ({
+      ...point,
+      meaning: aliases[point.address] ?? "",
+      alerts: point.alerts.map((rule) => ({ ...rule })),
+      simulator: point.simulator ? { ...point.simulator } : undefined,
+    }));
   const input: DefinitionInput = {
     name: definitionName,
     functionCode: Number(functionCode.value) as FunctionCode,
@@ -200,6 +215,7 @@ async function submit(): Promise<void> {
     intervalMs: interval,
     enabled: enabled.value,
     aliases,
+    points,
   };
   saving.value = true;
   try {

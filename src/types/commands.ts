@@ -1,5 +1,6 @@
 import type {
   AddressScanInput,
+  AlertEvent,
   BaudScanInput,
   CustomWriteInput,
   DebugData,
@@ -8,7 +9,10 @@ import type {
   DefinitionInput,
   DefinitionSnapshot,
   Frame,
+  NetworkData,
   NetworkScanInput,
+  NetworkStartInput,
+  NetworkState,
   NewSessionInput,
   RawSendInput,
   ScanDone,
@@ -29,6 +33,9 @@ export type AppEventName =
   | "session:status"
   | "debug:data"
   | "debug:state"
+  | "alert:event"
+  | "network:state"
+  | "network:data"
   | "workspace:updated"
   | "scan:progress"
   | "scan:result"
@@ -40,6 +47,9 @@ export interface AppEventMap {
   "session:status": SessionStatusEvent;
   "debug:data": DebugData;
   "debug:state": DebugState;
+  "alert:event": AlertEvent;
+  "network:state": NetworkState;
+  "network:data": NetworkData;
   "workspace:updated": WorkspaceSnapshot;
   "scan:progress": ScanProgress;
   "scan:result": ScanResult;
@@ -56,7 +66,8 @@ export interface IpcApi {
   disconnectSession(sessionId: string): Promise<void>;
   updateSession(sessionId: string, input: UpdateSessionInput): Promise<void>;
   writeSlaveValue(sessionId: string, input: SlaveValueInput): Promise<number>;
-  saveTextFile(suggestedName: string, contents: string): Promise<boolean>;
+  saveTextFile(suggestedName: string, contents: string, format?: "csv" | "json"): Promise<boolean>;
+  openTextFile(): Promise<string | null>;
   setPolling(sessionId: string, enabled: boolean): Promise<void>;
   readOnce(sessionId: string, definitionId: string): Promise<void>;
   setDefinitionEnabled(sessionId: string, definitionId: string, enabled: boolean): Promise<void>;
@@ -86,6 +97,9 @@ export interface IpcApi {
   startDebug(sessionId: string): Promise<void>;
   stopDebug(sessionId: string): Promise<void>;
   sendDebug(sessionId: string, input: RawSendInput): Promise<number>;
+  startNetwork(input: NetworkStartInput): Promise<NetworkState>;
+  stopNetwork(): Promise<void>;
+  sendNetwork(input: RawSendInput): Promise<number>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

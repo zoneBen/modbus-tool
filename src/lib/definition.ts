@@ -36,5 +36,65 @@ export function toDefinitionInput(definition: Definition): DefinitionInput {
     intervalMs: definition.intervalMs,
     enabled: definition.enabled,
     aliases: { ...definition.aliases },
+    points: definition.points.map((point) => ({
+      ...point,
+      alerts: point.alerts.map((rule) => ({ ...rule })),
+      simulator: point.simulator ? { ...point.simulator } : undefined,
+    })),
   };
+}
+
+export interface ResolvedPoint {
+  address: number;
+  dataType: DataType;
+  byteOrder: ByteOrder;
+  meaning: string;
+  unit: string;
+  scale: number;
+  offset: number;
+  alerts: Definition["points"][number]["alerts"];
+  simulator?: Definition["points"][number]["simulator"];
+}
+
+export function dataTypeSpan(dataType: DataType): number {
+  if (dataType === "f32" || dataType === "i32" || dataType === "u32") return 2;
+  if (dataType === "f64" || dataType === "i64" || dataType === "u64") return 4;
+  return 1;
+}
+
+export function resolvePoints(definition: Definition): ResolvedPoint[] {
+  if (definition.points?.length) return definition.points;
+  const span = dataTypeSpan(definition.dataType);
+  const isBit = definition.functionCode === 1 || definition.functionCode === 2;
+  const points: ResolvedPoint[] = [];
+  if (isBit) {
+    for (let offset = 0; offset < definition.quantity; offset += 1) {
+      const address = definition.startAddress + offset;
+      points.push({
+        address,
+        dataType: "bool",
+        byteOrder: "abcd",
+        meaning: definition.aliases[address] ?? "",
+        unit: "",
+        scale: 1,
+        offset: 0,
+        alerts: [],
+      });
+    }
+    return points;
+  }
+  for (let offset = 0; offset + span <= definition.quantity; offset += span) {
+    const address = definition.startAddress + offset;
+    points.push({
+      address,
+      dataType: definition.dataType,
+      byteOrder: definition.byteOrder,
+      meaning: definition.aliases[address] ?? "",
+      unit: "",
+      scale: 1,
+      offset: 0,
+      alerts: [],
+    });
+  }
+  return points;
 }

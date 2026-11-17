@@ -3,8 +3,9 @@
 use tokio::sync::broadcast;
 
 use crate::model::{
-    DebugDataDto, DebugStateDto, DefinitionSnapshotDto, FrameDto, ScanDoneDto, ScanProgressDto,
-    ScanResultDto, SessionStatusEventDto, WorkspaceSnapshotDto,
+    AlertEventDto, DebugDataDto, DebugStateDto, DefinitionSnapshotDto, FrameDto, NetworkDataDto,
+    NetworkStateDto, ScanDoneDto, ScanProgressDto, ScanResultDto, SessionStatusEventDto,
+    WorkspaceSnapshotDto,
 };
 
 #[derive(Debug, Clone)]
@@ -17,6 +18,9 @@ pub enum AppEvent {
     },
     DebugData(DebugDataDto),
     DebugState(DebugStateDto),
+    Alert(AlertEventDto),
+    NetworkState(NetworkStateDto),
+    NetworkData(NetworkDataDto),
     WorkspaceUpdated(WorkspaceSnapshotDto),
     ScanProgress(ScanProgressDto),
     ScanResult(ScanResultDto),

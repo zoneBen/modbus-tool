@@ -5,8 +5,9 @@ use tauri::State;
 
 use crate::model::{
     AddressScanInput, BaudScanInput, CustomWriteInput, DefinitionDto, DefinitionInput,
-    NetworkScanInput, NewSessionInput, RawSendInput, SerialPortInfoDto, SessionDto,
-    SlaveIdScanInput, SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
+    NetworkScanInput, NetworkStartInput, NetworkStateDto, NewSessionInput, RawSendInput,
+    SerialPortInfoDto, SessionDto, SlaveIdScanInput, SlaveValueInput, UpdateSessionInput,
+    WorkspaceSnapshotDto,
 };
 use crate::state::AppState;
 
@@ -22,6 +23,11 @@ pub struct AppInfo {
 #[tauri::command]
 pub fn save_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|error| format!("写入文件失败：{error}"))
+}
+
+#[tauri::command]
+pub fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|error| format!("读取文件失败：{error}"))
 }
 
 #[tauri::command]
@@ -217,6 +223,27 @@ pub async fn debug_send(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
     state.manager.debug_send(&session_id, input).await
+}
+
+#[tauri::command]
+pub async fn network_start(
+    input: NetworkStartInput,
+    state: State<'_, AppState>,
+) -> Result<NetworkStateDto, String> {
+    state.network.start(input).await
+}
+
+#[tauri::command]
+pub async fn network_stop(state: State<'_, AppState>) -> Result<(), String> {
+    state.network.stop().await
+}
+
+#[tauri::command]
+pub async fn network_send(
+    input: RawSendInput,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    state.network.send(input).await
 }
 
 #[tauri::command]

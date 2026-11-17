@@ -28,6 +28,7 @@ const session: Session = {
       intervalMs: 1000,
       enabled: true,
       aliases: { 0: "Temperature" },
+      points: [],
     },
   ],
 };

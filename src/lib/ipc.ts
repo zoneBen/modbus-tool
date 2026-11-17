@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AppEventMap, AppEventName, IpcApi } from "@/types/commands";
 import type {
   AddressScanInput,
@@ -9,6 +9,8 @@ import type {
   Definition,
   DefinitionInput,
   NetworkScanInput,
+  NetworkStartInput,
+  NetworkState,
   NewSessionInput,
   RawSendInput,
   SerialPortInfo,
@@ -33,14 +35,31 @@ function createTauriBridge(): IpcApi {
       invoke<void>("session_update", { sessionId, input }),
     writeSlaveValue: (sessionId: string, input: SlaveValueInput) =>
       invoke<number>("slave_write_value", { sessionId, input }),
-    saveTextFile: async (suggestedName: string, contents: string) => {
+    saveTextFile: async (
+      suggestedName: string,
+      contents: string,
+      format: "csv" | "json" = "csv",
+    ) => {
       const path = await save({
         defaultPath: suggestedName,
-        filters: [{ name: "CSV", extensions: ["csv"] }],
+        filters: [
+          format === "json"
+            ? { name: "JSON", extensions: ["json"] }
+            : { name: "CSV", extensions: ["csv"] },
+        ],
       });
       if (!path) return false;
       await invoke<void>("save_text_file", { path, contents });
       return true;
+    },
+    openTextFile: async () => {
+      const path = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!path || Array.isArray(path)) return null;
+      return invoke<string>("read_text_file", { path });
     },
     setPolling: (sessionId: string, enabled: boolean) =>
       invoke<void>("session_set_polling", { sessionId, enabled }),
@@ -67,6 +86,9 @@ function createTauriBridge(): IpcApi {
     stopDebug: (sessionId: string) => invoke<void>("debug_stop", { sessionId }),
     sendDebug: (sessionId: string, input: RawSendInput) =>
       invoke<number>("debug_send", { sessionId, input }),
+    startNetwork: (input: NetworkStartInput) => invoke<NetworkState>("network_start", { input }),
+    stopNetwork: () => invoke<void>("network_stop"),
+    sendNetwork: (input: RawSendInput) => invoke<number>("network_send", { input }),
     on: async <K extends AppEventName>(
       event: K,
       handler: (payload: AppEventMap[K]) => void,

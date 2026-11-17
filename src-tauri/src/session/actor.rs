@@ -16,9 +16,9 @@ use modbus_core::{BytePos, DataType, ExceptionCode, Framing, PduRequest, PduResp
 use crate::event::{AppEvent, EventBus, emit};
 use crate::frames::{FrameInfo, build_frame};
 use crate::model::{
-    CustomWriteInput, DebugDataDto, DebugStateDto, DefinitionDto, DefinitionInput,
+    AlertEventDto, CustomWriteInput, DebugDataDto, DebugStateDto, DefinitionDto, DefinitionInput,
     DefinitionSnapshotDto, FrameDto, LinkConfig, RawSendInput, RegisterValueDto, SessionRole,
-    SessionState, SessionStatus, SlaveValueInput, UpdateSessionInput, now_ms,
+    SessionState, SessionStatus, SlaveValueInput, UpdateSessionInput, now_ms, scale_decoded,
 };
 use crate::transport::{Transport, TransportError};
 
@@ -95,6 +95,12 @@ enum ReadFailure {
     Transport(String),
 }
 
+#[derive(Debug, Clone, Default)]
+struct AlertRuntime {
+    since: Option<Instant>,
+    firing: bool,
+}
+
 impl ReadFailure {
     fn message(&self) -> String {
         match self {
@@ -138,6 +144,7 @@ pub struct Actor {
     debug_pending: Vec<u8>,
     last_debug_emit: Option<Instant>,
     last_debug_status: Option<Instant>,
+    alert_states: HashMap<String, AlertRuntime>,
 }
 
 impl Actor {
@@ -161,6 +168,7 @@ impl Actor {
             debug_pending: Vec::new(),
             last_debug_emit: None,
             last_debug_status: None,
+            alert_states: HashMap::new(),
         }
     }
 
@@ -567,6 +575,7 @@ impl Actor {
 
         match build_values(definition, &response) {
             Ok(values) => {
+                self.evaluate_alerts(definition, &values).await;
                 self.emit_data(definition, values, latency_ms, None).await;
                 self.wait_inter_frame().await;
                 Ok(())
@@ -931,7 +940,17 @@ impl Actor {
             definition.clone()
         };
         self.last_run.remove(definition_id);
-        self.emit_status(None).await;
+        self.clear_alerts_for(definition_id);
+        let (role, connected) = {
+            let state = self.state.read().await;
+            (state.config.role, state.status == SessionStatus::Connected)
+        };
+        if role == SessionRole::Slave && connected {
+            self.disconnect().await;
+            self.connect().await?;
+        } else {
+            self.emit_status(None).await;
+        }
         Ok(definition)
     }
 
@@ -948,8 +967,14 @@ impl Actor {
             }
         }
         self.last_run.remove(definition_id);
+        self.clear_alerts_for(definition_id);
         self.emit_status(None).await;
         Ok(())
+    }
+
+    fn clear_alerts_for(&mut self, definition_id: &str) {
+        let prefix = format!("{definition_id}:");
+        self.alert_states.retain(|key, _| !key.starts_with(&prefix));
     }
 
     async fn set_definition_enabled(
@@ -1199,6 +1224,69 @@ impl Actor {
         emit(&self.bus, AppEvent::SessionStatus(event));
     }
 
+    async fn evaluate_alerts(&mut self, definition: &DefinitionDto, values: &[RegisterValueDto]) {
+        let session_id = self.state.read().await.config.id.clone();
+        let points = definition.effective_points();
+        let mut events = Vec::new();
+        for value in values {
+            let Some(numeric) = value.numeric else {
+                continue;
+            };
+            let Some(point) = points.iter().find(|point| point.address == value.address) else {
+                continue;
+            };
+            for rule in point.alerts.iter().filter(|rule| rule.enabled) {
+                let key = format!("{}:{}:{}", definition.id, point.address, rule.id);
+                let condition = rule.operator.compare(numeric, rule.value);
+                let runtime = self.alert_states.entry(key).or_default();
+                if condition {
+                    let since = *runtime.since.get_or_insert_with(Instant::now);
+                    if !runtime.firing && since.elapsed() >= Duration::from_millis(rule.delay_ms) {
+                        runtime.firing = true;
+                        events.push(AlertEventDto {
+                            rule_id: rule.id.clone(),
+                            session_id: session_id.clone(),
+                            definition_id: definition.id.clone(),
+                            definition_name: definition.name.clone(),
+                            address: point.address,
+                            meaning: point.meaning.clone(),
+                            unit: point.unit.clone(),
+                            operator: rule.operator,
+                            threshold: rule.value,
+                            value: numeric,
+                            delay_ms: rule.delay_ms,
+                            triggered: true,
+                            timestamp: now_ms(),
+                        });
+                    }
+                } else {
+                    if runtime.firing {
+                        events.push(AlertEventDto {
+                            rule_id: rule.id.clone(),
+                            session_id: session_id.clone(),
+                            definition_id: definition.id.clone(),
+                            definition_name: definition.name.clone(),
+                            address: point.address,
+                            meaning: point.meaning.clone(),
+                            unit: point.unit.clone(),
+                            operator: rule.operator,
+                            threshold: rule.value,
+                            value: numeric,
+                            delay_ms: rule.delay_ms,
+                            triggered: false,
+                            timestamp: now_ms(),
+                        });
+                    }
+                    runtime.since = None;
+                    runtime.firing = false;
+                }
+            }
+        }
+        for event in events {
+            emit(&self.bus, AppEvent::Alert(event));
+        }
+    }
+
     async fn emit_data(
         &self,
         definition: &DefinitionDto,
@@ -1418,20 +1506,11 @@ async fn wait_until(deadline: Option<Instant>) {
 }
 
 fn error_values(definition: &DefinitionDto, message: &str) -> Vec<RegisterValueDto> {
-    let is_bits = definition.data_type == DataType::Bool;
-    let span = if is_bits {
-        1
-    } else {
-        definition.rule().word_span().max(1)
-    };
-    let count = if is_bits {
-        usize::from(definition.quantity)
-    } else {
-        usize::from(definition.quantity).div_ceil(span)
-    };
-    (0..count)
-        .map(|index| RegisterValueDto {
-            address: definition.start_address.wrapping_add((index * span) as u16),
+    definition
+        .effective_points()
+        .into_iter()
+        .map(|point| RegisterValueDto {
+            address: point.address,
             words: Vec::new(),
             formatted: "—".to_owned(),
             numeric: None,
@@ -1445,24 +1524,40 @@ fn build_values(
     definition: &DefinitionDto,
     response: &PduResponse,
 ) -> Result<Vec<RegisterValueDto>, String> {
+    let points = definition.effective_points();
     match response {
         PduResponse::ReadRegisters { values, .. } => {
-            let rule = definition.rule();
-            let span = rule.word_span();
-            let mut result = Vec::with_capacity(values.len().div_ceil(span).max(1));
-            for (index, chunk) in values.chunks(span).enumerate() {
-                let address = definition.start_address.wrapping_add((index * span) as u16);
-                match decode_words(&rule, chunk) {
-                    Ok(value) => result.push(RegisterValueDto {
-                        address,
-                        words: value.words,
-                        formatted: value.formatted,
-                        numeric: value.numeric,
-                        stale: false,
-                        error: None,
-                    }),
+            let mut result = Vec::with_capacity(points.len());
+            for point in &points {
+                let offset = usize::from(point.address.saturating_sub(definition.start_address));
+                let span = point.span();
+                if offset + span > values.len() {
+                    result.push(RegisterValueDto {
+                        address: point.address,
+                        words: Vec::new(),
+                        formatted: "—".to_owned(),
+                        numeric: None,
+                        stale: true,
+                        error: Some("读取数据长度不足以解析该点位".to_owned()),
+                    });
+                    continue;
+                }
+                let chunk = &values[offset..offset + span];
+                match decode_words(&point.rule(), chunk) {
+                    Ok(value) => {
+                        let (formatted, numeric) =
+                            scale_decoded(point, value.formatted, value.numeric);
+                        result.push(RegisterValueDto {
+                            address: point.address,
+                            words: value.words,
+                            formatted,
+                            numeric,
+                            stale: false,
+                            error: None,
+                        });
+                    }
                     Err(error) => result.push(RegisterValueDto {
-                        address,
+                        address: point.address,
                         words: chunk.to_vec(),
                         formatted: "—".to_owned(),
                         numeric: None,
@@ -1473,16 +1568,24 @@ fn build_values(
             }
             Ok(result)
         }
-        PduResponse::ReadBits { values, .. } => Ok(values
+        PduResponse::ReadBits { values, .. } => Ok(points
             .iter()
-            .enumerate()
-            .map(|(index, value)| RegisterValueDto {
-                address: definition.start_address.wrapping_add(index as u16),
-                words: vec![if *value { 1 } else { 0 }],
-                formatted: if *value { "ON" } else { "OFF" }.to_owned(),
-                numeric: Some(if *value { 1.0 } else { 0.0 }),
-                stale: false,
-                error: None,
+            .map(|point| {
+                let offset = usize::from(point.address.saturating_sub(definition.start_address));
+                let value = values.get(offset).copied().unwrap_or(false);
+                let (formatted, numeric) = scale_decoded(
+                    point,
+                    if value { "ON" } else { "OFF" }.to_owned(),
+                    Some(if value { 1.0 } else { 0.0 }),
+                );
+                RegisterValueDto {
+                    address: point.address,
+                    words: vec![if value { 1 } else { 0 }],
+                    formatted,
+                    numeric,
+                    stale: false,
+                    error: None,
+                }
             })
             .collect()),
         PduResponse::Exception { .. } => Err("读取返回异常".to_owned()),

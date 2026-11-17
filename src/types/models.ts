@@ -23,6 +23,39 @@ export type DataType =
 
 export type ByteOrder = "abcd" | "dcba" | "badc" | "cdab";
 
+export type AlertOperator = "gt" | "lt" | "gte" | "lte" | "eq" | "ne";
+
+export interface AlertRule {
+  id: string;
+  operator: AlertOperator;
+  value: number;
+  delayMs: number;
+  enabled: boolean;
+}
+
+export type SimulatorMode = "increment" | "decrement" | "random" | "fixed";
+
+export interface SimulatorPointConfig {
+  mode: SimulatorMode;
+  refreshMs: number;
+  min: number;
+  max: number;
+  enabled: boolean;
+}
+
+export interface RegisterPoint {
+  address: number;
+  dataType: DataType;
+  byteOrder: ByteOrder;
+  bytePos?: "low" | "high";
+  meaning: string;
+  unit: string;
+  scale: number;
+  offset: number;
+  alerts: AlertRule[];
+  simulator?: SimulatorPointConfig;
+}
+
 export interface Definition {
   id: string;
   name: string;
@@ -35,9 +68,26 @@ export interface Definition {
   intervalMs: number;
   enabled: boolean;
   aliases: Record<number, string>;
+  points: RegisterPoint[];
 }
 
 export type DefinitionInput = Omit<Definition, "id">;
+
+export interface AlertEvent {
+  ruleId: string;
+  sessionId: string;
+  definitionId: string;
+  definitionName: string;
+  address: number;
+  meaning: string;
+  unit: string;
+  operator: AlertOperator;
+  threshold: number;
+  value: number;
+  delayMs: number;
+  triggered: boolean;
+  timestamp: number;
+}
 
 export type WriteFunctionCode = 5 | 6 | 15 | 16;
 
@@ -68,6 +118,31 @@ export interface DebugState {
   sessionId: string;
   active: boolean;
   error?: string;
+}
+
+export type NetworkMode = "tcp-server" | "tcp-client" | "udp-server" | "udp-client" | "tcp-relay";
+
+export interface NetworkStartInput {
+  mode: NetworkMode;
+  localHost: string;
+  localPort: number;
+  remoteHost?: string;
+  remotePort?: number;
+}
+
+export interface NetworkState {
+  active: boolean;
+  mode: string | null;
+  endpoint: string | null;
+  clients: number;
+  error?: string;
+}
+
+export interface NetworkData {
+  direction: "tx" | "rx";
+  data: number[];
+  connection: string;
+  timestamp: number;
 }
 
 export interface SessionStats {
@@ -183,6 +258,7 @@ export interface NewSessionInput {
   interFrameDelayMs?: number;
   autoReconnect?: boolean;
   slaveId?: number;
+  autoConnect?: boolean;
 }
 
 export interface UpdateSessionInput {

@@ -3,11 +3,12 @@
 use std::io::{ErrorKind, Read};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use modbus_core::frame::{self, MAX_ASCII_FRAME_LEN, MAX_RTU_ADU_LEN};
 use modbus_core::simulator::{Simulator, SlaveUnit};
-use modbus_core::{Framing, PduRequest};
+use modbus_core::value::{decode_words, encode_value};
+use modbus_core::{DataType, Framing, PduRequest};
 use serialport::{DataBits, Parity, SerialPort, StopBits};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -16,8 +17,9 @@ use tokio::sync::{RwLock, watch};
 use crate::event::{AppEvent, EventBus, emit};
 use crate::frames::{FrameInfo, build_frame};
 use crate::model::{
-    DefinitionDto, DefinitionSnapshotDto, FrameDto, LinkConfig, RegisterValueDto, SerialLinkConfig,
-    SerialParity, SessionState, SessionStatus, now_ms,
+    DefinitionDto, DefinitionSnapshotDto, FrameDto, LinkConfig, RegisterPointDto, RegisterValueDto,
+    SerialLinkConfig, SerialParity, SessionState, SessionStatus, SimulatorMode, SimulatorPointDto,
+    now_ms, scale_decoded,
 };
 
 const MAP_QUANTITY: u16 = 16;
@@ -71,10 +73,21 @@ pub async fn start(
             state.config.id.clone(),
         )
     };
+    let generator_states = build_generator_states(&definition);
+    seed_generator_states(&simulator, definition.slave_id, &generator_states);
+    let generator_definition = definition.clone();
+    let generator_session = session_id.clone();
+    let generator_bus = bus.clone();
+    let generator_simulator = simulator.clone();
+    let generator_active = generator_states
+        .iter()
+        .any(|state| state.config.enabled && state.config.refresh_ms > 0);
+
     let stop_flag = Arc::new(AtomicBool::new(false));
     let (stop_tx, stop_rx) = watch::channel(false);
+    let generator_stop = stop_rx.clone();
 
-    match link {
+    let server = match link {
         LinkConfig::Tcp(network) => {
             let listener = TcpListener::bind((network.host.as_str(), network.port))
                 .await
@@ -126,7 +139,20 @@ pub async fn start(
             })
         }
         LinkConfig::Udp(_) => Err("从站模拟暂不支持 UDP，请使用 TCP 或串口".to_owned()),
+    }?;
+
+    if generator_active {
+        tokio::spawn(run_simulator_generator(
+            generator_states,
+            generator_definition,
+            generator_simulator,
+            generator_session,
+            generator_bus,
+            generator_stop,
+        ));
     }
+
+    Ok(server)
 }
 
 pub fn build_simulator(unit_id: u8) -> Simulator {
@@ -141,6 +167,183 @@ pub fn build_simulator(unit_id: u8) -> Simulator {
             .insert(address, !address.is_multiple_of(2));
     }
     Simulator::new([unit])
+}
+
+struct GeneratorState {
+    point: RegisterPointDto,
+    config: SimulatorPointDto,
+    value: f64,
+    last: Instant,
+    seed: u64,
+}
+
+fn random_seed(address: u16) -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos() as u64)
+        .unwrap_or(1)
+        ^ (u64::from(address).wrapping_mul(0x9E37_79B9_7F4A_7C15))
+}
+
+fn random_between(min: f64, max: f64, seed: &mut u64) -> f64 {
+    *seed = seed
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(1_442_695_040_888_963_407);
+    let unit = ((*seed >> 11) as f64) / ((1u64 << 53) as f64);
+    min + (max - min) * unit
+}
+
+fn initial_generator_value(config: &SimulatorPointDto, seed: &mut u64) -> f64 {
+    let value = match config.mode {
+        SimulatorMode::Increment | SimulatorMode::Fixed => config.min,
+        SimulatorMode::Decrement => config.max,
+        SimulatorMode::Random => random_between(config.min, config.max, seed),
+    };
+    value.clamp(config.min, config.max)
+}
+
+fn build_generator_states(definition: &DefinitionDto) -> Vec<GeneratorState> {
+    definition
+        .effective_points()
+        .into_iter()
+        .filter_map(|point| {
+            let config = point.simulator.clone()?;
+            let mut seed = random_seed(point.address);
+            let value = initial_generator_value(&config, &mut seed);
+            Some(GeneratorState {
+                point,
+                config,
+                value,
+                last: Instant::now(),
+                seed,
+            })
+        })
+        .collect()
+}
+
+fn write_point_value(unit: &mut SlaveUnit, point: &RegisterPointDto, value: f64) {
+    if point.data_type == DataType::Bool {
+        let on = value >= 0.5;
+        unit.set_coil(point.address, on);
+        unit.discrete_inputs.insert(point.address, on);
+        return;
+    }
+    let text = match point.data_type {
+        DataType::F32 | DataType::F64 => format!("{value}"),
+        _ => format!("{}", value.round() as i64),
+    };
+    let Ok(words) = encode_value(&point.rule(), &text) else {
+        return;
+    };
+    for (index, word) in words.into_iter().enumerate() {
+        let address = point.address.wrapping_add(index as u16);
+        unit.set_holding(address, word);
+        unit.set_input(address, word);
+    }
+}
+
+fn seed_generator_states(
+    simulator: &Arc<Mutex<Simulator>>,
+    unit_id: u8,
+    states: &[GeneratorState],
+) {
+    if states.is_empty() {
+        return;
+    }
+    let mut simulator = simulator
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    let Some(unit) = simulator.unit_mut(unit_id) else {
+        return;
+    };
+    for state in states {
+        write_point_value(unit, &state.point, state.value);
+    }
+}
+
+fn step_for(point: &RegisterPointDto, config: &SimulatorPointDto) -> f64 {
+    let range = (config.max - config.min).abs();
+    if matches!(point.data_type, DataType::F32 | DataType::F64) && range > 0.0 && range < 10.0 {
+        range / 10.0
+    } else {
+        1.0
+    }
+}
+
+fn advance_generator(state: &mut GeneratorState) -> f64 {
+    let config = &state.config;
+    let next = match config.mode {
+        SimulatorMode::Increment => {
+            let value = state.value + step_for(&state.point, config);
+            if value > config.max {
+                config.min
+            } else {
+                value
+            }
+        }
+        SimulatorMode::Decrement => {
+            let value = state.value - step_for(&state.point, config);
+            if value < config.min {
+                config.max
+            } else {
+                value
+            }
+        }
+        SimulatorMode::Random => random_between(config.min, config.max, &mut state.seed),
+        SimulatorMode::Fixed => config.min,
+    };
+    state.value = next.clamp(config.min, config.max);
+    state.value
+}
+
+async fn run_simulator_generator(
+    mut states: Vec<GeneratorState>,
+    definition: DefinitionDto,
+    simulator: Arc<Mutex<Simulator>>,
+    session_id: String,
+    bus: EventBus,
+    mut stop_rx: watch::Receiver<bool>,
+) {
+    loop {
+        tokio::select! {
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    break;
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(25)) => {}
+        }
+
+        let now = Instant::now();
+        let mut changed = false;
+        {
+            let mut simulator = simulator
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
+            let Some(unit) = simulator.unit_mut(definition.slave_id) else {
+                break;
+            };
+            for state in &mut states {
+                if !state.config.enabled {
+                    continue;
+                }
+                let interval = Duration::from_millis(state.config.refresh_ms.max(20));
+                if now.duration_since(state.last) < interval {
+                    continue;
+                }
+                state.last = now;
+                let value = advance_generator(state);
+                write_point_value(unit, &state.point, value);
+                changed = true;
+            }
+        }
+        if changed {
+            emit(
+                &bus,
+                AppEvent::SessionData(build_snapshot(&session_id, &definition, &simulator)),
+            );
+        }
+    }
 }
 
 async fn set_status(
@@ -371,17 +574,66 @@ pub fn build_snapshot(
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
     let unit = simulator.unit(definition.slave_id);
-    let values = (0..definition.quantity.min(MAP_QUANTITY))
+    let raw_words: Vec<u16> = (0..definition.quantity.min(MAP_QUANTITY))
         .map(|offset| {
             let address = definition.start_address.wrapping_add(offset);
-            let word = unit.map_or(0, |unit| unit.holding(address));
-            RegisterValueDto {
-                address,
-                words: vec![word],
-                formatted: word.to_string(),
-                numeric: Some(f64::from(word)),
-                stale: false,
-                error: None,
+            unit.map_or(0, |unit| unit.holding(address))
+        })
+        .collect();
+    let values = definition
+        .effective_points()
+        .into_iter()
+        .map(|point| {
+            if point.data_type == DataType::Bool {
+                let value = unit.is_some_and(|unit| unit.coil(point.address));
+                let (formatted, numeric) = scale_decoded(
+                    &point,
+                    if value { "ON" } else { "OFF" }.to_owned(),
+                    Some(if value { 1.0 } else { 0.0 }),
+                );
+                return RegisterValueDto {
+                    address: point.address,
+                    words: vec![if value { 1 } else { 0 }],
+                    formatted,
+                    numeric,
+                    stale: false,
+                    error: None,
+                };
+            }
+            let offset = usize::from(point.address.saturating_sub(definition.start_address));
+            let span = point.span();
+            if offset + span > raw_words.len() {
+                return RegisterValueDto {
+                    address: point.address,
+                    words: Vec::new(),
+                    formatted: "—".to_owned(),
+                    numeric: None,
+                    stale: true,
+                    error: Some("模拟寄存器范围不足以解析该点位".to_owned()),
+                };
+            }
+            let chunk = &raw_words[offset..offset + span];
+            match decode_words(&point.rule(), chunk) {
+                Ok(value) => {
+                    let (formatted, numeric) =
+                        scale_decoded(&point, value.formatted, value.numeric);
+                    RegisterValueDto {
+                        address: point.address,
+                        words: value.words,
+                        formatted,
+                        numeric,
+                        stale: false,
+                        error: None,
+                    }
+                }
+                Err(error) => RegisterValueDto {
+                    address: point.address,
+                    words: chunk.to_vec(),
+                    formatted: "—".to_owned(),
+                    numeric: None,
+                    stale: true,
+                    error: Some(error.to_string()),
+                },
             }
         })
         .collect();
@@ -587,6 +839,7 @@ mod tests {
             interval_ms: 500,
             enabled: true,
             aliases: BTreeMap::new(),
+            points: Vec::new(),
         }
     }
 
@@ -640,5 +893,83 @@ mod tests {
         .expect("reply");
         assert!(reply.response.is_some());
         assert_eq!(reply.snapshot.values[0].numeric, Some(4660.0));
+    }
+
+    #[test]
+    fn simulator_config_seeds_engineering_values_before_serving() {
+        let mut definition = map_definition();
+        definition.points = vec![RegisterPointDto {
+            address: 0,
+            data_type: DataType::F32,
+            byte_order: OrderPreset::Abcd,
+            byte_pos: None,
+            meaning: "输入电压".to_owned(),
+            unit: "V".to_owned(),
+            scale: 1.0,
+            offset: 0.0,
+            alerts: Vec::new(),
+            simulator: Some(SimulatorPointDto {
+                mode: SimulatorMode::Fixed,
+                refresh_ms: 1000,
+                min: 12.5,
+                max: 240.0,
+                enabled: false,
+            }),
+        }];
+        let simulator = Arc::new(Mutex::new(build_simulator(1)));
+        let states = build_generator_states(&definition);
+        assert_eq!(states.len(), 1);
+        seed_generator_states(&simulator, 1, &states);
+
+        let snapshot = build_snapshot("s1", &definition, &simulator);
+        assert_eq!(snapshot.values.len(), 1);
+        assert!((snapshot.values[0].numeric.unwrap_or_default() - 12.5).abs() < 1e-6);
+        assert_eq!(snapshot.values[0].words.len(), 2);
+
+        let simulator = simulator.lock().expect("simulator");
+        let unit = simulator.unit(1).expect("unit");
+        assert_eq!(unit.input(0), unit.holding(0));
+        assert_eq!(unit.input(1), unit.holding(1));
+    }
+
+    #[test]
+    fn increment_generator_wraps_at_the_upper_bound() {
+        let definition = DefinitionDto {
+            id: "gen".to_owned(),
+            name: "gen".to_owned(),
+            function_code: 0x03,
+            slave_id: 1,
+            start_address: 0,
+            quantity: 1,
+            data_type: DataType::U16,
+            byte_order: OrderPreset::Abcd,
+            byte_pos: None,
+            interval_ms: 500,
+            enabled: true,
+            aliases: BTreeMap::new(),
+            points: vec![RegisterPointDto {
+                address: 0,
+                data_type: DataType::U16,
+                byte_order: OrderPreset::Abcd,
+                byte_pos: None,
+                meaning: String::new(),
+                unit: String::new(),
+                scale: 1.0,
+                offset: 0.0,
+                alerts: Vec::new(),
+                simulator: Some(SimulatorPointDto {
+                    mode: SimulatorMode::Increment,
+                    refresh_ms: 100,
+                    min: 0.0,
+                    max: 2.0,
+                    enabled: true,
+                }),
+            }],
+        };
+        let mut states = build_generator_states(&definition);
+        let state = states.first_mut().expect("generator");
+        assert_eq!(advance_generator(state), 1.0);
+        assert_eq!(advance_generator(state), 2.0);
+        assert_eq!(advance_generator(state), 0.0);
     }
 }

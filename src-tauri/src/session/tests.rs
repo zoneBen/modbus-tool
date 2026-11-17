@@ -11,8 +11,8 @@ use tokio::sync::Mutex;
 
 use crate::event::{AppEvent, event_bus};
 use crate::model::{
-    CustomWriteInput, DefinitionInput, NewSessionInput, RawSendInput, RawSendMode, SessionRole,
-    SlaveValueInput, TransportKind,
+    AlertOperator, AlertRuleDto, CustomWriteInput, DefinitionInput, NewSessionInput, RawSendInput,
+    RawSendMode, RegisterPointDto, SessionRole, SessionStatus, SlaveValueInput, TransportKind,
 };
 use crate::session::SessionManager;
 
@@ -70,6 +70,7 @@ fn definition_input(name: &str) -> DefinitionInput {
         interval_ms: 1000,
         enabled: true,
         aliases: BTreeMap::new(),
+        points: Vec::new(),
     }
 }
 
@@ -92,6 +93,7 @@ fn input(port: u16) -> NewSessionInput {
         inter_frame_delay_ms: Some(0),
         auto_reconnect: Some(false),
         slave_id: None,
+        auto_connect: true,
     }
 }
 
@@ -271,6 +273,91 @@ async fn debug_mode_reads_continuously_and_sends_manually() {
 
     manager.shutdown_all().await;
     server.abort();
+}
+
+#[tokio::test]
+async fn applies_point_scaling_and_emits_alerts() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let simulator = Arc::new(Mutex::new(Simulator::new([
+        SlaveUnit::new(1).with_holding_registers([(0, 100), (1, 0)])
+    ])));
+    let server = tokio::spawn(mock_tcp_slave(listener, simulator));
+
+    let bus = event_bus();
+    let mut events = bus.subscribe();
+    let manager = SessionManager::new(bus);
+    let session = manager.create_session(input(port)).await.expect("create");
+    let mut definition = definition_input("缩放告警");
+    definition.start_address = 0;
+    definition.quantity = 2;
+    definition.points = vec![RegisterPointDto {
+        address: 0,
+        data_type: DataType::U16,
+        byte_order: OrderPreset::Abcd,
+        byte_pos: None,
+        meaning: "输入电压".to_owned(),
+        unit: "V".to_owned(),
+        scale: 10.0,
+        offset: -5.0,
+        alerts: vec![AlertRuleDto {
+            id: "alert-1".to_owned(),
+            operator: AlertOperator::Gt,
+            value: 500.0,
+            delay_ms: 0,
+            enabled: true,
+        }],
+        simulator: None,
+    }];
+    let definition = manager
+        .create_definition(&session.id, definition)
+        .await
+        .expect("create definition");
+    manager
+        .read_once(&session.id, &definition.id)
+        .await
+        .expect("read");
+
+    let mut scaled_value = None;
+    let mut alert_event = None;
+    for _ in 0..20 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::SessionData(snapshot))) if snapshot.definition_id == definition.id => {
+                scaled_value = snapshot.values.first().map(|value| value.numeric);
+            }
+            Ok(Ok(AppEvent::Alert(event))) if event.rule_id == "alert-1" => {
+                alert_event = Some(event);
+            }
+            Ok(Ok(_)) => continue,
+            Ok(Err(_)) | Err(_) => break,
+        }
+        if scaled_value.is_some() && alert_event.is_some() {
+            break;
+        }
+    }
+    assert_eq!(scaled_value.flatten(), Some(995.0));
+    let alert_event = alert_event.expect("alert event");
+    assert!(alert_event.triggered);
+    assert_eq!(alert_event.meaning, "输入电压");
+    assert_eq!(alert_event.unit, "V");
+    assert!((alert_event.value - 995.0).abs() < 1e-6);
+
+    manager.shutdown_all().await;
+    server.abort();
+}
+
+#[tokio::test]
+async fn restores_sessions_without_connecting() {
+    let bus = event_bus();
+    let manager = SessionManager::new(bus);
+    let mut restore = input(6502);
+    restore.auto_connect = false;
+    let session = manager
+        .create_session(restore)
+        .await
+        .expect("restore session");
+    assert_eq!(session.status, SessionStatus::Disconnected);
+    manager.shutdown_all().await;
 }
 
 #[tokio::test]

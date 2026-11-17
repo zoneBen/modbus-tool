@@ -2,6 +2,7 @@ mod commands;
 mod event;
 mod frames;
 mod model;
+mod network;
 mod scan;
 mod session;
 mod state;
@@ -13,6 +14,7 @@ use tauri::Emitter;
 
 use crate::event::{AppEvent, event_bus};
 use crate::model::SessionFramesEventDto;
+use crate::network::NetworkManager;
 use crate::scan::ScanManager;
 use crate::session::SessionManager;
 use crate::state::AppState;
@@ -36,6 +38,15 @@ fn forward(app: &tauri::AppHandle, event: AppEvent) {
         }
         AppEvent::DebugState(payload) => {
             let _ = app.emit("debug:state", payload);
+        }
+        AppEvent::Alert(payload) => {
+            let _ = app.emit("alert:event", payload);
+        }
+        AppEvent::NetworkState(payload) => {
+            let _ = app.emit("network:state", payload);
+        }
+        AppEvent::NetworkData(payload) => {
+            let _ = app.emit("network:data", payload);
         }
         AppEvent::WorkspaceUpdated(payload) => {
             let _ = app.emit("workspace:updated", payload);
@@ -61,21 +72,27 @@ pub fn run() {
     let bus = event_bus();
     let manager = Arc::new(SessionManager::new(bus.clone()));
     let scans = Arc::new(ScanManager::new(bus.clone()));
+    let network = Arc::new(NetworkManager::new(bus.clone()));
     let setup_bus = bus.clone();
     let state_manager = manager.clone();
     let state_scans = scans.clone();
+    let state_network = network.clone();
     let shutdown_manager = manager.clone();
+    let shutdown_network = network.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             manager: state_manager,
             scans: state_scans,
+            network: state_network,
         })
         .on_window_event(move |_window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let manager = shutdown_manager.clone();
+                let network = shutdown_network.clone();
                 tauri::async_runtime::spawn(async move {
+                    let _ = network.stop().await;
                     manager.shutdown_all().await;
                 });
             }
@@ -99,6 +116,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::save_text_file,
+            commands::read_text_file,
             commands::workspace_get,
             commands::list_serial_ports,
             commands::session_create,
@@ -118,6 +136,9 @@ pub fn run() {
             commands::session_update,
             commands::session_delete,
             commands::slave_write_value,
+            commands::network_start,
+            commands::network_stop,
+            commands::network_send,
             commands::scan_slave_ids,
             commands::scan_addresses,
             commands::scan_baud_rates,

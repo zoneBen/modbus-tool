@@ -78,6 +78,159 @@ pub struct NetworkLinkConfig {
     pub port: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertOperator {
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    Eq,
+    Ne,
+}
+
+impl AlertOperator {
+    pub fn compare(self, value: f64, threshold: f64) -> bool {
+        match self {
+            Self::Gt => value > threshold,
+            Self::Lt => value < threshold,
+            Self::Gte => value >= threshold,
+            Self::Lte => value <= threshold,
+            Self::Eq => (value - threshold).abs() < f64::EPSILON,
+            Self::Ne => (value - threshold).abs() >= f64::EPSILON,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertRuleDto {
+    pub id: String,
+    pub operator: AlertOperator,
+    pub value: f64,
+    #[serde(default)]
+    pub delay_ms: u64,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertEventDto {
+    pub rule_id: String,
+    pub session_id: String,
+    pub definition_id: String,
+    pub definition_name: String,
+    pub address: u16,
+    pub meaning: String,
+    pub unit: String,
+    pub operator: AlertOperator,
+    pub threshold: f64,
+    pub value: f64,
+    pub delay_ms: u64,
+    pub triggered: bool,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SimulatorMode {
+    Increment,
+    Decrement,
+    Random,
+    Fixed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulatorPointDto {
+    pub mode: SimulatorMode,
+    pub refresh_ms: u64,
+    #[serde(default)]
+    pub min: f64,
+    #[serde(default)]
+    pub max: f64,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterPointDto {
+    pub address: u16,
+    pub data_type: DataType,
+    pub byte_order: OrderPreset,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub byte_pos: Option<BytePos>,
+    #[serde(default)]
+    pub meaning: String,
+    #[serde(default)]
+    pub unit: String,
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+    #[serde(default)]
+    pub offset: f64,
+    #[serde(default)]
+    pub alerts: Vec<AlertRuleDto>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub simulator: Option<SimulatorPointDto>,
+}
+
+impl RegisterPointDto {
+    pub fn rule(&self) -> ValueRule {
+        let (byte_order, word_order) = self.byte_order.parts();
+        ValueRule {
+            data_type: self.data_type,
+            byte_pos: Some(self.byte_pos.unwrap_or(BytePos::Low)),
+            byte_order,
+            word_order,
+        }
+    }
+
+    pub fn span(&self) -> usize {
+        self.rule().word_span()
+    }
+}
+
+pub fn scale_decoded(
+    point: &RegisterPointDto,
+    mut formatted: String,
+    mut numeric: Option<f64>,
+) -> (String, Option<f64>) {
+    if let Some(raw) = numeric {
+        let scaled = raw * point.scale + point.offset;
+        if !matches!(
+            point.data_type,
+            DataType::Bool | DataType::Hex | DataType::Bin | DataType::Ascii
+        ) {
+            formatted = format_scaled(scaled);
+        }
+        numeric = Some(scaled);
+    }
+    (formatted, numeric)
+}
+
+fn format_scaled(value: f64) -> String {
+    if !value.is_finite() {
+        return "—".to_owned();
+    }
+    if value.fract().abs() < 1e-9 && value.abs() < 9e15 {
+        return format!("{value:.0}");
+    }
+    let mut text = format!("{value:.6}");
+    while text.ends_with('0') {
+        text.pop();
+    }
+    if text.ends_with('.') {
+        text.pop();
+    }
+    text
+}
+
+fn default_scale() -> f64 {
+    1.0
+}
+
 /// One read definition (row group) belonging to a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +247,10 @@ pub struct DefinitionDto {
     pub byte_pos: Option<BytePos>,
     pub interval_ms: u64,
     pub enabled: bool,
+    #[serde(default)]
     pub aliases: BTreeMap<u16, String>,
+    #[serde(default)]
+    pub points: Vec<RegisterPointDto>,
 }
 
 impl DefinitionDto {
@@ -105,6 +261,22 @@ impl DefinitionDto {
             byte_pos: Some(self.byte_pos.unwrap_or(BytePos::Low)),
             byte_order,
             word_order,
+        }
+    }
+
+    pub fn effective_points(&self) -> Vec<RegisterPointDto> {
+        if self.points.is_empty() {
+            default_points(
+                self.start_address,
+                self.quantity,
+                self.function_code,
+                self.data_type,
+                self.byte_order,
+                self.byte_pos,
+                &self.aliases,
+            )
+        } else {
+            self.points.clone()
         }
     }
 
@@ -143,11 +315,14 @@ pub struct DefinitionInput {
     pub enabled: bool,
     #[serde(default)]
     pub aliases: BTreeMap<u16, String>,
+    #[serde(default)]
+    pub points: Vec<RegisterPointDto>,
 }
 
 impl DefinitionInput {
     pub fn into_dto(self, id: String) -> Result<DefinitionDto, String> {
         self.validate()?;
+        let (points, aliases) = self.normalized_points()?;
         Ok(DefinitionDto {
             id,
             name: self.name.trim().to_owned(),
@@ -160,12 +335,14 @@ impl DefinitionInput {
             byte_pos: self.byte_pos,
             interval_ms: self.interval_ms,
             enabled: self.enabled,
-            aliases: self.aliases,
+            aliases,
+            points,
         })
     }
 
     pub fn apply_to(&self, definition: &mut DefinitionDto) -> Result<(), String> {
         self.validate()?;
+        let (points, aliases) = self.normalized_points()?;
         definition.name = self.name.trim().to_owned();
         definition.function_code = self.function_code;
         definition.slave_id = self.slave_id;
@@ -176,8 +353,119 @@ impl DefinitionInput {
         definition.byte_pos = self.byte_pos;
         definition.interval_ms = self.interval_ms;
         definition.enabled = self.enabled;
-        definition.aliases = self.aliases.clone();
+        definition.aliases = aliases;
+        definition.points = points;
         Ok(())
+    }
+
+    fn normalized_points(&self) -> Result<(Vec<RegisterPointDto>, BTreeMap<u16, String>), String> {
+        let is_bit = (1..=2).contains(&self.function_code);
+        let mut points = if self.points.is_empty() {
+            default_points(
+                self.start_address,
+                self.quantity,
+                self.function_code,
+                self.effective_data_type(),
+                self.byte_order,
+                self.byte_pos,
+                &self.aliases,
+            )
+        } else {
+            self.points.clone()
+        };
+
+        let end = u32::from(self.start_address) + u32::from(self.quantity);
+        let mut seen = std::collections::BTreeSet::new();
+        for point in &mut points {
+            if !seen.insert(point.address) {
+                return Err(format!("点位地址 {} 重复", point.address));
+            }
+            if point.address < self.start_address || u32::from(point.address) >= end {
+                return Err(format!(
+                    "点位地址 {} 超出读取范围 {}–{}",
+                    point.address,
+                    self.start_address,
+                    end.saturating_sub(1)
+                ));
+            }
+            if is_bit {
+                point.data_type = DataType::Bool;
+            }
+            if u32::from(point.address) + point.span() as u32 > end {
+                return Err(format!(
+                    "点位 {} 占用 {} 个寄存器，超出读取范围",
+                    point.address,
+                    point.span()
+                ));
+            }
+            if !point.scale.is_finite() || !point.offset.is_finite() {
+                return Err(format!("点位 {} 的缩放/偏置必须为有限数值", point.address));
+            }
+            for rule in &mut point.alerts {
+                if rule.id.trim().is_empty() {
+                    rule.id = uuid::Uuid::new_v4().to_string();
+                }
+                if !rule.value.is_finite() {
+                    return Err(format!("点位 {} 的告警阈值必须为有限数值", point.address));
+                }
+                rule.delay_ms = rule.delay_ms.min(3_600_000);
+            }
+            if let Some(alias) = self.aliases.get(&point.address)
+                && point.meaning.trim().is_empty()
+            {
+                point.meaning = alias.clone();
+            }
+            if let Some(simulator) = &mut point.simulator {
+                if !simulator.min.is_finite() || !simulator.max.is_finite() {
+                    return Err(format!("点位 {} 的模拟范围必须为有限数值", point.address));
+                }
+                if simulator.min > simulator.max {
+                    return Err(format!("点位 {} 的模拟最小值不能大于最大值", point.address));
+                }
+                simulator.refresh_ms = simulator.refresh_ms.clamp(20, 3_600_000);
+            }
+        }
+
+        let block_span = if is_bit {
+            1
+        } else {
+            ValueRule::with_preset(self.effective_data_type(), self.byte_order).word_span()
+        };
+        for (address, alias) in &self.aliases {
+            if points.iter().any(|point| point.address == *address) {
+                continue;
+            }
+            if *address < self.start_address
+                || u32::from(*address) >= end
+                || u32::from(*address) + block_span as u32 > end
+            {
+                continue;
+            }
+            points.push(RegisterPointDto {
+                address: *address,
+                data_type: if is_bit {
+                    DataType::Bool
+                } else {
+                    self.effective_data_type()
+                },
+                byte_order: self.byte_order,
+                byte_pos: self.byte_pos,
+                meaning: alias.clone(),
+                unit: String::new(),
+                scale: 1.0,
+                offset: 0.0,
+                alerts: Vec::new(),
+                simulator: None,
+            });
+        }
+
+        points.sort_by_key(|point| point.address);
+        let aliases = points
+            .iter()
+            .filter(|point| !point.meaning.trim().is_empty())
+            .map(|point| (point.address, point.meaning.trim().to_owned()))
+            .collect();
+        Ok((points, aliases))
     }
 
     fn effective_data_type(&self) -> DataType {
@@ -217,6 +505,65 @@ impl DefinitionInput {
         }
         Ok(())
     }
+}
+
+fn default_points(
+    start_address: u16,
+    quantity: u16,
+    function_code: u8,
+    data_type: DataType,
+    byte_order: OrderPreset,
+    byte_pos: Option<BytePos>,
+    aliases: &BTreeMap<u16, String>,
+) -> Vec<RegisterPointDto> {
+    let is_bit = (1..=2).contains(&function_code);
+    let mut points = Vec::new();
+    if is_bit {
+        for offset in 0..quantity {
+            let address = start_address.wrapping_add(offset);
+            points.push(RegisterPointDto {
+                address,
+                data_type: DataType::Bool,
+                byte_order: OrderPreset::Abcd,
+                byte_pos: None,
+                meaning: aliases.get(&address).cloned().unwrap_or_default(),
+                unit: String::new(),
+                scale: 1.0,
+                offset: 0.0,
+                alerts: Vec::new(),
+                simulator: None,
+            });
+        }
+        return points;
+    }
+
+    let (order, word_order) = byte_order.parts();
+    let span = ValueRule {
+        data_type,
+        byte_pos: Some(byte_pos.unwrap_or(BytePos::Low)),
+        byte_order: order,
+        word_order,
+    }
+    .word_span()
+    .max(1);
+    let mut offset = 0u32;
+    while offset + span as u32 <= u32::from(quantity) {
+        let address = start_address.wrapping_add(offset as u16);
+        points.push(RegisterPointDto {
+            address,
+            data_type,
+            byte_order,
+            byte_pos,
+            meaning: aliases.get(&address).cloned().unwrap_or_default(),
+            unit: String::new(),
+            scale: 1.0,
+            offset: 0.0,
+            alerts: Vec::new(),
+            simulator: None,
+        });
+        offset += span as u32;
+    }
+    points
 }
 
 fn default_true() -> bool {
@@ -497,6 +844,8 @@ pub struct NewSessionInput {
     pub auto_reconnect: Option<bool>,
     #[serde(default)]
     pub slave_id: Option<u8>,
+    #[serde(default = "default_true")]
+    pub auto_connect: bool,
 }
 
 impl NewSessionInput {
@@ -755,6 +1104,62 @@ pub struct DebugStateDto {
     pub active: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NetworkMode {
+    TcpServer,
+    TcpClient,
+    UdpServer,
+    UdpClient,
+    TcpRelay,
+}
+
+impl NetworkMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::TcpServer => "tcp-server",
+            Self::TcpClient => "tcp-client",
+            Self::UdpServer => "udp-server",
+            Self::UdpClient => "udp-client",
+            Self::TcpRelay => "tcp-relay",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkStartInput {
+    pub mode: NetworkMode,
+    #[serde(default)]
+    pub local_host: String,
+    #[serde(default)]
+    pub local_port: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_port: Option<u16>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkStateDto {
+    pub active: bool,
+    pub mode: Option<String>,
+    pub endpoint: Option<String>,
+    pub clients: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkDataDto {
+    pub direction: String,
+    pub data: Vec<u8>,
+    pub connection: String,
+    pub timestamp: u64,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1023,6 +1428,15 @@ fn simulator_definition(unit_id: u8) -> DefinitionDto {
         interval_ms: 500,
         enabled: true,
         aliases: BTreeMap::new(),
+        points: default_points(
+            0,
+            16,
+            0x03,
+            DataType::U16,
+            OrderPreset::Abcd,
+            None,
+            &BTreeMap::new(),
+        ),
     }
 }
 

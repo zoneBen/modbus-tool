@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Tag } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toDefinitionInput } from "@/lib/definition";
+import { resolvePoints, toDefinitionInput } from "@/lib/definition";
 import { formatAddress } from "@/lib/format";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
@@ -29,6 +30,7 @@ const props = defineProps<{
 
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 const alias = ref("");
 const saving = ref(false);
 
@@ -49,21 +51,40 @@ async function save(): Promise<void> {
   const aliases = { ...definition.aliases };
   if (nextAlias) aliases[props.address] = nextAlias;
   else delete aliases[props.address];
-  if (JSON.stringify(aliases) === JSON.stringify(definition.aliases)) {
+  const basePoints = definition.points.length ? definition.points : resolvePoints(definition);
+  const points = basePoints.map((point) =>
+    point.address === props.address ? { ...point, meaning: nextAlias } : point,
+  );
+  if (
+    JSON.stringify(aliases) === JSON.stringify(definition.aliases) &&
+    !points.some(
+      (point) =>
+        point.address === props.address &&
+        point.meaning !==
+          (definition.points.find((entry) => entry.address === props.address)?.meaning ?? ""),
+    )
+  ) {
     open.value = false;
     return;
   }
   saving.value = true;
   try {
-    await sessions.updateDefinition(definition.id, { ...toDefinitionInput(definition), aliases });
-    toast.success("别名已更新", {
+    await sessions.updateDefinition(definition.id, {
+      ...toDefinitionInput(definition),
+      aliases,
+      points,
+    });
+    toast.success(t("aliasEditor.updated"), {
       description: nextAlias
-        ? `地址 ${addressLabel.value} → ${nextAlias}`
-        : `地址 ${addressLabel.value} 已恢复显示地址`,
+        ? t("aliasEditor.updatedDescription", {
+            address: addressLabel.value,
+            alias: nextAlias,
+          })
+        : t("aliasEditor.restored", { address: addressLabel.value }),
     });
     open.value = false;
   } catch (error: unknown) {
-    toast.error("更新别名失败", {
+    toast.error(t("aliasEditor.updateFailed"), {
       description: error instanceof Error ? error.message : String(error),
     });
   } finally {
@@ -84,23 +105,28 @@ async function save(): Promise<void> {
           >
             <Tag class="size-3.5" />
           </span>
-          编辑别名 / 点位
+          {{ t("aliasEditor.title") }}
         </DialogTitle>
         <DialogDescription class="text-[11.5px] text-muted-foreground">
-          地址 {{ addressLabel }} · {{ definition?.name ?? "未选择定义" }}
+          {{
+            t("aliasEditor.description", {
+              address: addressLabel,
+              name: definition?.name ?? t("aliasEditor.noDefinition"),
+            })
+          }}
         </DialogDescription>
       </DialogHeader>
 
       <div class="space-y-2 px-5 py-4">
-        <Label class="text-[11px] text-muted-foreground">别名</Label>
+        <Label class="text-[11px] text-muted-foreground">{{ t("aliasEditor.alias") }}</Label>
         <Input
           v-model="alias"
           class="h-10 rounded-lg border-hairline-strong bg-well text-[13px]"
-          placeholder="例如 电机温度"
+          :placeholder="t('aliasEditor.placeholder')"
           @keydown.enter="save"
         />
         <p class="text-[11px] leading-relaxed text-muted-foreground">
-          留空保存会移除该地址的别名，表格恢复显示地址。
+          {{ t("aliasEditor.hint") }}
         </p>
       </div>
 
@@ -111,11 +137,11 @@ async function save(): Promise<void> {
             size="sm"
             class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
-            取消
+            {{ t("common.cancel") }}
           </Button>
         </DialogClose>
         <Button size="sm" class="h-8 min-w-[76px] text-[12px]" :disabled="saving" @click="save">
-          {{ saving ? "保存中…" : "保存别名" }}
+          {{ saving ? t("aliasEditor.saving") : t("aliasEditor.save") }}
         </Button>
       </DialogFooter>
     </DialogContent>
