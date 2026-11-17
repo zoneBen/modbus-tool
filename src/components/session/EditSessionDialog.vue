@@ -17,9 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ipc } from "@/lib/ipc";
+import { useSerialPorts } from "@/composables/useSerialPorts";
 import { useSessionsStore } from "@/stores/sessions";
 import type { Framing, UpdateSessionInput } from "@/types/models";
+import SerialPortField from "./SerialPortField.vue";
 
 const open = defineModel<boolean>("open", { default: false });
 const sessions = useSessionsStore();
@@ -31,7 +32,7 @@ const transport = ref<"tcp" | "udp">("tcp");
 const framing = ref<Framing>("rtu");
 const host = ref("127.0.0.1");
 const port = ref("502");
-const serialPort = ref("COM3");
+const serialPort = ref("");
 const baudRate = ref(9600);
 const parity = ref("none");
 const dataBits = ref(8);
@@ -39,10 +40,12 @@ const stopBits = ref(1);
 const timeoutMs = ref("1000");
 const retries = ref("1");
 const autoReconnect = ref(true);
-const serialPorts = ref<Array<{ path: string; label: string }>>([
-  { path: "COM3", label: "USB-SERIAL CH340 (COM3)" },
-  { path: "COM4", label: "FTDI FT232R (COM4)" },
-]);
+const {
+  ports: serialPorts,
+  loading: serialPortsLoading,
+  error: serialPortsError,
+  refresh: refreshSerialPorts,
+} = useSerialPorts();
 const busy = ref(false);
 
 const isSlave = computed(() => session.value?.role === "slave");
@@ -62,7 +65,8 @@ const framingOptions = computed(() =>
 
 const endpoint = computed(() => {
   if (linkMode.value === "serial") {
-    return `${serialPort.value} · ${baudRate.value} ${dataBits.value}${
+    const port = serialPort.value.trim() || "未选择串口";
+    return `${port} · ${baudRate.value} ${dataBits.value}${
       parity.value === "none" ? "N" : parity.value === "even" ? "E" : "O"
     }${stopBits.value}`;
   }
@@ -81,7 +85,7 @@ watch(open, async (isOpen) => {
   autoReconnect.value = current.autoReconnect ?? true;
 
   if (current.transport === "serial") {
-    serialPort.value = current.serialPort ?? current.endpoint.split("·")[0]?.trim() ?? "COM3";
+    serialPort.value = current.serialPort ?? current.endpoint.split("·")[0]?.trim() ?? "";
     baudRate.value = current.baudRate ?? 9600;
     dataBits.value = current.dataBits ?? 8;
     parity.value = current.parity ?? "none";
@@ -93,17 +97,7 @@ watch(open, async (isOpen) => {
   }
   if (isSlave.value) host.value = "0.0.0.0";
 
-  try {
-    const ports = await ipc.listSerialPorts();
-    if (ports.length) {
-      serialPorts.value = ports.map((item) => ({ path: item.path, label: item.label }));
-      if (!serialPorts.value.some((item) => item.path === serialPort.value)) {
-        serialPort.value = serialPorts.value[0]?.path ?? "COM3";
-      }
-    }
-  } catch {
-    // Keep the fallback list when enumeration is unavailable.
-  }
+  await refreshSerialPorts();
 });
 
 watch(linkMode, (value) => {
@@ -124,6 +118,10 @@ async function submit(): Promise<void> {
     toast.error("请输入主机地址");
     return;
   }
+  if (linkMode.value === "serial" && !serialPort.value.trim()) {
+    toast.error("请选择或输入串口端口");
+    return;
+  }
   const input: UpdateSessionInput = {
     name: name.value.trim() || current.name,
     transport: linkMode.value === "serial" ? "serial" : transport.value,
@@ -131,7 +129,7 @@ async function submit(): Promise<void> {
     endpoint: endpoint.value,
     host: linkMode.value === "network" ? (isSlave.value ? "0.0.0.0" : host.value) : undefined,
     port: linkMode.value === "network" ? Number(port.value) || 502 : undefined,
-    serialPort: linkMode.value === "serial" ? serialPort.value : undefined,
+    serialPort: linkMode.value === "serial" ? serialPort.value.trim() : undefined,
     baudRate: baudRate.value,
     dataBits: dataBits.value,
     parity: parity.value as "none" | "even" | "odd",
@@ -246,13 +244,14 @@ async function submit(): Promise<void> {
         </div>
 
         <div v-else class="grid grid-cols-2 gap-3">
-          <div class="col-span-2 space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">串口端口</Label>
-            <FormSelect
-              v-model="serialPort"
-              :options="serialPorts.map((item) => ({ label: item.label, value: item.path }))"
-            />
-          </div>
+          <SerialPortField
+            v-model="serialPort"
+            class="col-span-2"
+            :ports="serialPorts"
+            :loading="serialPortsLoading"
+            :error="serialPortsError"
+            @refresh="refreshSerialPorts"
+          />
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">波特率</Label>
             <FormSelect

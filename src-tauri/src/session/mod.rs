@@ -13,8 +13,9 @@ use uuid::Uuid;
 
 use crate::event::{AppEvent, EventBus, emit};
 use crate::model::{
-    CustomWriteInput, DefinitionDto, DefinitionInput, NewSessionInput, SessionDto, SessionState,
-    SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
+    CustomWriteInput, DefinitionDto, DefinitionInput, NewSessionInput, RawSendInput,
+    RawSendResultDto, SessionDto, SessionState, SlaveValueInput, UpdateSessionInput,
+    WorkspaceSnapshotDto,
 };
 
 use actor::{Actor, SessionCommand};
@@ -252,6 +253,15 @@ impl SessionManager {
             reply,
         })
         .await
+    }
+
+    pub async fn send_raw(
+        &self,
+        session_id: &str,
+        input: RawSendInput,
+    ) -> Result<RawSendResultDto, String> {
+        self.ask(session_id, |reply| SessionCommand::SendRaw { input, reply })
+            .await
     }
 
     pub async fn disconnect(&self, session_id: &str) -> Result<(), String> {

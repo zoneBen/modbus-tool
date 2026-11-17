@@ -10,6 +10,8 @@ import type {
   DefinitionInput,
   NetworkScanInput,
   NewSessionInput,
+  RawSendInput,
+  RawSendResult,
   SerialPortInfo,
   Session,
   SlaveIdScanInput,
@@ -62,6 +64,8 @@ function createTauriBridge(): IpcApi {
       invoke<void>("write_register", { sessionId, definitionId, address, value }),
     writeCustom: (sessionId: string, definitionId: string | null, input: CustomWriteInput) =>
       invoke<void>("write_custom", { sessionId, definitionId, input }),
+    sendRaw: (sessionId: string, input: RawSendInput) =>
+      invoke<RawSendResult>("session_send_raw", { sessionId, input }),
     on: async <K extends AppEventName>(
       event: K,
       handler: (payload: AppEventMap[K]) => void,

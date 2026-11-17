@@ -11,6 +11,8 @@ import type {
   Frame,
   NetworkScanInput,
   NewSessionInput,
+  RawSendInput,
+  RawSendResult,
   RegisterValue,
   ScanKind,
   ScanProgress,
@@ -37,6 +39,7 @@ import {
   writeSingleRequestPdu,
 } from "./demo-codec";
 import { formatFunctionCode, formatNumber, snapshotKey } from "./format";
+import { encodeRawPayload } from "./raw-send";
 
 const TICK_MS = 720;
 const MAX_FRAME_HISTORY = 400;
@@ -1074,6 +1077,33 @@ export function createDemoBridge(): IpcApi {
     emit("session:status", statusPayload(session));
   }
 
+  async function sendRaw(sessionId: string, input: RawSendInput): Promise<RawSendResult> {
+    const session = sessionById(sessionId);
+    if (session.role !== "master") throw new Error("从站模拟会话不支持手动发送");
+    if (session.status !== "connected") throw new Error("会话未连接");
+    const payload = Array.from(encodeRawPayload(input.data, input.mode));
+    if (!payload.length) throw new Error("发送内容为空");
+
+    const latencyMs = Number((3 + Math.random() * 9).toFixed(1));
+    const tx = makeFrame(
+      session,
+      "tx",
+      payload,
+      `手动发送 · ${input.mode === "ascii" ? "ASCII" : "HEX"} · ${payload.length} B`,
+    );
+    const rx = makeFrame(session, "rx", payload, `手动接收 · ${payload.length} B`, latencyMs);
+    session.stats.tx += 1;
+    session.stats.rx += 1;
+    session.stats.latencyMs = latencyMs;
+    emit("session:frames", { sessionId, frames: [tx, rx] });
+    emit("session:status", statusPayload(session));
+    return {
+      bytesSent: payload.length,
+      bytesReceived: payload.length,
+      latencyMs,
+    };
+  }
+
   async function writeCustom(
     sessionId: string,
     definitionId: string | null,
@@ -1257,6 +1287,7 @@ export function createDemoBridge(): IpcApi {
     cancelScan,
     writeRegister,
     writeCustom,
+    sendRaw,
     on,
   };
 }

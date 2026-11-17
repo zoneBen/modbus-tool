@@ -104,6 +104,7 @@ pub fn run() {
             commands::definition_delete,
             commands::write_register,
             commands::write_custom,
+            commands::session_send_raw,
             commands::session_connect,
             commands::session_disconnect,
             commands::session_update,

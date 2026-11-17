@@ -8,6 +8,8 @@ import type {
   DefinitionSnapshot,
   DefinitionTimeline,
   NewSessionInput,
+  RawSendInput,
+  RawSendResult,
   Session,
   SessionStatusEvent,
   SlaveValueInput,
@@ -350,6 +352,13 @@ export const useSessionsStore = defineStore("sessions", () => {
     await ipc.writeCustom(session.id, definition?.id ?? null, input);
   }
 
+  async function sendRaw(input: RawSendInput): Promise<RawSendResult> {
+    const session = activeSession.value;
+    if (!session) throw new Error("未选择会话");
+    if (session.role !== "master") throw new Error("从站模拟会话不支持手动发送");
+    return ipc.sendRaw(session.id, input);
+  }
+
   return {
     sessions,
     activeSessionId,
@@ -390,5 +399,6 @@ export const useSessionsStore = defineStore("sessions", () => {
     writeSlaveValue,
     writeRegister,
     writeCustom,
+    sendRaw,
   };
 });

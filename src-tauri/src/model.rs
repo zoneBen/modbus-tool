@@ -664,6 +664,89 @@ pub struct CustomWriteInput {
     pub values: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RawSendMode {
+    Ascii,
+    Hex,
+}
+
+impl RawSendMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ascii => "ASCII",
+            Self::Hex => "HEX",
+        }
+    }
+}
+
+const MAX_RAW_SEND_BYTES: usize = 4096;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawSendInput {
+    pub data: String,
+    pub mode: RawSendMode,
+}
+
+impl RawSendInput {
+    pub fn encode(&self) -> Result<Vec<u8>, String> {
+        let bytes = match self.mode {
+            RawSendMode::Ascii => self.data.as_bytes().to_vec(),
+            RawSendMode::Hex => {
+                let cleaned = self
+                    .data
+                    .replace("0x", "")
+                    .replace("0X", "")
+                    .chars()
+                    .filter(|character| {
+                        !character.is_whitespace() && !matches!(character, ',' | '-' | ':' | '_')
+                    })
+                    .collect::<String>();
+                if cleaned.is_empty() {
+                    return Err("HEX 内容为空".to_owned());
+                }
+                if !cleaned
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+                {
+                    return Err("HEX 包含非法字符，仅支持 0–9 / A–F".to_owned());
+                }
+                if !cleaned.len().is_multiple_of(2) {
+                    return Err("HEX 内容需为偶数个十六进制字符".to_owned());
+                }
+                cleaned
+                    .as_bytes()
+                    .chunks(2)
+                    .map(|pair| {
+                        let text =
+                            std::str::from_utf8(pair).map_err(|_| "HEX 编码失败".to_owned())?;
+                        u8::from_str_radix(text, 16).map_err(|_| "HEX 解析失败".to_owned())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+        };
+        if bytes.is_empty() {
+            return Err("发送内容为空".to_owned());
+        }
+        if bytes.len() > MAX_RAW_SEND_BYTES {
+            return Err(format!(
+                "单次发送不能超过 {MAX_RAW_SEND_BYTES} 字节，当前 {} 字节",
+                bytes.len()
+            ));
+        }
+        Ok(bytes)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawSendResultDto {
+    pub bytes_sent: usize,
+    pub bytes_received: usize,
+    pub latency_ms: f64,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_link(
     transport: TransportKind,

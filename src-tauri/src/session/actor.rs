@@ -17,8 +17,8 @@ use crate::event::{AppEvent, EventBus, emit};
 use crate::frames::{FrameInfo, build_frame};
 use crate::model::{
     CustomWriteInput, DefinitionDto, DefinitionInput, DefinitionSnapshotDto, FrameDto, LinkConfig,
-    RegisterValueDto, SessionRole, SessionState, SessionStatus, SlaveValueInput,
-    UpdateSessionInput, now_ms,
+    RawSendInput, RawSendResultDto, RegisterValueDto, SessionRole, SessionState, SessionStatus,
+    SlaveValueInput, UpdateSessionInput, now_ms,
 };
 use crate::transport::{Transport, TransportError};
 
@@ -67,6 +67,10 @@ pub enum SessionCommand {
         definition_id: Option<String>,
         input: CustomWriteInput,
         reply: oneshot::Sender<Result<(), String>>,
+    },
+    SendRaw {
+        input: RawSendInput,
+        reply: oneshot::Sender<Result<RawSendResultDto, String>>,
     },
     UpdateConfig {
         input: UpdateSessionInput,
@@ -256,6 +260,14 @@ impl Actor {
                 reply,
             } => {
                 let result = self.write_custom(definition_id.as_deref(), input).await;
+                if matches!(&result, Err(TransactionError::Transport(_))) {
+                    self.reconnect().await;
+                }
+                let _ = reply.send(result.map_err(TransactionError::message));
+                true
+            }
+            SessionCommand::SendRaw { input, reply } => {
+                let result = self.send_raw(input).await;
                 if matches!(&result, Err(TransactionError::Transport(_))) {
                     self.reconnect().await;
                 }
@@ -605,6 +617,98 @@ impl Actor {
                 Ok(())
             }
             _ => Err(TransactionError::Protocol("写入响应类型不匹配".to_owned())),
+        }
+    }
+
+    async fn send_raw(
+        &mut self,
+        input: RawSendInput,
+    ) -> Result<RawSendResultDto, TransactionError> {
+        let (role, status, session_id, framing, timeout_ms) = {
+            let state = self.state.read().await;
+            (
+                state.config.role,
+                state.status,
+                state.config.id.clone(),
+                state.config.framing,
+                state.config.timeout_ms,
+            )
+        };
+        if role != SessionRole::Master {
+            return Err(TransactionError::Protocol(
+                "从站模拟会话不支持手动发送".to_owned(),
+            ));
+        }
+        if status != SessionStatus::Connected || self.transport.is_none() {
+            return Err(TransactionError::Protocol("会话未连接".to_owned()));
+        }
+
+        let payload = input.encode().map_err(TransactionError::Protocol)?;
+        let bytes_sent = payload.len();
+        let timeout = Duration::from_millis(timeout_ms.clamp(100, 5000));
+        let result = match self.transport.as_mut() {
+            Some(transport) => transport.send_raw(&payload, timeout).await,
+            None => Err(TransportError::Closed),
+        };
+
+        match result {
+            Ok(reply) => {
+                let bytes_received = reply.data.len();
+                let latency_ms = reply.latency_ms.unwrap_or(0.0);
+                let mut frames = vec![build_frame(
+                    self.next_seq(),
+                    &session_id,
+                    &payload,
+                    framing,
+                    FrameInfo {
+                        direction: "tx",
+                        summary: format!("手动发送 · {} · {bytes_sent} B", input.mode.label()),
+                        latency_ms: None,
+                        status: "ok",
+                    },
+                )];
+                if !reply.data.is_empty() {
+                    frames.push(build_frame(
+                        self.next_seq(),
+                        &session_id,
+                        &reply.data,
+                        framing,
+                        FrameInfo {
+                            direction: "rx",
+                            summary: format!("手动接收 · {bytes_received} B"),
+                            latency_ms: Some(round1(latency_ms)),
+                            status: "ok",
+                        },
+                    ));
+                }
+                let rx = if bytes_received == 0 { 0 } else { 1 };
+                self.finish_transaction(frames, 1, rx, 0, latency_ms, None)
+                    .await;
+                self.wait_inter_frame().await;
+                Ok(RawSendResultDto {
+                    bytes_sent,
+                    bytes_received,
+                    latency_ms: round1(latency_ms),
+                })
+            }
+            Err(error) => {
+                let message = error.to_string();
+                let frames = vec![build_frame(
+                    self.next_seq(),
+                    &session_id,
+                    &payload,
+                    framing,
+                    FrameInfo {
+                        direction: "tx",
+                        summary: format!("手动发送失败 · {message}"),
+                        latency_ms: None,
+                        status: "error",
+                    },
+                )];
+                self.finish_transaction(frames, 0, 0, 1, 0.0, Some(message.clone()))
+                    .await;
+                Err(TransactionError::Transport(message))
+            }
         }
     }
 

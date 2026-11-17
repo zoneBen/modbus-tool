@@ -48,6 +48,19 @@ export interface CustomWriteInput {
   values: string[];
 }
 
+export type RawSendMode = "ascii" | "hex";
+
+export interface RawSendInput {
+  data: string;
+  mode: RawSendMode;
+}
+
+export interface RawSendResult {
+  bytesSent: number;
+  bytesReceived: number;
+  latencyMs: number;
+}
+
 export interface SessionStats {
   tx: number;
   rx: number;

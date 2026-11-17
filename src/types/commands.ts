@@ -8,6 +8,8 @@ import type {
   Frame,
   NetworkScanInput,
   NewSessionInput,
+  RawSendInput,
+  RawSendResult,
   ScanDone,
   ScanProgress,
   ScanResult,
@@ -76,6 +78,7 @@ export interface IpcApi {
     definitionId: string | null,
     input: CustomWriteInput,
   ): Promise<void>;
+  sendRaw(sessionId: string, input: RawSendInput): Promise<RawSendResult>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

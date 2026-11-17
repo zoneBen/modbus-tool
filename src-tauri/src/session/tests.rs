@@ -11,7 +11,8 @@ use tokio::sync::Mutex;
 
 use crate::event::{AppEvent, event_bus};
 use crate::model::{
-    CustomWriteInput, DefinitionInput, NewSessionInput, SessionRole, SlaveValueInput, TransportKind,
+    CustomWriteInput, DefinitionInput, NewSessionInput, RawSendInput, RawSendMode, SessionRole,
+    SlaveValueInput, TransportKind,
 };
 use crate::session::SessionManager;
 
@@ -92,6 +93,118 @@ fn input(port: u16) -> NewSessionInput {
         auto_reconnect: Some(false),
         slave_id: None,
     }
+}
+
+#[test]
+fn encodes_manual_send_payloads() {
+    let ascii = RawSendInput {
+        data: "AT+INFO\r\n".to_owned(),
+        mode: RawSendMode::Ascii,
+    };
+    assert_eq!(ascii.encode().expect("ascii"), b"AT+INFO\r\n");
+
+    let hex = RawSendInput {
+        data: "0x01 03, 00-0A".to_owned(),
+        mode: RawSendMode::Hex,
+    };
+    assert_eq!(hex.encode().expect("hex"), vec![0x01, 0x03, 0x00, 0x0A]);
+
+    for (data, mode) in [
+        ("", RawSendMode::Ascii),
+        ("0", RawSendMode::Hex),
+        ("0G", RawSendMode::Hex),
+        ("  ", RawSendMode::Hex),
+    ] {
+        let input = RawSendInput {
+            data: data.to_owned(),
+            mode,
+        };
+        assert!(input.encode().is_err(), "payload should be rejected");
+    }
+}
+
+async fn echo_tcp_server(listener: TcpListener) {
+    loop {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            break;
+        };
+        tokio::spawn(async move {
+            let mut buffer = [0u8; 512];
+            loop {
+                match socket.read(&mut buffer).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => {
+                        if socket.write_all(&buffer[..read]).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+#[tokio::test]
+async fn sends_and_logs_manual_raw_data_over_tcp() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let server = tokio::spawn(echo_tcp_server(listener));
+
+    let bus = event_bus();
+    let mut events = bus.subscribe();
+    let manager = SessionManager::new(bus);
+    let session = manager.create_session(input(port)).await.expect("create");
+
+    let result = manager
+        .send_raw(
+            &session.id,
+            RawSendInput {
+                data: "PING".to_owned(),
+                mode: RawSendMode::Ascii,
+            },
+        )
+        .await
+        .expect("raw send");
+    assert_eq!(result.bytes_sent, 4);
+    assert_eq!(result.bytes_received, 4);
+    assert!(result.latency_ms.is_finite());
+
+    let mut frames = Vec::new();
+    for _ in 0..20 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::SessionFrames {
+                frames: mut batch, ..
+            })) => {
+                frames.append(&mut batch);
+                if frames
+                    .iter()
+                    .any(|frame| frame.summary.contains("手动发送"))
+                    && frames
+                        .iter()
+                        .any(|frame| frame.summary.contains("手动接收"))
+                {
+                    break;
+                }
+            }
+            Ok(Ok(_)) => continue,
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+    assert!(
+        frames.iter().any(|frame| frame.summary.contains("手动发送")
+            && frame.direction == "tx"
+            && frame.raw.as_slice() == b"PING"),
+        "manual TX frame should be logged"
+    );
+    assert!(
+        frames.iter().any(|frame| frame.summary.contains("手动接收")
+            && frame.direction == "rx"
+            && frame.raw.as_slice() == b"PING"),
+        "manual RX frame should be logged"
+    );
+
+    manager.shutdown_all().await;
+    server.abort();
 }
 
 #[tokio::test]

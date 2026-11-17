@@ -37,7 +37,7 @@ const editSessionOpen = ref(false);
 const aboutOpen = ref(false);
 
 const monitorStyle = computed(() => ({
-  height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
+  height: settings.monitorCollapsed ? "79px" : `${settings.monitorHeight}px`,
 }));
 
 function openWrite(target: WriteTarget): void {

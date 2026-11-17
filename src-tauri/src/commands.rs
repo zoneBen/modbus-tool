@@ -5,8 +5,8 @@ use tauri::State;
 
 use crate::model::{
     AddressScanInput, BaudScanInput, CustomWriteInput, DefinitionDto, DefinitionInput,
-    NetworkScanInput, NewSessionInput, SerialPortInfoDto, SessionDto, SlaveIdScanInput,
-    SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
+    NetworkScanInput, NewSessionInput, RawSendInput, RawSendResultDto, SerialPortInfoDto,
+    SessionDto, SlaveIdScanInput, SlaveValueInput, UpdateSessionInput, WorkspaceSnapshotDto,
 };
 use crate::state::AppState;
 
@@ -40,27 +40,28 @@ pub async fn workspace_get(state: State<'_, AppState>) -> Result<WorkspaceSnapsh
 }
 
 #[tauri::command]
-pub fn list_serial_ports() -> Vec<SerialPortInfoDto> {
-    match serialport::available_ports() {
-        Ok(ports) => ports
-            .into_iter()
-            .map(|port| {
-                let manufacturer = match &port.port_type {
-                    serialport::SerialPortType::UsbPort(usb) => usb.manufacturer.clone(),
-                    _ => None,
-                };
-                SerialPortInfoDto {
-                    label: label_for_port(&port),
-                    path: port.port_name,
-                    manufacturer,
-                }
-            })
-            .collect(),
-        Err(error) => {
+pub fn list_serial_ports() -> Result<Vec<SerialPortInfoDto>, String> {
+    serialport::available_ports()
+        .map(|ports| {
+            ports
+                .into_iter()
+                .map(|port| {
+                    let manufacturer = match &port.port_type {
+                        serialport::SerialPortType::UsbPort(usb) => usb.manufacturer.clone(),
+                        _ => None,
+                    };
+                    SerialPortInfoDto {
+                        label: label_for_port(&port),
+                        path: port.port_name,
+                        manufacturer,
+                    }
+                })
+                .collect()
+        })
+        .map_err(|error| {
             tracing::warn!(%error, "failed to enumerate serial ports");
-            Vec::new()
-        }
-    }
+            format!("串口枚举失败：{error}")
+        })
 }
 
 #[tauri::command]
@@ -197,6 +198,15 @@ pub async fn slave_write_value(
     state: State<'_, AppState>,
 ) -> Result<u16, String> {
     state.manager.slave_write_value(&session_id, input).await
+}
+
+#[tauri::command]
+pub async fn session_send_raw(
+    session_id: String,
+    input: RawSendInput,
+    state: State<'_, AppState>,
+) -> Result<RawSendResultDto, String> {
+    state.manager.send_raw(&session_id, input).await
 }
 
 #[tauri::command]
