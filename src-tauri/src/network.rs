@@ -44,12 +44,22 @@ impl NetworkManager {
         let endpoint = endpoint_for(&input);
         let (stop_tx, stop_rx) = watch::channel(false);
         let (command_tx, command_rx) = mpsc::unbounded_channel();
-        let (ready_tx, ready_rx) = oneshot::channel();
+        let (ready_tx, mut ready_rx) = mpsc::unbounded_channel();
         let bus = self.bus.clone();
         let task_input = input.clone();
         let task = tokio::spawn(async move {
-            let result = run_mode(task_input, bus.clone(), command_rx, stop_rx, ready_tx).await;
+            let result = run_mode(
+                task_input,
+                bus.clone(),
+                command_rx,
+                stop_rx,
+                ready_tx.clone(),
+            )
+            .await;
             let error = result.err();
+            if let Some(error) = &error {
+                let _ = ready_tx.send(Err(error.clone()));
+            }
             emit(
                 &bus,
                 AppEvent::NetworkState(NetworkStateDto {
@@ -62,8 +72,8 @@ impl NetworkManager {
             );
         });
 
-        match tokio::time::timeout(Duration::from_secs(6), ready_rx).await {
-            Ok(Ok(Ok(state))) => {
+        match tokio::time::timeout(Duration::from_secs(6), ready_rx.recv()).await {
+            Ok(Some(Ok(state))) => {
                 *self.active.write().await = Some(NetworkHandle {
                     stop: stop_tx,
                     commands: command_tx,
@@ -71,12 +81,12 @@ impl NetworkManager {
                 });
                 Ok(state)
             }
-            Ok(Ok(Err(error))) => {
+            Ok(Some(Err(error))) => {
                 let _ = stop_tx.send(true);
                 let _ = task.await;
                 Err(error)
             }
-            Ok(Err(_)) => {
+            Ok(None) => {
                 let _ = stop_tx.send(true);
                 let _ = task.await;
                 Err("网络助手启动失败".to_owned())
@@ -220,7 +230,7 @@ async fn run_mode(
     bus: EventBus,
     commands: mpsc::UnboundedReceiver<NetworkCommand>,
     stop_rx: watch::Receiver<bool>,
-    ready_tx: oneshot::Sender<Result<NetworkStateDto, String>>,
+    ready_tx: mpsc::UnboundedSender<Result<NetworkStateDto, String>>,
 ) -> Result<(), String> {
     match input.mode {
         NetworkMode::TcpServer => run_tcp_server(input, bus, commands, stop_rx, ready_tx).await,
@@ -236,7 +246,7 @@ async fn run_tcp_server(
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
     mut stop_rx: watch::Receiver<bool>,
-    ready_tx: oneshot::Sender<Result<NetworkStateDto, String>>,
+    ready_tx: mpsc::UnboundedSender<Result<NetworkStateDto, String>>,
 ) -> Result<(), String> {
     let host = if input.local_host.trim().is_empty() {
         "0.0.0.0"
@@ -342,7 +352,7 @@ async fn run_tcp_client(
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
     mut stop_rx: watch::Receiver<bool>,
-    ready_tx: oneshot::Sender<Result<NetworkStateDto, String>>,
+    ready_tx: mpsc::UnboundedSender<Result<NetworkStateDto, String>>,
 ) -> Result<(), String> {
     let host = input.remote_host.as_deref().unwrap_or("").trim();
     let port = input.remote_port.unwrap_or(0);
@@ -385,7 +395,7 @@ async fn run_udp_server(
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
     mut stop_rx: watch::Receiver<bool>,
-    ready_tx: oneshot::Sender<Result<NetworkStateDto, String>>,
+    ready_tx: mpsc::UnboundedSender<Result<NetworkStateDto, String>>,
 ) -> Result<(), String> {
     let host = if input.local_host.trim().is_empty() {
         "0.0.0.0"
@@ -440,7 +450,7 @@ async fn run_udp_client(
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
     mut stop_rx: watch::Receiver<bool>,
-    ready_tx: oneshot::Sender<Result<NetworkStateDto, String>>,
+    ready_tx: mpsc::UnboundedSender<Result<NetworkStateDto, String>>,
 ) -> Result<(), String> {
     let remote_host = input.remote_host.as_deref().unwrap_or("").trim();
     let remote_port = input.remote_port.unwrap_or(0);
@@ -493,7 +503,7 @@ async fn run_tcp_relay(
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
     mut stop_rx: watch::Receiver<bool>,
-    ready_tx: oneshot::Sender<Result<NetworkStateDto, String>>,
+    ready_tx: mpsc::UnboundedSender<Result<NetworkStateDto, String>>,
 ) -> Result<(), String> {
     let remote_host = input.remote_host.as_deref().unwrap_or("").trim();
     let remote_port = input.remote_port.unwrap_or(0);
