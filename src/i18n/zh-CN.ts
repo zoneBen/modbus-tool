@@ -3,6 +3,7 @@ export default {
     name: "Modbus Tool",
     tagline: "工业总线调试台",
     version: "v0.4.0",
+    preview: "预览",
   },
   about: {
     dialogLabel: "关于 Modbus Tool 与作者",
@@ -24,6 +25,7 @@ export default {
     qrAlt: "作者微信二维码",
     scanWechat: "扫码添加微信",
     contactHint: "沟通需求、评估方案、获取报价",
+    capabilitiesLabel: "能力范围",
     capabilitiesTitle: "能做什么",
     capabilitiesSubtitle: "软硬件一体设计与交付",
     capabilities: {

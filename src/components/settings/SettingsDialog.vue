@@ -184,13 +184,13 @@ const toggles = computed(() => [
       <div class="flex items-center justify-between px-5 py-3 text-[11px] text-muted-foreground">
         <div class="flex items-center gap-2">
           <span class="font-medium text-foreground">Modbus Tool</span>
-          <span class="numeric">v0.4.0 · Preview</span>
+          <span class="numeric">{{ t("app.version") }} · {{ t("app.preview") }}</span>
         </div>
         <span
           v-if="sessions.demo"
           class="rounded-full border border-sim/25 bg-sim/10 px-1.5 py-0.5 text-[11px] text-sim"
         >
-          DEMO RUNTIME
+          {{ t("status.demoRuntime") }}
         </span>
       </div>
 

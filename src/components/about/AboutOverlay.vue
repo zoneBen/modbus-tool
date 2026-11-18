@@ -208,7 +208,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
         <section class="mt-14">
           <div class="flex items-end justify-between gap-4">
             <div>
-              <p class="label-caps text-signal">Capabilities</p>
+              <p class="label-caps text-signal">{{ t("about.capabilitiesLabel") }}</p>
               <h2 class="mt-1 text-[22px] font-semibold tracking-tight">
                 {{ t("about.capabilitiesTitle") }}
               </h2>

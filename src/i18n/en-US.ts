@@ -3,6 +3,7 @@ export default {
     name: "Modbus Tool",
     tagline: "Industrial bus console",
     version: "v0.4.0",
+    preview: "Preview",
   },
   about: {
     dialogLabel: "About Modbus Tool and the author",
@@ -24,6 +25,7 @@ export default {
     qrAlt: "Author WeChat QR code",
     scanWechat: "Scan to add WeChat",
     contactHint: "Discuss requirements, evaluate options and request a quote",
+    capabilitiesLabel: "Capabilities",
     capabilitiesTitle: "What I build",
     capabilitiesSubtitle: "Integrated hardware and software delivery",
     capabilities: {
