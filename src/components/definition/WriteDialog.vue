@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CircleAlert, CircleCheck, PencilLine, Send } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ const props = defineProps<{
 
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 
 const slaveId = ref("1");
 const mode = ref<WriteMode>("6");
@@ -47,13 +49,13 @@ const isBitRead = computed(
   () => definition.value?.functionCode === 1 || definition.value?.functionCode === 2,
 );
 
-const functionOptions: Array<{ label: string; value: WriteMode }> = [
-  { label: "自动（按定义编码）", value: "auto" },
-  { label: "FC05 · 单线圈", value: "5" },
-  { label: "FC06 · 单寄存器", value: "6" },
-  { label: "FC0F · 多线圈", value: "15" },
-  { label: "FC10 · 多寄存器", value: "16" },
-];
+const functionOptions = computed<Array<{ label: string; value: WriteMode }>>(() => [
+  { label: t("writeDialog.functions.auto"), value: "auto" },
+  { label: t("writeDialog.functions.fc05"), value: "5" },
+  { label: t("writeDialog.functions.fc06"), value: "6" },
+  { label: t("writeDialog.functions.fc0f"), value: "15" },
+  { label: t("writeDialog.functions.fc10"), value: "16" },
+]);
 
 const values = computed(() => value.value.split(/[\s,;]+/).filter(Boolean));
 const quantity = computed(() => values.value.length);
@@ -62,24 +64,22 @@ const isMultiple = computed(() => mode.value === "15" || mode.value === "16");
 const slaveEditable = computed(() => mode.value !== "auto");
 
 const functionLabel = computed(() => {
-  if (mode.value === "auto") return "自动编码";
+  if (mode.value === "auto") return t("writeDialog.functions.autoLabel");
   return `FC${mode.value.padStart(2, "0")}`;
 });
 
 const valueHint = computed(() => {
   switch (mode.value) {
     case "auto":
-      return isFloat.value
-        ? "按定义端序编码，浮点值会跨两个寄存器写入"
-        : "按定义数据类型编码，一次写入一个值";
+      return isFloat.value ? t("writeDialog.hints.autoFloat") : t("writeDialog.hints.auto");
     case "5":
-      return "0 / 1 或 OFF / ON";
+      return t("writeDialog.hints.coil");
     case "6":
-      return "0–65535，支持 0x0000–0xFFFF";
+      return t("writeDialog.hints.register");
     case "15":
-      return "多个线圈用逗号分隔，例如 1, 0, 1, 1";
+      return t("writeDialog.hints.coils");
     case "16":
-      return "多个寄存器用逗号分隔，例如 100, 0x00FF";
+      return t("writeDialog.hints.registers");
     default:
       return "";
   }
@@ -101,46 +101,46 @@ watch(
 );
 
 function fail(message: string): void {
-  feedback.value = { tone: "error", message: `写入失败：${message}` };
-  toast.error("写入失败", { description: message });
+  feedback.value = { tone: "error", message: t("writeDialog.failedMessage", { message }) };
+  toast.error(t("writeDialog.failed"), { description: message });
 }
 
 async function submit(): Promise<void> {
   if (!props.target || busy.value) return;
   const raw = value.value.trim();
   if (!raw) {
-    fail("请输入写入值");
+    fail(t("writeDialog.errors.valueRequired"));
     return;
   }
   const parsedValues = values.value;
   if (!parsedValues.length) {
-    fail("请输入写入值");
+    fail(t("writeDialog.errors.valueRequired"));
     return;
   }
   const parsedAddress = Number(address.value);
   if (!Number.isInteger(parsedAddress) || parsedAddress < 0 || parsedAddress > 0xffff) {
-    fail("地址需为 0–65535 的整数");
+    fail(t("writeDialog.errors.address"));
     return;
   }
   if (mode.value === "auto" && parsedValues.length !== 1) {
-    fail("自动编码模式一次只能写入一个值");
+    fail(t("writeDialog.errors.autoSingle"));
     return;
   }
   if ((mode.value === "5" || mode.value === "6") && parsedValues.length !== 1) {
-    fail(`${functionLabel.value} 只能写入一个值`);
+    fail(t("writeDialog.errors.singleValue", { function: functionLabel.value }));
     return;
   }
   if (mode.value === "15" && parsedValues.length > 1968) {
-    fail("FC0F 一次最多写入 1968 个线圈");
+    fail(t("writeDialog.errors.coilLimit"));
     return;
   }
   if (mode.value === "16" && parsedValues.length > 123) {
-    fail("FC10 一次最多写入 123 个寄存器");
+    fail(t("writeDialog.errors.registerLimit"));
     return;
   }
   const parsedSlave = Number(slaveId.value);
   if (!Number.isInteger(parsedSlave) || parsedSlave < 1 || parsedSlave > 247) {
-    fail("从站 ID 需在 1–247 之间");
+    fail(t("writeDialog.errors.slaveId"));
     return;
   }
 
@@ -158,9 +158,14 @@ async function submit(): Promise<void> {
       };
       await sessions.writeCustom(input);
     }
-    const summary = `${functionLabel.value} · 从站 ${slaveEditable.value ? parsedSlave : (definition.value?.slaveId ?? parsedSlave)} · 地址 ${formatAddress(parsedAddress, settings.addressBase)} · 值 ${parsedValues.join(", ")}`;
-    feedback.value = { tone: "success", message: `写入成功：${summary}` };
-    toast.success("写入成功", { description: summary });
+    const summary = t("writeDialog.summary", {
+      function: functionLabel.value,
+      slave: slaveEditable.value ? parsedSlave : (definition.value?.slaveId ?? parsedSlave),
+      address: formatAddress(parsedAddress, settings.addressBase),
+      values: parsedValues.join(", "),
+    });
+    feedback.value = { tone: "success", message: t("writeDialog.successMessage", { summary }) };
+    toast.success(t("writeDialog.success"), { description: summary });
   } catch (error: unknown) {
     fail(error instanceof Error ? error.message : String(error));
   } finally {
@@ -181,35 +186,35 @@ async function submit(): Promise<void> {
           >
             <PencilLine class="size-3.5" />
           </span>
-          写入值
+          {{ t("writeDialog.title") }}
         </DialogTitle>
         <DialogDescription class="text-[11.5px] text-muted-foreground">
-          选择功能码并设置从站、地址与值；执行结果会保留在弹窗内。
+          {{ t("writeDialog.hint") }}
         </DialogDescription>
       </DialogHeader>
 
       <div v-if="target" class="scrollbar-thin max-h-[68vh] space-y-4 overflow-y-auto px-5 py-4">
         <div class="grid grid-cols-2 gap-2 rounded-xl border border-hairline bg-overlay-1 p-3">
           <div class="min-w-0">
-            <p class="text-[11px] text-muted-foreground">目标定义</p>
+            <p class="text-[11px] text-muted-foreground">{{ t("writeDialog.targetDefinition") }}</p>
             <p class="mt-0.5 truncate text-[12px] text-foreground">
               {{ definition?.name ?? "—" }}
             </p>
           </div>
           <div class="min-w-0 text-right">
-            <p class="text-[11px] text-muted-foreground">目标地址</p>
+            <p class="text-[11px] text-muted-foreground">{{ t("writeDialog.targetAddress") }}</p>
             <p class="numeric mt-0.5 text-[12px] text-foreground">
               {{ formatAddress(target.address, settings.addressBase) }}
             </p>
           </div>
           <div class="min-w-0">
-            <p class="text-[11px] text-muted-foreground">当前值</p>
+            <p class="text-[11px] text-muted-foreground">{{ t("writeDialog.currentValue") }}</p>
             <p class="numeric mt-0.5 truncate text-[12px] text-foreground">
               {{ target.current }}
             </p>
           </div>
           <div class="min-w-0 text-right">
-            <p class="text-[11px] text-muted-foreground">名称 / 类型</p>
+            <p class="text-[11px] text-muted-foreground">{{ t("writeDialog.nameType") }}</p>
             <p class="mt-0.5 truncate text-[12px] text-foreground">
               {{ target.alias }} · {{ target.dataType.toUpperCase() }}
             </p>
@@ -218,7 +223,7 @@ async function submit(): Promise<void> {
 
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">从站 ID</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("writeDialog.slaveId") }}</Label>
             <Input
               v-model="slaveId"
               inputmode="numeric"
@@ -227,11 +232,15 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">写入功能码</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("writeDialog.functionCode")
+            }}</Label>
             <FormSelect v-model="mode" :options="functionOptions" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">起始地址</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("writeDialog.startAddress")
+            }}</Label>
             <Input
               v-model="address"
               inputmode="numeric"
@@ -240,29 +249,39 @@ async function submit(): Promise<void> {
           </div>
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">
-              写入数量
-              <span class="text-muted-foreground">（{{ isMultiple ? quantity : 1 }}）</span>
+              {{ t("writeDialog.quantity") }}
+              <span class="text-muted-foreground">{{
+                t("writeDialog.quantityValue", { count: isMultiple ? quantity : 1 })
+              }}</span>
             </Label>
             <div
               class="numeric flex h-9 items-center rounded-lg border border-hairline bg-well-soft px-3 text-[12px] text-muted-foreground"
             >
-              {{ isMultiple ? `${quantity} 项` : "单值写入" }}
+              {{
+                isMultiple
+                  ? t("writeDialog.quantityItems", { count: quantity })
+                  : t("writeDialog.singleWrite")
+              }}
             </div>
           </div>
         </div>
 
         <div class="space-y-1.5">
-          <Label class="text-[11px] text-muted-foreground">写入值</Label>
+          <Label class="text-[11px] text-muted-foreground">{{ t("writeDialog.value") }}</Label>
           <Input
             v-model="value"
             type="text"
             class="numeric h-10 rounded-lg border-hairline-strong bg-well text-[14px] tracking-tight"
-            :placeholder="isMultiple ? '1, 0, 1, 1' : '输入要写入的值'"
+            :placeholder="isMultiple ? '1, 0, 1, 1' : t('writeDialog.valuePlaceholder')"
             @keydown.enter="submit"
           />
           <p class="text-[11px] leading-relaxed text-muted-foreground">{{ valueHint }}</p>
           <p v-if="!slaveEditable" class="text-[11px] leading-relaxed text-muted-foreground">
-            自动编码模式使用「{{ definition?.name }}」中的从站 ID 与字节序。
+            {{
+              t("writeDialog.autoHint", {
+                name: definition?.name ?? "",
+              })
+            }}
           </p>
         </div>
 
@@ -288,7 +307,7 @@ async function submit(): Promise<void> {
             size="sm"
             class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
-            关闭
+            {{ t("writeDialog.close") }}
           </Button>
         </DialogClose>
         <Button
@@ -298,7 +317,7 @@ async function submit(): Promise<void> {
           @click="submit"
         >
           <Send class="size-3.5" />
-          {{ busy ? "执行中…" : "执行写入" }}
+          {{ busy ? t("writeDialog.executing") : t("writeDialog.execute") }}
         </Button>
       </DialogFooter>
     </DialogContent>

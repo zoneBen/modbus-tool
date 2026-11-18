@@ -17,12 +17,16 @@ export const DATA_TYPE_OPTIONS: Array<{ label: string; value: DataType }> = [
   { label: "ASCII", value: "ascii" },
 ];
 
-export const BYTE_ORDER_OPTIONS: Array<{ label: string; value: ByteOrder }> = [
-  { label: "ABCD · 大端", value: "abcd" },
-  { label: "DCBA · 小端", value: "dcba" },
-  { label: "BADC · 字节交换", value: "badc" },
-  { label: "CDAB · 字交换", value: "cdab" },
-];
+export function byteOrderOptions(
+  t: (key: string) => string,
+): Array<{ label: string; value: ByteOrder }> {
+  return [
+    { label: t("inspector.order.abcd"), value: "abcd" },
+    { label: t("inspector.order.dcba"), value: "dcba" },
+    { label: t("inspector.order.badc"), value: "badc" },
+    { label: t("inspector.order.cdab"), value: "cdab" },
+  ];
+}
 
 export function toDefinitionInput(definition: Definition): DefinitionInput {
   return {

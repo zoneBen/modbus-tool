@@ -98,7 +98,7 @@ function csvCell(value: unknown): string {
 async function exportFrames(): Promise<void> {
   const rows = frames.filteredFrames;
   if (!rows.length) {
-    toast.info("当前会话暂无可导出的报文");
+    toast.info(t("monitor.exportEmpty"));
     return;
   }
   const header = [
@@ -135,9 +135,9 @@ async function exportFrames(): Promise<void> {
       `modbus-frames-${scope}-${stamp}.csv`,
       `${String.fromCharCode(0xfeff)}${lines.join("\r\n")}`,
     );
-    if (saved) toast.success(`已导出 ${rows.length} 条报文`);
+    if (saved) toast.success(t("monitor.exported", { count: rows.length }));
   } catch (error: unknown) {
-    toast.error("导出报文失败", {
+    toast.error(t("monitor.exportFailed"), {
       description: error instanceof Error ? error.message : String(error),
     });
   }
@@ -179,7 +179,7 @@ async function exportFrames(): Promise<void> {
         @click="openTab('chart')"
       >
         <LineChart class="size-3.5" />
-        实时曲线
+        {{ t("monitor.liveChart") }}
         <span v-if="activeTab === 'chart'" class="absolute inset-x-1 bottom-0 h-[1.5px] bg-rx/80" />
       </button>
       <div v-if="activeTab === 'frames'" class="ml-auto flex items-center gap-1.5">
@@ -189,7 +189,7 @@ async function exportFrames(): Promise<void> {
           />
           <Input
             v-model="frames.search"
-            placeholder="搜索摘要 / HEX"
+            :placeholder="t('monitor.searchPlaceholder')"
             class="h-7 w-[166px] rounded-lg border-hairline bg-well pl-7 text-[11.5px] placeholder:text-muted-foreground"
           />
         </div>
@@ -225,7 +225,7 @@ async function exportFrames(): Promise<void> {
           variant="ghost"
           size="icon-xs"
           class="rounded-md text-muted-foreground hover:text-foreground"
-          aria-label="导出报文"
+          :aria-label="t('monitor.exportFrames')"
           @click="exportFrames"
         >
           <Download class="size-3" />
@@ -234,7 +234,7 @@ async function exportFrames(): Promise<void> {
           variant="ghost"
           size="icon-xs"
           class="rounded-md text-muted-foreground hover:text-foreground"
-          aria-label="清空报文"
+          :aria-label="t('monitor.clearFrames')"
           @click="frames.clearFrames()"
         >
           <Trash2 class="size-3" />
@@ -245,7 +245,7 @@ async function exportFrames(): Promise<void> {
         size="icon-xs"
         class="rounded-md text-muted-foreground hover:text-foreground"
         :class="activeTab === 'frames' ? '' : 'ml-auto'"
-        :aria-label="collapsed ? '展开监控面板' : '收起监控面板'"
+        :aria-label="collapsed ? t('monitor.expandPanel') : t('monitor.collapsePanel')"
         @click="emit('toggle')"
       >
         <ChevronDown v-if="collapsed" class="size-3.5" />

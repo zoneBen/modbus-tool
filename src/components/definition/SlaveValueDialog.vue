@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Braces, CircleAlert } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BYTE_ORDER_OPTIONS, DATA_TYPE_OPTIONS } from "@/lib/definition";
+import { DATA_TYPE_OPTIONS, byteOrderOptions } from "@/lib/definition";
 import { formatAddress } from "@/lib/format";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
@@ -30,12 +31,14 @@ const props = defineProps<{
 
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 const startAddress = ref("0");
 const dataType = ref<DataType>("u16");
 const byteOrder = ref<ByteOrder>("abcd");
 const value = ref("");
 const busy = ref(false);
 const error = ref("");
+const orderOptions = computed(() => byteOrderOptions(t));
 
 const addressLabel = computed(() =>
   formatAddress(Number(startAddress.value) || 0, settings.addressBase),
@@ -59,7 +62,7 @@ async function save(): Promise<void> {
   if (busy.value || !props.definition) return;
   const parsedAddress = Number(startAddress.value);
   if (!Number.isInteger(parsedAddress) || parsedAddress < 0 || parsedAddress > 0xffff) {
-    error.value = "地址需为 0–65535 的整数";
+    error.value = t("slaveValueDialog.invalidAddress");
     return;
   }
   busy.value = true;
@@ -71,14 +74,17 @@ async function save(): Promise<void> {
       byteOrder: byteOrder.value,
       value: value.value,
     });
-    toast.success("模拟值已写入", {
-      description: `${addressLabel.value} 起 ${count} 个寄存器`,
+    toast.success(t("slaveValueDialog.saved"), {
+      description: t("slaveValueDialog.savedDescription", {
+        address: addressLabel.value,
+        count,
+      }),
     });
     open.value = false;
   } catch (cause: unknown) {
     const message = cause instanceof Error ? cause.message : String(cause);
     error.value = message;
-    toast.error("写入模拟值失败", { description: message });
+    toast.error(t("slaveValueDialog.failed"), { description: message });
   } finally {
     busy.value = false;
   }
@@ -97,17 +103,23 @@ async function save(): Promise<void> {
           >
             <Braces class="size-3.5" />
           </span>
-          修改模拟值
+          {{ t("slaveValueDialog.title") }}
         </DialogTitle>
         <DialogDescription class="text-[11.5px] text-muted-foreground">
-          {{ definition?.name ?? "从站模拟映射" }} · 值会按所选类型与端序逆向编码到保持寄存器。
+          {{
+            t("slaveValueDialog.description", {
+              name: definition?.name ?? t("slaveValueDialog.fallbackName"),
+            })
+          }}
         </DialogDescription>
       </DialogHeader>
 
       <div class="space-y-4 px-5 py-4">
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">起始地址</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("slaveValueDialog.startAddress")
+            }}</Label>
             <Input
               v-model="startAddress"
               inputmode="numeric"
@@ -115,19 +127,25 @@ async function save(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">数据类型</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("slaveValueDialog.dataType")
+            }}</Label>
             <FormSelect v-model="dataType" :options="DATA_TYPE_OPTIONS" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">字节 / 字序</Label>
-            <FormSelect v-model="byteOrder" :options="BYTE_ORDER_OPTIONS" />
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("slaveValueDialog.order")
+            }}</Label>
+            <FormSelect v-model="byteOrder" :options="orderOptions" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">写入值</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("slaveValueDialog.value")
+            }}</Label>
             <Input
               v-model="value"
               class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
-              placeholder="输入数值或文本"
+              :placeholder="t('slaveValueDialog.valuePlaceholder')"
               @keydown.enter="save"
             />
           </div>
@@ -136,8 +154,7 @@ async function save(): Promise<void> {
         <p
           class="rounded-lg border border-hairline bg-overlay-1 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground"
         >
-          多寄存器类型（FLOAT32、INT32、FLOAT64 等）会从起始地址开始连续写入；
-          主站随后读取到的是编码后的原始寄存器。
+          {{ t("slaveValueDialog.hint") }}
         </p>
 
         <p
@@ -156,11 +173,11 @@ async function save(): Promise<void> {
             size="sm"
             class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
-            取消
+            {{ t("slaveValueDialog.cancel") }}
           </Button>
         </DialogClose>
         <Button size="sm" class="h-8 min-w-[96px] text-[12px]" :disabled="busy" @click="save">
-          {{ busy ? "写入中…" : "写入模拟值" }}
+          {{ busy ? t("slaveValueDialog.writing") : t("slaveValueDialog.write") }}
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
 } from "@lucide/vue";
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
 import DefinitionDialog from "@/components/definition/DefinitionDialog.vue";
 import { Separator } from "@/components/ui/separator";
@@ -28,6 +29,7 @@ import type { ByteOrder } from "@/types/models";
 
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 const editOpen = ref(false);
 
 const definition = computed(() => sessions.activeDefinition);
@@ -45,8 +47,8 @@ const selectedValue = computed(
 );
 const selectedMeaning = computed(() => {
   const address = selectedAddress.value;
-  if (address === null) return "等待采样";
-  return definition.value?.aliases[address] ?? `寄存器 ${address}`;
+  if (address === null) return t("inspector.waitingSample");
+  return definition.value?.aliases[address] ?? t("inspector.register", { address });
 });
 const candidates = computed(() =>
   snapshot.value && selectedAddress.value !== null
@@ -54,19 +56,19 @@ const candidates = computed(() =>
     : [],
 );
 
-const presetLabel: Record<ByteOrder, string> = {
-  abcd: "ABCD · 大端",
-  dcba: "DCBA · 小端",
-  badc: "BADC · 字节交换",
-  cdab: "CDAB · 字交换",
-};
+const presetLabel = computed<Record<ByteOrder, string>>(() => ({
+  abcd: t("inspector.order.abcd"),
+  dcba: t("inspector.order.dcba"),
+  badc: t("inspector.order.badc"),
+  cdab: t("inspector.order.cdab"),
+}));
 
-const presetHint: Record<ByteOrder, string> = {
-  abcd: "高字节在前，高字在前",
-  dcba: "低字节在前，低字在前",
-  badc: "字内字节交换",
-  cdab: "32 位字序交换",
-};
+const presetHint = computed<Record<ByteOrder, string>>(() => ({
+  abcd: t("inspector.order.abcdHint"),
+  dcba: t("inspector.order.dcbaHint"),
+  badc: t("inspector.order.badcHint"),
+  cdab: t("inspector.order.cdabHint"),
+}));
 
 interface ByteBox {
   letter: string;
@@ -103,20 +105,28 @@ const fields = computed(() => {
   const def = definition.value;
   if (!def) return [];
   return [
-    { label: "功能码", value: formatFunctionCode(def.functionCode), icon: Binary },
-    { label: "从站 ID", value: def.slaveId.toString(), icon: Hash },
     {
-      label: "地址范围",
+      label: t("inspector.functionCode"),
+      value: formatFunctionCode(def.functionCode),
+      icon: Binary,
+    },
+    { label: t("inspector.slaveId"), value: def.slaveId.toString(), icon: Hash },
+    {
+      label: t("inspector.range"),
       value: formatRange(def.startAddress, def.quantity, settings.addressBase),
       icon: Hash,
     },
-    { label: "寄存器数", value: def.quantity.toString(), icon: Hash },
-    { label: "数据类型", value: def.dataType.toUpperCase(), icon: Binary },
-    { label: "字节序", value: presetLabel[def.byteOrder], icon: SlidersHorizontal },
-    { label: "轮询周期", value: formatInterval(def.intervalMs), icon: Clock3 },
+    { label: t("inspector.quantity"), value: def.quantity.toString(), icon: Hash },
+    { label: t("inspector.dataType"), value: def.dataType.toUpperCase(), icon: Binary },
     {
-      label: "别名",
-      value: `${Object.keys(def.aliases).length} 项`,
+      label: t("inspector.byteOrder"),
+      value: presetLabel.value[def.byteOrder],
+      icon: SlidersHorizontal,
+    },
+    { label: t("inspector.interval"), value: formatInterval(def.intervalMs), icon: Clock3 },
+    {
+      label: t("inspector.aliases"),
+      value: t("inspector.aliasCount", { count: Object.keys(def.aliases).length }),
       icon: Hash,
     },
   ];
@@ -127,12 +137,12 @@ const fields = computed(() => {
   <aside class="hidden w-[306px] shrink-0 flex-col border-l border-hairline bg-overlay-1 xl:flex">
     <div class="flex h-9 shrink-0 items-center gap-2 border-b border-hairline px-4">
       <SlidersHorizontal class="size-3.5 text-muted-foreground" />
-      <span class="label-caps">定义检查器</span>
+      <span class="label-caps">{{ t("inspector.title") }}</span>
       <button
         v-if="definition && !isSlave"
         type="button"
         class="ml-auto flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
-        aria-label="编辑读取定义"
+        :aria-label="t('inspector.editDefinition')"
         @click="editOpen = true"
       >
         <PencilLine class="size-3" />
@@ -188,7 +198,7 @@ const fields = computed(() => {
             </div>
           </div>
           <p class="text-[11px] leading-relaxed text-muted-foreground">
-            四组预设仅映射字节序与字序，解析逻辑由 Rust 核心统一实现。
+            {{ t("inspector.presetsHint") }}
           </p>
         </div>
 
@@ -196,7 +206,7 @@ const fields = computed(() => {
 
         <div class="space-y-2">
           <div class="flex items-center justify-between gap-2">
-            <span class="label-caps">解析参考</span>
+            <span class="label-caps">{{ t("inspector.parsePreview") }}</span>
             <span class="numeric text-[10.5px] text-muted-foreground">
               @{{
                 selectedAddress === null
@@ -206,7 +216,7 @@ const fields = computed(() => {
             </span>
           </div>
           <p class="text-[11px] leading-relaxed text-muted-foreground">
-            基于当前选中寄存器的原始字，尝试多种数据类型与端序，便于对照修改配置。
+            {{ t("inspector.parseHint") }}
           </p>
           <div
             v-if="candidates.length"
@@ -234,7 +244,7 @@ const fields = computed(() => {
             v-else
             class="rounded-lg border border-dashed border-hairline px-2.5 py-2 text-[11px] text-muted-foreground"
           >
-            等待选中寄存器采样…
+            {{ t("inspector.waitingSelected") }}
           </p>
         </div>
 
@@ -243,7 +253,7 @@ const fields = computed(() => {
         <div class="space-y-2">
           <div class="flex items-center gap-1.5">
             <Gauge class="size-3 text-muted-foreground" />
-            <span class="label-caps">实时采样</span>
+            <span class="label-caps">{{ t("inspector.liveSample") }}</span>
           </div>
           <div
             class="rounded-xl border border-hairline bg-gradient-to-br from-overlay-2 to-transparent p-3"
@@ -251,7 +261,7 @@ const fields = computed(() => {
             <div class="flex items-end justify-between gap-2">
               <div class="min-w-0">
                 <p class="truncate text-[11px] text-muted-foreground">
-                  {{ selectedValue ? selectedMeaning : "等待采样" }}
+                  {{ selectedValue ? selectedMeaning : t("inspector.waitingSample") }}
                 </p>
                 <p
                   class="numeric mt-1 text-[22px] font-semibold leading-none tracking-tight text-foreground"
@@ -289,15 +299,15 @@ const fields = computed(() => {
         </div>
 
         <p class="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-          写操作通过寄存器表格上方的「写入值」按钮执行；双击寄存器行可打开趋势大图。
+          {{ t("inspector.writeHint") }}
         </p>
       </div>
     </template>
 
     <EmptyState
       v-else
-      title="选择一个读取定义"
-      description="在左侧定义列表中选择一项，查看解析参数与实时采样。"
+      :title="t('inspector.selectTitle')"
+      :description="t('inspector.selectHint')"
       class="m-auto"
     >
       <template #icon>

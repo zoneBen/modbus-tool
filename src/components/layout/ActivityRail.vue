@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   BellRing,
+  Download,
   Info,
   LayoutDashboard,
   Moon,
@@ -8,6 +9,7 @@ import {
   ScanLine,
   Settings2,
   Sun,
+  Upload,
 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -32,6 +34,8 @@ const emit = defineEmits<{
   (event: "open-scan"): void;
   (event: "open-alerts"): void;
   (event: "open-about"): void;
+  (event: "import-config"): void;
+  (event: "export-config"): void;
 }>();
 
 const alerts = useAlertsStore();
@@ -66,7 +70,7 @@ const { t } = useI18n();
                   ? 'bg-signal/10 text-signal'
                   : 'text-muted-foreground hover:bg-overlay-3 hover:text-foreground'
               "
-              aria-label="工作台"
+              :aria-label="t('nav.workspace')"
               @click="emit('open-workspace')"
             >
               <span
@@ -116,7 +120,7 @@ const { t } = useI18n();
                   ? 'bg-signal/10 text-signal'
                   : 'text-muted-foreground hover:text-foreground'
               "
-              aria-label="设备扫描"
+              :aria-label="t('nav.scan')"
               @click="emit('open-scan')"
             >
               <span
@@ -143,7 +147,7 @@ const { t } = useI18n();
                   ? 'bg-warn/10 text-warn'
                   : 'text-muted-foreground hover:text-foreground'
               "
-              aria-label="告警记录"
+              :aria-label="t('alerts.title')"
               @click="emit('open-alerts')"
             >
               <span
@@ -173,7 +177,9 @@ const { t } = useI18n();
             <button
               type="button"
               class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
-              :aria-label="settings.resolvedTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题'"
+              :aria-label="
+                settings.resolvedTheme === 'dark' ? t('nav.switchToLight') : t('nav.switchToDark')
+              "
               @click="settings.toggleTheme()"
             >
               <Sun v-if="settings.resolvedTheme === 'dark'" class="size-[17px]" />
@@ -181,7 +187,7 @@ const { t } = useI18n();
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">
-            {{ settings.resolvedTheme === "dark" ? "切换到浅色主题" : "切换到深色主题" }}
+            {{ settings.resolvedTheme === "dark" ? t("nav.switchToLight") : t("nav.switchToDark") }}
           </TooltipContent>
         </Tooltip>
 
@@ -195,7 +201,7 @@ const { t } = useI18n();
                   ? 'bg-signal/10 text-signal'
                   : 'text-muted-foreground hover:bg-overlay-3 hover:text-foreground'
               "
-              aria-label="关于"
+              :aria-label="t('nav.about')"
               @click="emit('open-about')"
             >
               <span
@@ -205,7 +211,35 @@ const { t } = useI18n();
               <Info class="size-[18px]" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right">关于作者与定制服务</TooltipContent>
+          <TooltipContent side="right">{{ t("nav.about") }}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
+              :aria-label="t('nav.importConfig')"
+              @click="emit('import-config')"
+            >
+              <Upload class="size-[17px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{{ t("nav.importConfig") }}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
+              :aria-label="t('nav.exportConfig')"
+              @click="emit('export-config')"
+            >
+              <Download class="size-[17px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{{ t("nav.exportConfig") }}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -218,7 +252,7 @@ const { t } = useI18n();
                   ? 'bg-signal/10 text-signal'
                   : 'text-muted-foreground hover:bg-overlay-3 hover:text-foreground'
               "
-              aria-label="设置"
+              :aria-label="t('nav.settings')"
               @click="emit('open-settings')"
             >
               <span
@@ -230,12 +264,6 @@ const { t } = useI18n();
           </TooltipTrigger>
           <TooltipContent side="right">{{ t("nav.settings") }}</TooltipContent>
         </Tooltip>
-
-        <div
-          class="mt-2 flex size-8 items-center justify-center rounded-full border border-hairline bg-overlay-2"
-        >
-          <span class="status-dot status-dot-live text-signal" />
-        </div>
       </div>
     </aside>
   </TooltipProvider>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft, LineChart } from "@lucide/vue";
 import { computed, onBeforeUnmount, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import ChartPanel from "@/components/chart/ChartPanel.vue";
 import { Button } from "@/components/ui/button";
 import { formatRange } from "@/lib/format";
@@ -10,6 +11,7 @@ import { useSettingsStore } from "@/stores/settings";
 const open = defineModel<boolean>("open", { default: false });
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 
 const definition = computed(() => sessions.activeDefinition);
 const range = computed(() =>
@@ -45,16 +47,16 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
       class="animate-enter fixed inset-0 z-40 flex flex-col bg-background"
       role="dialog"
       aria-modal="true"
-      aria-label="趋势大图"
+      :aria-label="t('chart.trendTitle')"
     >
       <header class="flex h-14 shrink-0 items-center gap-3 border-b border-hairline px-4">
         <Button variant="outline" size="sm" class="h-8 gap-1.5 text-[12px]" @click="close">
           <ArrowLeft class="size-3.5" />
-          返回
+          {{ t("chart.back") }}
         </Button>
         <div class="min-w-0">
           <p class="truncate text-[13px] font-semibold">
-            {{ definition?.name ?? "趋势大图" }}
+            {{ definition?.name ?? t("chart.trendTitle") }}
           </p>
           <p class="numeric truncate text-[11px] text-muted-foreground">
             {{ sessions.activeSession?.name ?? "—" }} · {{ range }}
@@ -68,7 +70,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
             class="status-dot"
             :class="sessions.activeSnapshot?.error ? 'text-error' : 'text-signal'"
           />
-          <span>{{ sessions.activeSnapshot?.error ? "读取异常" : "实时趋势" }}</span>
+          <span>{{
+            sessions.activeSnapshot?.error ? t("chart.readError") : t("chart.liveTrend")
+          }}</span>
         </div>
       </header>
 
@@ -78,9 +82,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
         </div>
         <div v-else class="flex flex-col items-center gap-2 text-center">
           <LineChart class="size-6 text-muted-foreground" />
-          <p class="text-[13px] text-foreground">未选择读取定义</p>
+          <p class="text-[13px] text-foreground">{{ t("chart.noDefinitionTitle") }}</p>
           <p class="text-[11px] text-muted-foreground">
-            返回后在左侧选择定义，再双击数值或趋势列。
+            {{ t("chart.noDefinitionHint") }}
           </p>
         </div>
       </div>

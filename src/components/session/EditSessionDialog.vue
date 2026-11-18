@@ -69,7 +69,7 @@ const framingOptions = computed(() =>
 
 const endpoint = computed(() => {
   if (linkMode.value === "serial") {
-    const port = serialPort.value.trim() || "未选择串口";
+    const port = serialPort.value.trim() || t("dialog.noSerialPort");
     return `${port} · ${baudRate.value} ${dataBits.value}${
       parity.value === "none" ? "N" : parity.value === "even" ? "E" : "O"
     }${stopBits.value}`;
@@ -165,8 +165,9 @@ async function submit(): Promise<void> {
   busy.value = true;
   try {
     await sessions.updateSession(current.id, input);
-    toast.success("会话参数已更新", {
-      description: current.status === "connected" ? "链路已按新参数重启。" : "下次启动时生效。",
+    toast.success(t("dialog.updated"), {
+      description:
+        current.status === "connected" ? t("dialog.updatedConnected") : t("dialog.updatedIdle"),
     });
     open.value = false;
   } catch (error: unknown) {
@@ -191,12 +192,15 @@ async function submit(): Promise<void> {
           >
             <SlidersHorizontal class="size-3.5" />
           </span>
-          会话参数
+          {{ t("dialog.editTitle") }}
         </DialogTitle>
         <DialogDescription class="text-[11.5px] text-muted-foreground">
-          {{ session?.name ?? "未选择会话" }} ·
-          {{ session?.role === "slave" ? "从站模拟器" : "主站" }}；
-          保存后如果会话正在运行，会用新参数重启链路。
+          {{
+            t("dialog.editDescription", {
+              name: session?.name ?? t("dialog.noSession"),
+              role: session?.role === "slave" ? t("dialog.slaveSimulator") : t("dialog.master"),
+            })
+          }}
         </DialogDescription>
       </DialogHeader>
 
@@ -211,14 +215,14 @@ async function submit(): Promise<void> {
       <div class="scrollbar-thin max-h-[68vh] space-y-4 overflow-y-auto px-5 py-4">
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">会话名称</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.name") }}</Label>
             <Input
               v-model="name"
               class="h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">会话状态</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.sessionStatus") }}</Label>
             <div
               class="numeric flex h-9 items-center rounded-lg border border-hairline bg-well-soft px-3 text-[12px] text-muted-foreground"
             >
@@ -231,18 +235,18 @@ async function submit(): Promise<void> {
           <TabsList class="grid w-full grid-cols-2 border border-hairline bg-well">
             <TabsTrigger value="serial" class="gap-1.5 text-[12px]">
               <Usb class="size-3.5" />
-              串口
+              {{ t("dialog.serial") }}
             </TabsTrigger>
             <TabsTrigger value="network" class="gap-1.5 text-[12px]">
               <Network class="size-3.5" />
-              网络
+              {{ t("dialog.network") }}
             </TabsTrigger>
           </TabsList>
         </Tabs>
 
         <div v-if="linkMode === 'network'" class="grid grid-cols-3 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">传输层</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.transport") }}</Label>
             <FormSelect
               v-model="transport"
               :options="
@@ -256,7 +260,7 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">主机地址</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.host") }}</Label>
             <Input
               v-model="host"
               :disabled="isSlave"
@@ -264,7 +268,7 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">端口</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.tcpPort") }}</Label>
             <Input
               v-model="port"
               type="number"
@@ -285,11 +289,11 @@ async function submit(): Promise<void> {
             @refresh="refreshSerialPorts"
           />
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">波特率</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.baud") }}</Label>
             <BaudRateField v-model="baudRate" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">校验 / 数据位 / 停止位</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.serialParams") }}</Label>
             <div class="grid grid-cols-3 gap-1.5">
               <FormSelect
                 v-model="parity"
@@ -313,11 +317,11 @@ async function submit(): Promise<void> {
 
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">帧格式</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.framing") }}</Label>
             <FormSelect v-model="framing" :options="framingOptions" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">链路端点</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.endpoint") }}</Label>
             <div
               class="numeric flex h-9 items-center truncate rounded-lg border border-hairline bg-well-soft px-3 text-[11px] text-muted-foreground"
             >
@@ -328,7 +332,7 @@ async function submit(): Promise<void> {
 
         <div class="grid grid-cols-3 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">超时 (ms)</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.timeout") }}</Label>
             <Input
               v-model="timeoutMs"
               inputmode="numeric"
@@ -336,7 +340,7 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">重试次数</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.retries") }}</Label>
             <Input
               v-model="retries"
               inputmode="numeric"
@@ -344,12 +348,12 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">自动重连</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.autoReconnect") }}</Label>
             <div
               class="flex h-9 items-center justify-between rounded-lg border border-hairline bg-well px-3"
             >
               <span class="text-[11px] text-muted-foreground">
-                {{ autoReconnect ? "开启" : "关闭" }}
+                {{ autoReconnect ? t("dialog.switchOn") : t("dialog.switchOff") }}
               </span>
               <Switch v-model="autoReconnect" />
             </div>
@@ -364,11 +368,11 @@ async function submit(): Promise<void> {
             size="sm"
             class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
-            取消
+            {{ t("common.cancel") }}
           </Button>
         </DialogClose>
         <Button size="sm" class="h-8 min-w-[84px] text-[12px]" :disabled="busy" @click="submit">
-          {{ busy ? "保存中…" : "保存参数" }}
+          {{ busy ? t("dialog.savingParams") : t("dialog.saveParams") }}
         </Button>
       </DialogFooter>
     </DialogContent>

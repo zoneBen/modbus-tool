@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { X } from "@lucide/vue";
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import StatusPill from "@/components/common/StatusPill.vue";
 import TransportGlyph from "@/components/common/TransportGlyph.vue";
@@ -18,6 +19,7 @@ import { useSessionsStore } from "@/stores/sessions";
 import type { Session } from "@/types/models";
 
 const sessions = useSessionsStore();
+const { t } = useI18n();
 const pendingDelete = ref<Session | null>(null);
 const deleteOpen = ref(false);
 const deleting = ref(false);
@@ -42,10 +44,10 @@ async function confirmDelete(): Promise<void> {
   deleting.value = true;
   try {
     await sessions.deleteSession(target.id);
-    toast.success(`已删除会话「${target.name}」`);
+    toast.success(t("workspace.deletedSession", { name: target.name }));
     closeDelete();
   } catch (error: unknown) {
-    toast.error("删除会话失败", {
+    toast.error(t("workspace.deleteSessionFailed"), {
       description: error instanceof Error ? error.message : String(error),
     });
   } finally {
@@ -91,7 +93,7 @@ async function confirmDelete(): Promise<void> {
           type="button"
           class="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-overlay-3 hover:text-foreground group-hover:opacity-100"
           :class="{ 'opacity-100': session.id === sessions.activeSessionId }"
-          :aria-label="`删除会话 ${session.name}`"
+          :aria-label="`${t('workspace.deleteSession')} ${session.name}`"
           @click.stop="requestDelete(session)"
         >
           <X class="size-3" />
@@ -124,20 +126,24 @@ async function confirmDelete(): Promise<void> {
         class="border-glass-border bg-[color:var(--glass-strong)] backdrop-blur-2xl"
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>删除会话</AlertDialogTitle>
+          <AlertDialogTitle>{{ t("workspace.deleteSessionTitle") }}</AlertDialogTitle>
           <AlertDialogDescription>
-            将关闭「{{ pendingDelete?.name }}」并移除其全部读取定义与已缓存数据，此操作无法撤销。
+            {{
+              t("workspace.deleteSessionDescription", {
+                name: pendingDelete?.name ?? "",
+              })
+            }}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel :disabled="deleting">取消</AlertDialogCancel>
+          <AlertDialogCancel :disabled="deleting">{{ t("common.cancel") }}</AlertDialogCancel>
           <Button
             variant="destructive"
             class="text-white"
             :disabled="deleting"
             @click="confirmDelete"
           >
-            {{ deleting ? "删除中…" : "删除会话" }}
+            {{ deleting ? t("workspace.deletingSession") : t("workspace.deleteSession") }}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

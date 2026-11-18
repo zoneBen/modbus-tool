@@ -19,16 +19,6 @@ const clock = computed(() => formatClock(now.value.getTime()));
   <footer
     class="flex h-[28px] shrink-0 items-center gap-3 border-t border-hairline bg-well px-3 text-[11px] text-muted-foreground"
   >
-    <div class="flex items-center gap-1.5">
-      <span
-        class="status-dot status-dot-live"
-        :class="sessions.demo ? 'text-sim' : 'text-signal'"
-      />
-      <span class="font-medium" :class="sessions.demo ? 'text-sim/90' : 'text-signal/90'">
-        {{ sessions.demo ? t("status.demo") : "本地运行" }}
-      </span>
-    </div>
-    <span class="h-3 w-px bg-overlay-3" />
     <div class="flex min-w-0 items-center gap-1.5">
       <span
         class="status-dot"
@@ -36,7 +26,9 @@ const clock = computed(() => formatClock(now.value.getTime()));
           sessions.activeSession?.status === 'connected' ? 'text-signal' : 'text-muted-foreground'
         "
       />
-      <span class="truncate">{{ sessions.activeSession?.name ?? "无活动会话" }}</span>
+      <span class="truncate">
+        {{ sessions.activeSession?.name ?? t("status.noActiveSession") }}
+      </span>
       <span class="hidden truncate text-muted-foreground sm:inline">
         {{ sessions.activeSession?.endpoint }}
       </span>
@@ -66,14 +58,14 @@ const clock = computed(() => formatClock(now.value.getTime()));
         <span class="numeric text-foreground">{{ settings.addressBase }}</span>
       </span>
       <span class="hidden items-center gap-1 md:flex">
-        <span>latency</span>
+        <span>{{ t("status.latency") }}</span>
         <span class="numeric text-foreground">
           {{ formatLatency(sessions.activeSession?.stats.latencyMs ?? 0) }}
         </span>
       </span>
       <span class="numeric text-muted-foreground">{{ clock }}</span>
       <span class="hidden text-muted-foreground lg:inline">
-        {{ sessions.demo ? "Demo Runtime" : "Tauri 2 · WebView2" }}
+        {{ sessions.demo ? t("status.demoRuntime") : "Tauri 2 · WebView2" }}
       </span>
     </div>
   </footer>

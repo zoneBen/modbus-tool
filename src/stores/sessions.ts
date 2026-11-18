@@ -1,12 +1,15 @@
 import { defineStore } from "pinia";
+import { i18n } from "@/i18n";
 import { computed, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import {
   loadPersistedWorkspace,
   persistedSessionInput,
   savePersistedWorkspace,
+  toPersistedSession,
   workspaceConfigSignature,
 } from "@/lib/persisted-workspace";
+import type { PersistedSession } from "@/lib/persisted-workspace";
 import { ipc } from "@/lib/ipc";
 import type {
   CustomWriteInput,
@@ -102,7 +105,10 @@ export const useSessionsStore = defineStore("sessions", () => {
   );
 
   function sessionName(sessionId: string): string {
-    return sessions.value.find((session) => session.id === sessionId)?.name ?? "未知会话";
+    return (
+      sessions.value.find((session) => session.id === sessionId)?.name ??
+      i18n.global.t("errors.unknownSession")
+    );
   }
 
   function sessionAccent(sessionId: string): Session["accent"] {
@@ -182,46 +188,88 @@ export const useSessionsStore = defineStore("sessions", () => {
     lastUpdate.value = snapshot.timestamp;
   }
 
+  async function createPersistedSessions(
+    persistedSessions: readonly PersistedSession[],
+  ): Promise<string[]> {
+    const errors: string[] = [];
+    for (const persisted of persistedSessions) {
+      try {
+        const created = await ipc.createSession(persistedSessionInput(persisted));
+        if (persisted.role === "slave") {
+          const synthetic = created.definitions[0];
+          const savedDefinition = persisted.definitions[0];
+          if (synthetic && savedDefinition) {
+            await ipc.updateDefinition(created.id, synthetic.id, savedDefinition);
+          }
+        } else {
+          for (const definition of persisted.definitions) {
+            try {
+              await ipc.createDefinition(created.id, definition);
+            } catch (cause: unknown) {
+              errors.push(
+                `${persisted.name} / ${definition.name}: ${
+                  cause instanceof Error ? cause.message : String(cause)
+                }`,
+              );
+            }
+          }
+        }
+      } catch (cause: unknown) {
+        errors.push(`${persisted.name}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+    }
+    return errors;
+  }
+
   async function restorePersistedWorkspace(): Promise<string[]> {
     const saved = loadPersistedWorkspace();
     if (!saved?.sessions.length) return [];
-    const errors: string[] = [];
     restoring.value = true;
     try {
-      for (const persisted of saved.sessions) {
-        try {
-          const created = await ipc.createSession(persistedSessionInput(persisted));
-          if (persisted.role === "slave") {
-            const synthetic = created.definitions[0];
-            const savedDefinition = persisted.definitions[0];
-            if (synthetic && savedDefinition) {
-              await ipc.updateDefinition(created.id, synthetic.id, savedDefinition);
-            }
-          } else {
-            for (const definition of persisted.definitions) {
-              try {
-                await ipc.createDefinition(created.id, definition);
-              } catch (cause: unknown) {
-                errors.push(
-                  `${persisted.name} / ${definition.name}: ${
-                    cause instanceof Error ? cause.message : String(cause)
-                  }`,
-                );
-              }
-            }
-          }
-        } catch (cause: unknown) {
-          errors.push(
-            `${persisted.name}: ${cause instanceof Error ? cause.message : String(cause)}`,
-          );
-        }
-      }
+      const errors = await createPersistedSessions(saved.sessions);
       const workspace = await ipc.boot();
       applyWorkspace(workspace);
+      return errors;
     } finally {
       restoring.value = false;
     }
-    return errors;
+  }
+
+  function persistedSessions(): PersistedSession[] {
+    return sessions.value.map(toPersistedSession);
+  }
+
+  async function replaceWorkspace(
+    persistedSessionsToImport: readonly PersistedSession[],
+  ): Promise<string[]> {
+    const errors: string[] = [];
+    restoring.value = true;
+    try {
+      const current = [...sessions.value];
+      for (const session of current) {
+        try {
+          await ipc.deleteSession(session.id);
+        } catch (cause: unknown) {
+          errors.push(cause instanceof Error ? cause.message : String(cause));
+        }
+      }
+      sessions.value = [];
+      activeSessionId.value = null;
+      activeDefinitionId.value = null;
+      selectedAddress.value = null;
+      chartFocusAddress.value = null;
+      snapshots.value = {};
+      history.value = {};
+      timelines.value = {};
+      lastUpdate.value = null;
+      errors.push(...(await createPersistedSessions(persistedSessionsToImport)));
+      const workspace = await ipc.boot();
+      applyWorkspace(workspace);
+      savePersistedWorkspace(sessions.value);
+      return errors;
+    } finally {
+      restoring.value = false;
+    }
   }
 
   async function boot(): Promise<void> {
@@ -232,10 +280,10 @@ export const useSessionsStore = defineStore("sessions", () => {
         const errors = await restorePersistedWorkspace();
         if (errors.length) {
           bootError.value = errors.join("; ");
-          toast.error("部分会话恢复失败", { description: errors[0] });
+          toast.error(i18n.global.t("restore.partialFailed"), { description: errors[0] });
         } else if (sessions.value.length) {
-          toast.success(`已恢复 ${sessions.value.length} 个会话`, {
-            description: "会话默认保持断开，点击启动按钮连接。",
+          toast.success(i18n.global.t("restore.restored", { count: sessions.value.length }), {
+            description: i18n.global.t("restore.restoredHint"),
           });
         }
       } else {
@@ -316,7 +364,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   async function createDefinition(input: DefinitionInput): Promise<Definition> {
     const session = activeSession.value;
-    if (!session) throw new Error("未选择会话");
+    if (!session) throw new Error(i18n.global.t("errors.noSession"));
     const definition = await ipc.createDefinition(session.id, input);
     sessions.value = sessions.value.map((candidate) => {
       if (candidate.id !== session.id) return candidate;
@@ -334,7 +382,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     input: DefinitionInput,
   ): Promise<Definition> {
     const session = activeSession.value;
-    if (!session) throw new Error("未选择会话");
+    if (!session) throw new Error(i18n.global.t("errors.noSession"));
     const definition = await ipc.updateDefinition(session.id, definitionId, input);
     sessions.value = sessions.value.map((candidate) =>
       candidate.id === session.id
@@ -351,7 +399,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   async function deleteDefinition(definitionId: string): Promise<void> {
     const session = activeSession.value;
-    if (!session) throw new Error("未选择会话");
+    if (!session) throw new Error(i18n.global.t("errors.noSession"));
     await ipc.deleteDefinition(session.id, definitionId);
     const remaining = session.definitions.filter((definition) => definition.id !== definitionId);
     sessions.value = sessions.value.map((candidate) =>
@@ -450,22 +498,22 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   async function writeSlaveValue(input: SlaveValueInput): Promise<number> {
     const session = activeSession.value;
-    if (!session) throw new Error("未选择会话");
-    if (session.role !== "slave") throw new Error("仅从站模拟会话支持修改模拟值");
+    if (!session) throw new Error(i18n.global.t("errors.noSession"));
+    if (session.role !== "slave") throw new Error(i18n.global.t("errors.slaveValueOnly"));
     return ipc.writeSlaveValue(session.id, input);
   }
 
   async function writeRegister(address: number, value: string): Promise<void> {
     const session = activeSession.value;
     const definition = activeDefinition.value;
-    if (!session || !definition) throw new Error("未选择定义");
+    if (!session || !definition) throw new Error(i18n.global.t("errors.noDefinition"));
     await ipc.writeRegister(session.id, definition.id, address, value);
   }
 
   async function writeCustom(input: CustomWriteInput): Promise<void> {
     const session = activeSession.value;
     const definition = activeDefinition.value;
-    if (!session) throw new Error("未选择会话");
+    if (!session) throw new Error(i18n.global.t("errors.noSession"));
     await ipc.writeCustom(session.id, definition?.id ?? null, input);
   }
 
@@ -495,6 +543,8 @@ export const useSessionsStore = defineStore("sessions", () => {
     applyStatus,
     applySnapshot,
     boot,
+    persistedSessions,
+    replaceWorkspace,
     setActiveSession,
     setActiveDefinition,
     selectAddress,

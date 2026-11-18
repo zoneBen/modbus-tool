@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { i18n } from "@/i18n";
 import { ref } from "vue";
 import { ipc } from "@/lib/ipc";
 import type { DebugData, DebugState, RawSendInput } from "@/types/models";
@@ -58,7 +59,7 @@ export const useDebugStore = defineStore("debug", () => {
   }
 
   async function send(input: RawSendInput): Promise<number> {
-    if (!sessionId.value) throw new Error("调试会话未开启");
+    if (!sessionId.value) throw new Error(i18n.global.t("errors.debugNotStarted"));
     return ipc.sendDebug(sessionId.value, input);
   }
 

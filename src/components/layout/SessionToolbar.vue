@@ -60,7 +60,7 @@ async function toggleConnection(): Promise<void> {
     if (connected.value) await sessions.disconnectSession(current.id);
     else await sessions.connectSession(current.id);
   } catch (error: unknown) {
-    toast.error(connected.value ? "停止会话失败" : "启动会话失败", {
+    toast.error(connected.value ? t("toolbar.stopFailed") : t("toolbar.startFailed"), {
       description: error instanceof Error ? error.message : String(error),
     });
   }
@@ -72,7 +72,7 @@ async function toggleConnection(): Promise<void> {
     <div class="min-w-0 flex-1">
       <div class="flex min-w-0 items-center gap-2">
         <span class="truncate text-[13px] font-semibold tracking-tight">
-          {{ definition?.name ?? session?.name ?? "未选择会话" }}
+          {{ definition?.name ?? session?.name ?? t("toolbar.noSession") }}
         </span>
         <template v-if="definition">
           <span
@@ -83,7 +83,7 @@ async function toggleConnection(): Promise<void> {
           <span
             class="numeric rounded border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[11px] text-muted-foreground"
           >
-            从站 {{ definition.slaveId }}
+            {{ t("toolbar.slave", { id: definition.slaveId }) }}
           </span>
           <span
             class="numeric hidden rounded border border-hairline bg-well px-1.5 py-0.5 text-[11px] text-muted-foreground sm:inline"
@@ -157,14 +157,14 @@ async function toggleConnection(): Promise<void> {
             class="rounded-lg"
             :class="connected ? 'text-signal' : 'text-muted-foreground hover:text-foreground'"
             :disabled="!session || connecting"
-            :aria-label="connected ? '停止会话' : '启动会话'"
+            :aria-label="connected ? t('toolbar.stopSession') : t('toolbar.startSession')"
             @click="toggleConnection"
           >
             <Power class="size-4" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          {{ connected ? "停止会话链路" : "启动会话链路" }}
+          {{ connected ? t("toolbar.stopLink") : t("toolbar.startLink") }}
         </TooltipContent>
       </Tooltip>
       <Tooltip>
@@ -174,13 +174,13 @@ async function toggleConnection(): Promise<void> {
             size="icon-sm"
             class="rounded-lg text-muted-foreground hover:text-foreground"
             :disabled="!session"
-            aria-label="编辑会话参数"
+            :aria-label="t('toolbar.editSession')"
             @click="emit('edit-session')"
           >
             <SlidersHorizontal class="size-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">编辑会话参数</TooltipContent>
+        <TooltipContent side="bottom">{{ t("toolbar.editSession") }}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger as-child>
@@ -216,7 +216,7 @@ async function toggleConnection(): Promise<void> {
             <span class="hidden lg:inline">{{ t("toolbar.write") }}</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">打开写入寄存器弹窗</TooltipContent>
+        <TooltipContent side="bottom">{{ t("toolbar.writeHint") }}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger as-child>
@@ -231,7 +231,7 @@ async function toggleConnection(): Promise<void> {
             <span class="hidden lg:inline">{{ t("toolbar.readOnce") }}</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">立即读取当前定义</TooltipContent>
+        <TooltipContent side="bottom">{{ t("toolbar.readHint") }}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
 
@@ -243,7 +243,7 @@ async function toggleConnection(): Promise<void> {
       disabled
     >
       <span class="status-dot" :class="connected ? 'status-dot-live' : 'opacity-40'" />
-      {{ connected ? t("toolbar.listening") : "已停止" }}
+      {{ connected ? t("toolbar.listening") : t("toolbar.stopped") }}
     </Button>
     <Button
       v-else

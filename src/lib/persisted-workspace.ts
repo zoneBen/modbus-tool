@@ -29,7 +29,7 @@ export interface PersistedWorkspace {
   sessions: PersistedSession[];
 }
 
-function toPersistedSession(session: Session): PersistedSession {
+export function toPersistedSession(session: Session): PersistedSession {
   return {
     name: session.name,
     role: session.role,

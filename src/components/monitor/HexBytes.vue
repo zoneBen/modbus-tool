@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { FrameField } from "@/types/models";
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -24,6 +27,23 @@ function hexByte(byte: number): string {
   return props.uppercase ? text.toUpperCase() : text;
 }
 
+function fieldLabel(label: string): string {
+  const labels: Record<string, string> = {
+    "事务 ID": t("monitor.fieldLabels.transactionId"),
+    "协议 ID": t("monitor.fieldLabels.protocolId"),
+    长度: t("monitor.fieldLabels.length"),
+    "从站 ID": t("monitor.fieldLabels.unitId"),
+    功能码: t("monitor.fieldLabels.function"),
+    字节数: t("monitor.fieldLabels.byteCount"),
+    "ASCII 帧": t("monitor.fieldLabels.asciiFrame"),
+    "PDU 长度": t("monitor.fieldLabels.pduLength"),
+    CRC16: t("monitor.fieldLabels.crc"),
+    LRC: t("monitor.fieldLabels.lrc"),
+    数据: t("monitor.data"),
+  };
+  return labels[label] ?? label;
+}
+
 interface Group {
   tone: FrameField["tone"];
   label: string;
@@ -33,18 +53,27 @@ interface Group {
 const groups = computed<Group[]>(() => {
   if (!props.bytes.length) return [];
   if (!props.fields.length) {
-    return [{ tone: "data", label: "帧数据", text: props.bytes.map(hexByte).join(" ") }];
+    return [
+      {
+        tone: "data",
+        label: t("monitor.frameData"),
+        text: props.bytes.map(hexByte).join(" "),
+      },
+    ];
   }
   const tones = new Map<number, { tone: FrameField["tone"]; label: string }>();
   for (const field of props.fields) {
     for (let index = 0; index < field.length; index += 1) {
-      tones.set(field.offset + index, { tone: field.tone, label: field.label });
+      tones.set(field.offset + index, {
+        tone: field.tone,
+        label: fieldLabel(field.label),
+      });
     }
   }
   const result: Group[] = [];
   let current: Group | null = null;
   props.bytes.forEach((byte, index) => {
-    const info = tones.get(index) ?? { tone: "data" as const, label: "数据" };
+    const info = tones.get(index) ?? { tone: "data" as const, label: t("monitor.data") };
     if (!current || current.tone !== info.tone || current.label !== info.label) {
       current = { tone: info.tone, label: info.label, text: hexByte(byte) };
       result.push(current);

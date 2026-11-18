@@ -35,13 +35,30 @@ const toneDot: Record<string, string> = {
   checksum: "bg-error/60",
 };
 
+function fieldLabel(label: string): string {
+  const labels: Record<string, string> = {
+    "事务 ID": t("monitor.fieldLabels.transactionId"),
+    "协议 ID": t("monitor.fieldLabels.protocolId"),
+    长度: t("monitor.fieldLabels.length"),
+    "从站 ID": t("monitor.fieldLabels.unitId"),
+    功能码: t("monitor.fieldLabels.function"),
+    字节数: t("monitor.fieldLabels.byteCount"),
+    "ASCII 帧": t("monitor.fieldLabels.asciiFrame"),
+    "PDU 长度": t("monitor.fieldLabels.pduLength"),
+    CRC16: t("monitor.fieldLabels.crc"),
+    LRC: t("monitor.fieldLabels.lrc"),
+    数据: t("monitor.data"),
+  };
+  return labels[label] ?? label;
+}
+
 async function copyFrame(): Promise<void> {
   if (!props.frame) return;
   try {
     await navigator.clipboard.writeText(formatHexBytes(props.frame.raw));
     toast.success(t("common.copied"));
   } catch {
-    toast.error("复制失败，请检查剪贴板权限");
+    toast.error(t("monitor.copyFailed"));
   }
 }
 </script>
@@ -56,7 +73,7 @@ async function copyFrame(): Promise<void> {
           variant="ghost"
           size="icon-xs"
           class="ml-auto rounded-md text-muted-foreground hover:text-foreground"
-          aria-label="复制原始帧"
+          :aria-label="t('monitor.copyFrame')"
           @click="copyFrame"
         >
           <Copy class="size-3" />
@@ -93,7 +110,7 @@ async function copyFrame(): Promise<void> {
             class="flex items-center gap-2 rounded-md border border-hairline bg-overlay-1 px-2 py-1.5"
           >
             <span class="size-1.5 shrink-0 rounded-full" :class="toneDot[field.tone]" />
-            <span class="text-[11px] text-muted-foreground">{{ field.label }}</span>
+            <span class="text-[11px] text-muted-foreground">{{ fieldLabel(field.label) }}</span>
             <span class="numeric ml-auto truncate text-[12px] text-foreground">{{
               field.value
             }}</span>
@@ -102,7 +119,7 @@ async function copyFrame(): Promise<void> {
             v-if="frame.decoded.functionCode"
             class="flex items-center justify-between px-2 pt-0.5 text-[11px] text-muted-foreground"
           >
-            <span>从站 {{ frame.decoded.slaveId }}</span>
+            <span>{{ t("monitor.slave", { id: frame.decoded.slaveId }) }}</span>
             <span class="numeric">{{ formatFunctionCode(frame.decoded.functionCode) }}</span>
           </div>
         </div>
@@ -115,7 +132,7 @@ async function copyFrame(): Promise<void> {
         </div>
 
         <div v-if="frame.decoded.ascii" class="mt-3 space-y-1.5">
-          <p class="label-caps">ASCII 帧</p>
+          <p class="label-caps">{{ t("monitor.asciiFrame") }}</p>
           <p
             class="numeric rounded-lg border border-hairline bg-well p-2 text-[12px] text-foreground"
           >
@@ -138,7 +155,7 @@ async function copyFrame(): Promise<void> {
       <div class="glass flex size-10 items-center justify-center rounded-xl text-muted-foreground">
         <Radio class="size-4" />
       </div>
-      <p class="text-[12px] text-muted-foreground">选择一条报文查看解析详情</p>
+      <p class="text-[12px] text-muted-foreground">{{ t("monitor.selectFrame") }}</p>
     </div>
   </aside>
 </template>

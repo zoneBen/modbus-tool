@@ -5,6 +5,16 @@ import { toast } from "vue-sonner";
 import AboutOverlay from "@/components/about/AboutOverlay.vue";
 import AlertsWorkspace from "@/components/alerts/AlertsWorkspace.vue";
 import TrendOverlay from "@/components/chart/TrendOverlay.vue";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import DebugDialog from "@/components/debug/DebugDialog.vue";
 import ActivityRail from "@/components/layout/ActivityRail.vue";
 import SessionSidebar from "@/components/layout/SessionSidebar.vue";
@@ -21,7 +31,12 @@ import EditSessionDialog from "@/components/session/EditSessionDialog.vue";
 import NewSessionDialog from "@/components/session/NewSessionDialog.vue";
 import SettingsDialog from "@/components/settings/SettingsDialog.vue";
 import { useRealtimeEvents } from "@/composables/useRealtimeEvents";
+import { buildAppConfig, parseAppConfig } from "@/lib/app-config";
+import type { AppConfigFile } from "@/lib/app-config";
 import { clamp } from "@/lib/format";
+import { ipc } from "@/lib/ipc";
+import { useAlertsStore } from "@/stores/alerts";
+import { useNetworkStore } from "@/stores/network";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import type { WriteTarget } from "@/types/ui";
@@ -30,6 +45,8 @@ useRealtimeEvents();
 
 const settings = useSettingsStore();
 const sessions = useSessionsStore();
+const network = useNetworkStore();
+const alerts = useAlertsStore();
 const { t } = useI18n();
 const initialDialog = new URLSearchParams(window.location.search).get("dialog");
 type PageView = "workspace" | "network" | "scan" | "alerts";
@@ -46,6 +63,9 @@ const trendOpen = ref(false);
 const editSessionOpen = ref(false);
 const debugOpen = ref(false);
 const aboutOpen = ref(false);
+const configImportOpen = ref(false);
+const importingConfig = ref(false);
+const pendingConfig = ref<AppConfigFile | null>(null);
 const railView = computed<"workspace" | "network" | "scan" | "alerts" | "settings" | "about">(
   () => {
     if (settingsOpen.value) return "settings";
@@ -84,7 +104,7 @@ function openWrite(target: WriteTarget): void {
 function openWriteFromToolbar(): void {
   const definition = sessions.activeDefinition;
   if (!definition) {
-    toast.info("请先选择或新建一个读取定义");
+    toast.info(t("toolbar.selectDefinition"));
     return;
   }
   const firstValue =
@@ -93,7 +113,7 @@ function openWriteFromToolbar(): void {
   const address = firstValue?.address ?? definition.startAddress;
   openWrite({
     address,
-    alias: definition.aliases[address] ?? `寄存器 ${address}`,
+    alias: definition.aliases[address] ?? t("grid.register", { address }),
     current: firstValue?.formatted ?? "—",
     dataType: definition.dataType,
   });
@@ -101,6 +121,99 @@ function openWriteFromToolbar(): void {
 
 function toggleMonitor(): void {
   settings.monitorCollapsed = !settings.monitorCollapsed;
+}
+
+function configErrorMessage(message: string): string {
+  if (
+    message === "invalidJson" ||
+    message === "invalidConfigKind" ||
+    message === "unsupportedConfigVersion" ||
+    message === "invalidConfigShape"
+  ) {
+    return t(`config.errors.${message}`);
+  }
+  return message;
+}
+
+async function exportConfig(): Promise<void> {
+  const config = buildAppConfig(
+    settings.snapshot(),
+    sessions.persistedSessions(),
+    network.exportSessions(),
+  );
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  try {
+    const saved = await ipc.saveTextFile(
+      `modbus-tool-config-${stamp}.json`,
+      JSON.stringify(config, null, 2),
+      "json",
+    );
+    if (saved) {
+      toast.success(t("config.exported"), {
+        description: t("config.exportedHint", {
+          sessions: config.sessions.length,
+          network: config.networkSessions.length,
+        }),
+      });
+    }
+  } catch (cause: unknown) {
+    toast.error(t("config.exportFailed"), {
+      description: cause instanceof Error ? cause.message : String(cause),
+    });
+  }
+}
+
+async function importConfig(): Promise<void> {
+  try {
+    const text = await ipc.openTextFile();
+    if (!text) return;
+    pendingConfig.value = parseAppConfig(text);
+    configImportOpen.value = true;
+  } catch (cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    toast.error(t("config.importFailed"), {
+      description: configErrorMessage(message),
+    });
+  }
+}
+
+function cancelConfigImport(): void {
+  if (importingConfig.value) return;
+  configImportOpen.value = false;
+  pendingConfig.value = null;
+}
+
+async function confirmConfigImport(): Promise<void> {
+  const config = pendingConfig.value;
+  if (!config || importingConfig.value) return;
+  importingConfig.value = true;
+  try {
+    settings.applySnapshot(config.settings);
+    const errors = await sessions.replaceWorkspace(config.sessions);
+    await network.replaceSessions(config.networkSessions);
+    alerts.clear();
+    configImportOpen.value = false;
+    pendingConfig.value = null;
+    page.value = "workspace";
+    if (errors.length) {
+      toast.warning(t("config.importedWithErrors"), {
+        description: errors[0],
+      });
+    } else {
+      toast.success(t("config.imported"), {
+        description: t("config.importedHint", {
+          sessions: config.sessions.length,
+          network: config.networkSessions.length,
+        }),
+      });
+    }
+  } catch (cause: unknown) {
+    toast.error(t("config.importFailed"), {
+      description: cause instanceof Error ? cause.message : String(cause),
+    });
+  } finally {
+    importingConfig.value = false;
+  }
 }
 
 let resizeState: { startY: number; startHeight: number } | null = null;
@@ -149,6 +262,8 @@ function startResize(event: PointerEvent): void {
         @open-scan="page = 'scan'"
         @open-alerts="page = 'alerts'"
         @open-about="aboutOpen = true"
+        @import-config="importConfig"
+        @export-config="exportConfig"
       />
 
       <template v-if="page === 'workspace'">
@@ -206,5 +321,38 @@ function startResize(event: PointerEvent): void {
     <WriteDialog v-model:open="writeOpen" :target="writeTarget" />
     <TrendOverlay v-model:open="trendOpen" />
     <AboutOverlay v-model:open="aboutOpen" />
+
+    <AlertDialog
+      :open="configImportOpen"
+      @update:open="
+        (open) => {
+          if (!open) cancelConfigImport();
+        }
+      "
+    >
+      <AlertDialogContent
+        class="border-glass-border bg-[color:var(--glass-strong)] backdrop-blur-2xl"
+      >
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t("config.importTitle") }}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {{
+              t("config.importDescription", {
+                sessions: pendingConfig?.sessions.length ?? 0,
+                network: pendingConfig?.networkSessions.length ?? 0,
+              })
+            }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="importingConfig">
+            {{ t("common.cancel") }}
+          </AlertDialogCancel>
+          <Button class="gap-1.5" :disabled="importingConfig" @click="confirmConfigImport">
+            {{ importingConfig ? t("config.importing") : t("config.importConfirm") }}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>

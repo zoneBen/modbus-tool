@@ -9,6 +9,18 @@ export type ThemePreference = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
 export type LocaleCode = "zh-CN" | "en-US";
 
+export interface AppSettingsSnapshot {
+  addressBase: 0 | 1;
+  reduceEffects: boolean;
+  compactRows: boolean;
+  monitorFollow: boolean;
+  showRawColumn: boolean;
+  monitorHeight: number;
+  monitorCollapsed: boolean;
+  theme: ThemePreference;
+  locale: LocaleCode;
+}
+
 export const useSettingsStore = defineStore("settings", () => {
   const addressBase = useLocalStorage<0 | 1>("mt.address-base-v2", 0);
   const reduceEffects = useLocalStorage("mt.reduce-effects", false);
@@ -67,6 +79,50 @@ export const useSettingsStore = defineStore("settings", () => {
     addressBase.value = addressBase.value === 0 ? 1 : 0;
   }
 
+  function snapshot(): AppSettingsSnapshot {
+    return {
+      addressBase: addressBase.value === 1 ? 1 : 0,
+      reduceEffects: Boolean(reduceEffects.value),
+      compactRows: Boolean(compactRows.value),
+      monitorFollow: Boolean(monitorFollow.value),
+      showRawColumn: Boolean(showRawColumn.value),
+      monitorHeight: typeof monitorHeight.value === "number" ? monitorHeight.value : 258,
+      monitorCollapsed: Boolean(monitorCollapsed.value),
+      theme: theme.value,
+      locale: locale.value,
+    };
+  }
+
+  function applySnapshot(value: Partial<AppSettingsSnapshot>): void {
+    if (value.addressBase === 0 || value.addressBase === 1) {
+      addressBase.value = value.addressBase;
+    }
+    if (typeof value.reduceEffects === "boolean") {
+      reduceEffects.value = value.reduceEffects;
+    }
+    if (typeof value.compactRows === "boolean") {
+      compactRows.value = value.compactRows;
+    }
+    if (typeof value.monitorFollow === "boolean") {
+      monitorFollow.value = value.monitorFollow;
+    }
+    if (typeof value.showRawColumn === "boolean") {
+      showRawColumn.value = value.showRawColumn;
+    }
+    if (typeof value.monitorHeight === "number" && Number.isFinite(value.monitorHeight)) {
+      monitorHeight.value = Math.min(520, Math.max(160, value.monitorHeight));
+    }
+    if (typeof value.monitorCollapsed === "boolean") {
+      monitorCollapsed.value = value.monitorCollapsed;
+    }
+    if (value.theme === "dark" || value.theme === "light" || value.theme === "system") {
+      setTheme(value.theme);
+    }
+    if (value.locale === "zh-CN" || value.locale === "en-US") {
+      setLocale(value.locale);
+    }
+  }
+
   return {
     addressBase,
     reduceEffects,
@@ -83,5 +139,7 @@ export const useSettingsStore = defineStore("settings", () => {
     toggleTheme,
     setLocale,
     toggleAddressBase,
+    snapshot,
+    applySnapshot,
   };
 });

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { SessionStatus } from "@/types/models";
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -14,13 +17,13 @@ const props = withDefaults(
 const label = computed(() => {
   switch (props.status) {
     case "connected":
-      return props.polling ? "轮询中" : "已连接";
+      return props.polling ? t("status.polling") : t("status.connected");
     case "connecting":
-      return "连接中";
+      return t("status.connecting");
     case "error":
-      return "错误";
+      return t("status.error");
     default:
-      return "未连接";
+      return t("status.disconnected");
   }
 });
 

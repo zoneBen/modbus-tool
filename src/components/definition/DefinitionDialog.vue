@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CircleAlert, Plus, SlidersHorizontal, X } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const props = defineProps<{
 }>();
 
 const sessions = useSessionsStore();
+const { t } = useI18n();
 
 const name = ref("");
 const functionCode = ref("3");
@@ -52,12 +54,12 @@ interface AliasRow {
 
 const aliasRows = ref<AliasRow[]>([]);
 
-const functionOptions = [
-  { label: "FC01 线圈", value: "1" },
-  { label: "FC02 离散输入", value: "2" },
-  { label: "FC03 保持寄存器", value: "3" },
-  { label: "FC04 输入寄存器", value: "4" },
-];
+const functionOptions = computed(() => [
+  { label: t("definitionEditor.functions.fc1"), value: "1" },
+  { label: t("definitionEditor.functions.fc2"), value: "2" },
+  { label: t("definitionEditor.functions.fc3"), value: "3" },
+  { label: t("definitionEditor.functions.fc4"), value: "4" },
+]);
 
 const dataTypeOptions: Array<{ label: string; value: DataType }> = [
   { label: "BOOL", value: "bool" },
@@ -76,21 +78,21 @@ const dataTypeOptions: Array<{ label: string; value: DataType }> = [
   { label: "ASCII", value: "ascii" },
 ];
 
-const byteOrderOptions: Array<{ label: string; value: ByteOrder }> = [
-  { label: "ABCD · 大端", value: "abcd" },
-  { label: "DCBA · 小端", value: "dcba" },
-  { label: "BADC · 字节交换", value: "badc" },
-  { label: "CDAB · 字交换", value: "cdab" },
-];
+const byteOrderOptions = computed<Array<{ label: string; value: ByteOrder }>>(() => [
+  { label: t("inspector.order.abcd"), value: "abcd" },
+  { label: t("inspector.order.dcba"), value: "dcba" },
+  { label: t("inspector.order.badc"), value: "badc" },
+  { label: t("inspector.order.cdab"), value: "cdab" },
+]);
 
 const isBitFunction = computed(() => functionCode.value === "1" || functionCode.value === "2");
 
 const quantityLimit = computed(() => (isBitFunction.value ? 2000 : 125));
 
 const dataTypeHint = computed(() => {
-  if (isBitFunction.value) return "位读取固定使用 BOOL";
+  if (isBitFunction.value) return t("definitionEditor.hints.bit");
   const span = dataType.value === "f32" || dataType.value === "i32" ? 2 : 1;
-  return span > 1 ? "多寄存器类型将跨行合并显示" : "每个寄存器解析为一个值";
+  return span > 1 ? t("definitionEditor.hints.multi") : t("definitionEditor.hints.single");
 });
 
 watch(
@@ -113,7 +115,7 @@ watch(
         .map(([address, alias]) => ({ address, name: alias }))
         .sort((left, right) => Number(left.address) - Number(right.address));
     } else {
-      name.value = "保持寄存器 · 新定义";
+      name.value = t("definitionEditor.defaultName");
       functionCode.value = "3";
       slaveId.value = "1";
       startAddress.value = "0";
@@ -156,31 +158,31 @@ async function submit(): Promise<void> {
   errorMessage.value = "";
   const definitionName = name.value.trim();
   if (!definitionName) {
-    fail("定义名称不能为空");
+    fail(t("definitionEditor.errors.name"));
     return;
   }
   const slave = Number(slaveId.value);
   if (!Number.isInteger(slave) || slave < 1 || slave > 247) {
-    fail("从站 ID 需在 1–247 之间");
+    fail(t("definitionEditor.errors.slaveId"));
     return;
   }
   const start = Number(startAddress.value);
   if (!Number.isInteger(start) || start < 0 || start > 65535) {
-    fail("起始地址需为 0–65535 的整数");
+    fail(t("definitionEditor.errors.start"));
     return;
   }
   const count = Number(quantity.value);
   if (!Number.isInteger(count) || count < 1 || count > quantityLimit.value) {
-    fail(`数量需为 1–${quantityLimit.value} 的整数`);
+    fail(t("definitionEditor.errors.quantity", { limit: quantityLimit.value }));
     return;
   }
   if (start + count > 65536) {
-    fail("地址范围超出 16 位地址空间");
+    fail(t("definitionEditor.errors.range"));
     return;
   }
   const interval = Number(intervalMs.value);
   if (!Number.isInteger(interval) || interval < 10 || interval > 600_000) {
-    fail("轮询周期需为 10–600000 ms 的整数");
+    fail(t("definitionEditor.errors.interval"));
     return;
   }
   const aliases: Record<number, string> = {};
@@ -221,16 +223,16 @@ async function submit(): Promise<void> {
   try {
     if (props.definition) {
       await sessions.updateDefinition(props.definition.id, input);
-      toast.success("定义已更新");
+      toast.success(t("definitionEditor.savedUpdate"));
     } else {
       await sessions.createDefinition(input);
-      toast.success("定义已创建");
+      toast.success(t("definitionEditor.savedCreate"));
     }
     open.value = false;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     errorMessage.value = message;
-    toast.error("保存定义失败", { description: message });
+    toast.error(t("definitionEditor.saveFailed"), { description: message });
   } finally {
     saving.value = false;
   }
@@ -249,10 +251,10 @@ async function submit(): Promise<void> {
           >
             <SlidersHorizontal class="size-3.5" />
           </span>
-          {{ definition ? "编辑读取定义" : "新建读取定义" }}
+          {{ definition ? t("definitionEditor.titleEdit") : t("definitionEditor.titleNew") }}
         </DialogTitle>
         <DialogDescription class="text-[11.5px] text-muted-foreground">
-          功能码、地址、数据类型与端序由 Rust 核心执行；保存后立即按新规则轮询。
+          {{ t("definitionEditor.hint") }}
         </DialogDescription>
       </DialogHeader>
 
@@ -266,17 +268,21 @@ async function submit(): Promise<void> {
 
       <div class="scrollbar-thin max-h-[62vh] space-y-4 overflow-y-auto px-5 py-4">
         <div class="space-y-1.5">
-          <Label class="text-[11px] text-muted-foreground">定义名称</Label>
+          <Label class="text-[11px] text-muted-foreground">{{ t("definitionEditor.name") }}</Label>
           <Input v-model="name" class="h-9 rounded-lg border-hairline-strong bg-well text-[12px]" />
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">功能码</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("definitionEditor.functionCode")
+            }}</Label>
             <FormSelect v-model="functionCode" :options="functionOptions" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">从站 ID</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("definitionEditor.slaveId")
+            }}</Label>
             <Input
               v-model="slaveId"
               inputmode="numeric"
@@ -284,7 +290,9 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">起始地址</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("definitionEditor.startAddress")
+            }}</Label>
             <Input
               v-model="startAddress"
               inputmode="numeric"
@@ -293,7 +301,10 @@ async function submit(): Promise<void> {
           </div>
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">
-              数量 <span class="text-muted-foreground">（≤ {{ quantityLimit }}）</span>
+              {{ t("definitionEditor.quantity") }}
+              <span class="text-muted-foreground">{{
+                t("definitionEditor.quantityMax", { limit: quantityLimit })
+              }}</span>
             </Label>
             <Input
               v-model="quantity"
@@ -302,15 +313,21 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">数据类型</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("definitionEditor.dataType")
+            }}</Label>
             <FormSelect v-model="dataType" :options="dataTypeOptions" :disabled="isBitFunction" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">字节 / 字序</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("definitionEditor.order")
+            }}</Label>
             <FormSelect v-model="byteOrder" :options="byteOrderOptions" :disabled="isBitFunction" />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">轮询周期 (ms)</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("definitionEditor.interval")
+            }}</Label>
             <Input
               v-model="intervalMs"
               inputmode="numeric"
@@ -318,12 +335,14 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">启用轮询</Label>
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("definitionEditor.enabled")
+            }}</Label>
             <div
               class="flex h-9 items-center justify-between rounded-lg border border-hairline-strong bg-well px-3"
             >
               <span class="text-[11px] text-muted-foreground">
-                {{ enabled ? "已启用" : "已停用" }}
+                {{ enabled ? t("definitionEditor.enabledOn") : t("definitionEditor.enabledOff") }}
               </span>
               <Switch v-model="enabled" />
             </div>
@@ -333,9 +352,11 @@ async function submit(): Promise<void> {
         <div class="space-y-2 rounded-xl border border-hairline bg-overlay-1 p-3">
           <div class="flex items-center justify-between gap-3">
             <div>
-              <p class="text-[12px] font-medium text-foreground">寄存器别名 / 含义</p>
+              <p class="text-[12px] font-medium text-foreground">
+                {{ t("definitionEditor.aliasesTitle") }}
+              </p>
               <p class="mt-0.5 text-[11px] text-muted-foreground">
-                为地址维护名称，寄存器表格、检查器与曲线会显示别名。
+                {{ t("definitionEditor.aliasesHint") }}
               </p>
             </div>
             <Button
@@ -345,7 +366,7 @@ async function submit(): Promise<void> {
               @click="addAliasRow"
             >
               <Plus class="size-3" />
-              添加
+              {{ t("definitionEditor.addAlias") }}
             </Button>
           </div>
           <div v-if="aliasRows.length" class="space-y-1.5">
@@ -353,18 +374,18 @@ async function submit(): Promise<void> {
               <Input
                 v-model="row.address"
                 inputmode="numeric"
-                placeholder="地址"
+                :placeholder="t('definitionEditor.addressPlaceholder')"
                 class="numeric h-8 w-[86px] shrink-0 rounded-lg border-hairline-strong bg-well text-[12px]"
               />
               <Input
                 v-model="row.name"
-                placeholder="含义，例如 电机温度"
+                :placeholder="t('definitionEditor.aliasPlaceholder')"
                 class="h-8 min-w-0 flex-1 rounded-lg border-hairline-strong bg-well text-[12px]"
               />
               <button
                 type="button"
                 class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-error/10 hover:text-error"
-                aria-label="删除别名"
+                :aria-label="t('definitionEditor.deleteAlias')"
                 @click="removeAliasRow(index)"
               >
                 <X class="size-3.5" />
@@ -375,14 +396,14 @@ async function submit(): Promise<void> {
             v-else
             class="rounded-lg border border-dashed border-hairline px-3 py-2 text-center text-[11px] text-muted-foreground"
           >
-            暂无别名，表格将显示地址。
+            {{ t("definitionEditor.aliasesEmpty") }}
           </p>
         </div>
 
         <p
           class="rounded-lg border border-hairline bg-overlay-1 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground"
         >
-          {{ dataTypeHint }} · 数据将以原始字 + 格式化值 + 数值同时返回。
+          {{ t("definitionEditor.footerHint", { hint: dataTypeHint }) }}
         </p>
       </div>
 
@@ -393,11 +414,11 @@ async function submit(): Promise<void> {
             size="sm"
             class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
-            取消
+            {{ t("common.cancel") }}
           </Button>
         </DialogClose>
         <Button size="sm" class="h-8 min-w-[84px] text-[12px]" :disabled="saving" @click="submit">
-          {{ saving ? "保存中…" : "保存定义" }}
+          {{ saving ? t("definitionEditor.saving") : t("definitionEditor.save") }}
         </Button>
       </DialogFooter>
     </DialogContent>

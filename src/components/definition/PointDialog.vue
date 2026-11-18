@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  BYTE_ORDER_OPTIONS,
+  byteOrderOptions,
   DATA_TYPE_OPTIONS,
   resolvePoints,
   toDefinitionInput,
@@ -36,6 +36,7 @@ const props = defineProps<{
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
 const { t } = useI18n();
+const orderOptions = computed(() => byteOrderOptions(t));
 const dataType = ref<DataType>("u16");
 const byteOrder = ref<ByteOrder>("abcd");
 const meaning = ref("");
@@ -170,7 +171,7 @@ async function save(): Promise<void> {
           </div>
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">{{ t("pointEditor.order") }}</Label>
-            <FormSelect v-model="byteOrder" :options="BYTE_ORDER_OPTIONS" />
+            <FormSelect v-model="byteOrder" :options="orderOptions" />
           </div>
           <div class="col-span-2 space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">{{ t("pointEditor.meaning") }}</Label>

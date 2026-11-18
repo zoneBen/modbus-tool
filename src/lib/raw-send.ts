@@ -1,3 +1,4 @@
+import { i18n } from "@/i18n";
 import { formatHexBytes } from "@/lib/format";
 import type { RawSendMode } from "@/types/models";
 
@@ -18,7 +19,9 @@ export function encodeRawPayload(
   const base = mode === "ascii" ? new TextEncoder().encode(data) : decodeHex(data);
   const hasSuffix = Boolean(suffix.appendCr || suffix.appendLf);
   if (!base.length && !hasSuffix) {
-    throw new Error(mode === "hex" ? "HEX 内容为空" : "发送内容为空");
+    throw new Error(
+      mode === "hex" ? i18n.global.t("errors.rawEmptyHex") : i18n.global.t("errors.rawEmptyAscii"),
+    );
   }
   const extra = (suffix.appendCr ? 1 : 0) + (suffix.appendLf ? 1 : 0);
   const bytes = new Uint8Array(base.length + extra);
@@ -27,7 +30,12 @@ export function encodeRawPayload(
   if (suffix.appendCr) bytes[offset++] = 0x0d;
   if (suffix.appendLf) bytes[offset] = 0x0a;
   if (bytes.length > MAX_RAW_SEND_BYTES) {
-    throw new Error(`单次发送不能超过 ${MAX_RAW_SEND_BYTES} 字节，当前 ${bytes.length} 字节`);
+    throw new Error(
+      i18n.global.t("errors.rawTooLarge", {
+        max: MAX_RAW_SEND_BYTES,
+        actual: bytes.length,
+      }),
+    );
   }
   return bytes;
 }
@@ -61,10 +69,10 @@ function decodeHex(data: string): Uint8Array {
   const cleaned = data.replace(/0x/gi, "").replace(HEX_SEPARATORS, "");
   if (!cleaned) return new Uint8Array();
   if (!/^[0-9a-f]+$/i.test(cleaned)) {
-    throw new Error("HEX 包含非法字符，仅支持 0–9 / A–F");
+    throw new Error(i18n.global.t("errors.rawHexInvalid"));
   }
   if (cleaned.length % 2 !== 0) {
-    throw new Error("HEX 内容需为偶数个十六进制字符");
+    throw new Error(i18n.global.t("errors.rawHexOdd"));
   }
   const bytes = new Uint8Array(cleaned.length / 2);
   for (let index = 0; index < bytes.length; index += 1) {

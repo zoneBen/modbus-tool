@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
-  BYTE_ORDER_OPTIONS,
+  byteOrderOptions,
   DATA_TYPE_OPTIONS,
   dataTypeSpan,
   toDefinitionInput,
@@ -52,6 +52,7 @@ const props = defineProps<{
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
 const { t } = useI18n();
+const orderOptions = computed(() => byteOrderOptions(t));
 const targetAddress = ref(0);
 const dataType = ref<DataType>("u16");
 const byteOrder = ref<ByteOrder>("abcd");
@@ -274,7 +275,7 @@ async function save(): Promise<void> {
             <Label class="text-[11px] text-muted-foreground">
               {{ t("simulatorPoint.order") }}
             </Label>
-            <FormSelect v-model="byteOrder" :options="BYTE_ORDER_OPTIONS" />
+            <FormSelect v-model="byteOrder" :options="orderOptions" />
           </div>
           <div class="space-y-1.5">
             <Label class="text-[11px] text-muted-foreground">

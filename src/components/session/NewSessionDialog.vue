@@ -66,13 +66,17 @@ const framingOptions = computed(() =>
 
 const defaultName = computed(() =>
   role.value === "slave"
-    ? `模拟器 · 从站 ${(sessions.slaveCount + 1).toString().padStart(2, "0")}`
-    : `${linkMode.value === "serial" ? "串口" : "网络"} 会话 ${(sessions.masterCount + 1).toString().padStart(2, "0")}`,
+    ? t("dialog.defaultSlaveName", {
+        index: (sessions.slaveCount + 1).toString().padStart(2, "0"),
+      })
+    : t(linkMode.value === "serial" ? "dialog.defaultSerialName" : "dialog.defaultNetworkName", {
+        index: (sessions.masterCount + 1).toString().padStart(2, "0"),
+      }),
 );
 
 const endpoint = computed(() => {
   if (linkMode.value === "serial") {
-    const port = serialPort.value.trim() || "未选择串口";
+    const port = serialPort.value.trim() || t("dialog.noSerialPort");
     return `${port} · ${baudRate.value} ${dataBits.value}${
       parity.value === "none" ? "N" : parity.value === "even" ? "E" : "O"
     }${stopBits.value}`;
@@ -177,13 +181,13 @@ async function submit(): Promise<void> {
       slaveId: role.value === "slave" ? Math.max(1, Number(slaveId.value) || 1) : undefined,
       autoConnect: role.value !== "slave",
     });
-    toast.success(`已创建会话「${session.name}」`, {
+    toast.success(t("dialog.created", { name: session.name }), {
       description:
         role.value === "slave"
           ? t("dialog.slaveCreatedHint")
           : sessions.demo
-            ? "演示模式已自动建立连接。"
-            : "正在连接设备…",
+            ? t("dialog.demoConnected")
+            : t("dialog.connectingDevice"),
     });
     name.value = "";
     open.value = false;
@@ -214,14 +218,10 @@ async function submit(): Promise<void> {
           >
             <Network class="size-3.5" />
           </span>
-          新建会话
+          {{ t("dialog.newSessionTitle") }}
         </DialogTitle>
         <DialogDescription class="relative text-[11.5px] text-muted-foreground">
-          {{
-            role === "slave"
-              ? "从站模拟器会监听所选链路，响应主站的读写请求。"
-              : "配置链路参数并连接目标设备。"
-          }}
+          {{ role === "slave" ? t("dialog.subtitleSlave") : t("dialog.subtitleMaster") }}
         </DialogDescription>
       </DialogHeader>
 
@@ -236,7 +236,7 @@ async function submit(): Promise<void> {
       <div class="space-y-4 px-5 py-4">
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">会话名称</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.name") }}</Label>
             <Input
               v-model="name"
               :placeholder="defaultName"
@@ -244,7 +244,7 @@ async function submit(): Promise<void> {
             />
           </div>
           <div class="space-y-1.5">
-            <Label class="text-[11px] text-muted-foreground">角色</Label>
+            <Label class="text-[11px] text-muted-foreground">{{ t("dialog.role") }}</Label>
             <div class="grid grid-cols-2 gap-1 rounded-lg border border-hairline bg-well p-0.5">
               <button
                 v-for="option in roleOptions"
@@ -262,7 +262,7 @@ async function submit(): Promise<void> {
               >
                 <Cpu v-if="option === 'master'" class="size-3.5" />
                 <Server v-else class="size-3.5" />
-                {{ option === "master" ? "主站" : "从站" }}
+                {{ option === "master" ? t("dialog.master") : t("dialog.slave") }}
               </button>
             </div>
           </div>
@@ -273,18 +273,18 @@ async function submit(): Promise<void> {
             <TabsList class="grid w-full grid-cols-2 border border-hairline bg-well">
               <TabsTrigger value="serial" class="gap-1.5 text-[12px]">
                 <Usb class="size-3.5" />
-                串口
+                {{ t("dialog.serial") }}
               </TabsTrigger>
               <TabsTrigger value="network" class="gap-1.5 text-[12px]">
                 <Network class="size-3.5" />
-                网络
+                {{ t("dialog.network") }}
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
           <div v-if="role === 'slave'" class="grid grid-cols-3 gap-3">
             <div class="space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">从站 ID</Label>
+              <Label class="text-[11px] text-muted-foreground">{{ t("dialog.slaveId") }}</Label>
               <Input
                 v-model="slaveId"
                 inputmode="numeric"
@@ -300,7 +300,7 @@ async function submit(): Promise<void> {
 
           <div v-if="linkMode === 'network'" class="grid grid-cols-3 gap-3">
             <div class="col-span-1 space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">传输层</Label>
+              <Label class="text-[11px] text-muted-foreground">{{ t("dialog.transport") }}</Label>
               <FormSelect
                 v-model="transport"
                 :options="
@@ -314,7 +314,7 @@ async function submit(): Promise<void> {
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">主机地址</Label>
+              <Label class="text-[11px] text-muted-foreground">{{ t("dialog.host") }}</Label>
               <Input
                 v-model="host"
                 :disabled="role === 'slave'"
@@ -322,7 +322,7 @@ async function submit(): Promise<void> {
               />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">端口</Label>
+              <Label class="text-[11px] text-muted-foreground">{{ t("dialog.tcpPort") }}</Label>
               <Input
                 v-model="port"
                 type="number"
@@ -343,11 +343,13 @@ async function submit(): Promise<void> {
               @refresh="refreshSerialPorts"
             />
             <div class="space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">波特率</Label>
+              <Label class="text-[11px] text-muted-foreground">{{ t("dialog.baud") }}</Label>
               <BaudRateField v-model="baudRate" />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">校验 / 数据位 / 停止位</Label>
+              <Label class="text-[11px] text-muted-foreground">{{
+                t("dialog.serialParams")
+              }}</Label>
               <div class="grid grid-cols-3 gap-1.5">
                 <FormSelect
                   v-model="parity"
@@ -371,11 +373,11 @@ async function submit(): Promise<void> {
 
           <div class="grid grid-cols-2 gap-3">
             <div class="space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">帧格式</Label>
+              <Label class="text-[11px] text-muted-foreground">{{ t("dialog.framing") }}</Label>
               <FormSelect v-model="framing" :options="framingOptions" />
             </div>
             <div class="space-y-1.5">
-              <Label class="text-[11px] text-muted-foreground">链路端点</Label>
+              <Label class="text-[11px] text-muted-foreground">{{ t("dialog.endpoint") }}</Label>
               <div
                 class="numeric flex h-9 items-center truncate rounded-lg border border-hairline bg-overlay-1 px-3 text-[11.5px] text-muted-foreground"
               >
@@ -393,7 +395,7 @@ async function submit(): Promise<void> {
             size="sm"
             class="h-8 border-hairline-strong bg-transparent text-[12px]"
           >
-            取消
+            {{ t("common.cancel") }}
           </Button>
         </DialogClose>
         <Button size="sm" class="h-8 gap-1.5 text-[12px]" :disabled="busy" @click="submit">
@@ -404,8 +406,8 @@ async function submit(): Promise<void> {
                 ? t("dialog.creatingSlave")
                 : t("dialog.createSlave")
               : busy
-                ? "连接中…"
-                : "连接会话"
+                ? t("dialog.connectingButton")
+                : t("dialog.connect")
           }}
         </Button>
       </DialogFooter>

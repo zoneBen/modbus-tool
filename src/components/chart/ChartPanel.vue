@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Activity, LineChart, Pause, Play, Table2 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
 import RealtimeChart from "@/components/chart/RealtimeChart.vue";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ const WINDOW_OPTIONS = [
 
 const sessions = useSessionsStore();
 const settings = useSettingsStore();
+const { t } = useI18n();
 
 const windowSec = ref(300);
 const paused = ref(false);
@@ -67,7 +69,10 @@ const allSeries = computed<SeriesEntry[]>(() => {
   return ordered.slice(start, start + MAX_SERIES).map((entry, index) => ({
     ...entry,
     label:
-      def.aliases[entry.address] ?? `地址 ${formatAddress(entry.address, settings.addressBase)}`,
+      def.aliases[entry.address] ??
+      t("chart.address", {
+        address: formatAddress(entry.address, settings.addressBase),
+      }),
     color: palette.value[index] ?? palette.value[0],
   }));
 });
@@ -205,15 +210,15 @@ const tableRows = computed(() => {
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex h-8 shrink-0 items-center gap-2 border-b border-hairline px-3">
       <Activity class="size-3 text-signal" />
-      <span class="text-[11.5px] font-medium">实时曲线</span>
+      <span class="text-[11.5px] font-medium">{{ t("chart.realtime") }}</span>
       <span class="max-w-[180px] truncate text-[11.5px] text-muted-foreground">
-        {{ definition?.name ?? "未选择定义" }}
+        {{ definition?.name ?? t("chart.noDefinition") }}
       </span>
       <span
         v-if="paused"
         class="rounded border border-warn/25 bg-warn/10 px-1.5 py-0.5 text-[11px] text-warn"
       >
-        已暂停
+        {{ t("chart.paused") }}
       </span>
       <span v-else-if="displayData" class="flex items-center gap-1 text-[11px] text-signal">
         <span class="status-dot status-dot-live scale-75" />
@@ -223,7 +228,7 @@ const tableRows = computed(() => {
         v-if="numericCount > MAX_SERIES"
         class="rounded border border-hairline px-1 py-0.5 text-[11px] text-muted-foreground"
       >
-        仅显示邻近 {{ MAX_SERIES }} 条
+        {{ t("chart.nearbySeries", { count: MAX_SERIES }) }}
       </span>
 
       <div class="ml-auto flex items-center gap-1.5">
@@ -247,7 +252,7 @@ const tableRows = computed(() => {
           variant="ghost"
           size="icon-xs"
           class="rounded-md text-muted-foreground hover:text-foreground"
-          :aria-label="paused ? '继续曲线' : '暂停曲线'"
+          :aria-label="paused ? t('chart.resume') : t('chart.pause')"
           @click="togglePause"
         >
           <Play v-if="paused" class="size-3" />
@@ -258,7 +263,7 @@ const tableRows = computed(() => {
           size="icon-xs"
           class="rounded-md"
           :class="showTable ? 'text-signal' : 'text-muted-foreground hover:text-foreground'"
-          aria-label="切换数据表视图"
+          :aria-label="t('chart.switchTable')"
           @click="showTable = !showTable"
         >
           <Table2 class="size-3" />
@@ -275,7 +280,9 @@ const tableRows = computed(() => {
           <table class="w-full border-collapse text-[11.5px]">
             <thead class="sticky top-0 bg-surface">
               <tr class="border-b border-hairline">
-                <th class="px-2 py-1.5 text-left font-medium text-muted-foreground">时间</th>
+                <th class="px-2 py-1.5 text-left font-medium text-muted-foreground">
+                  {{ t("chart.time") }}
+                </th>
                 <th
                   v-for="entry in selectedSeries"
                   :key="entry.address"
@@ -307,7 +314,7 @@ const tableRows = computed(() => {
             v-if="!tableRows.length"
             class="px-3 py-6 text-center text-[11px] text-muted-foreground"
           >
-            窗口内暂无采样
+            {{ t("chart.noSamples") }}
           </p>
         </div>
 
@@ -317,14 +324,14 @@ const tableRows = computed(() => {
             v-if="paused"
             class="glass pointer-events-none absolute bottom-2 left-2 rounded-md px-2 py-1 text-[11px] text-warn"
           >
-            已暂停 · 数据仍在后台缓冲
+            {{ t("chart.pausedHint") }}
           </div>
         </div>
 
         <EmptyState
           v-else
-          title="等待曲线数据…"
-          description="轮询产生数值后会在此绘制趋势；HEX / BIN / ASCII 类型不参与曲线。"
+          :title="t('chart.waitingTitle')"
+          :description="t('chart.waitingHint')"
           class="h-full"
         >
           <template #icon>
@@ -365,18 +372,16 @@ const tableRows = computed(() => {
         <span class="numeric text-[11px] text-foreground">{{
           latestValue(selectedSeries[0]!)
         }}</span>
-        <span class="ml-auto text-[11px] text-muted-foreground">单序列 · 无图例</span>
+        <span class="ml-auto text-[11px] text-muted-foreground">
+          {{ t("chart.singleSeries") }}
+        </span>
       </div>
     </div>
 
     <EmptyState
       v-else
-      :title="definition ? '暂无可绘制的数值' : '选择一个读取定义'"
-      :description="
-        definition
-          ? '当前定义没有数值类型采样，或尚未收到数据。'
-          : '在左侧选择定义后即可查看实时趋势。'
-      "
+      :title="definition ? t('chart.noNumeric') : t('chart.selectDefinition')"
+      :description="definition ? t('chart.noNumericHint') : t('chart.selectHint')"
       class="m-auto"
     >
       <template #icon>

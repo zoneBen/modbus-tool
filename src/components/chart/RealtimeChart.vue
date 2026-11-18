@@ -2,6 +2,7 @@
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useSettingsStore } from "@/stores/settings";
 import type { ChartData, ChartSeries } from "@/types/chart";
 
@@ -11,6 +12,7 @@ const props = defineProps<{
 }>();
 
 const settings = useSettingsStore();
+const { t } = useI18n();
 
 interface ChartPalette {
   surface: string;
@@ -205,7 +207,7 @@ function buildOptions(width: number, height: number): uPlot.Options {
       },
     ],
     series: [
-      { label: "时间" },
+      { label: t("chart.time") },
       ...props.series.map((series) => ({
         label: series.label,
         stroke: series.color,

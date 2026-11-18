@@ -74,10 +74,10 @@ async function confirmDeleteDefinition(): Promise<void> {
   deletingDefinition.value = true;
   try {
     await sessions.deleteDefinition(target.id);
-    toast.success(`已删除定义「${target.name}」`);
+    toast.success(t("workspace.deletedDefinition", { name: target.name }));
     closeDeleteDefinition();
   } catch (error: unknown) {
-    toast.error("删除定义失败", {
+    toast.error(t("workspace.deleteDefinitionFailed"), {
       description: error instanceof Error ? error.message : String(error),
     });
   } finally {
@@ -207,7 +207,7 @@ function selectSession(sessionId: string): void {
               variant="ghost"
               size="icon-sm"
               class="rounded-lg border border-hairline bg-overlay-1 text-muted-foreground hover:text-foreground"
-              aria-label="新建会话"
+              :aria-label="t('workspace.newSession')"
               @click="emit('new-session')"
             >
               <Plus class="size-4" />
@@ -286,7 +286,7 @@ function selectSession(sessionId: string): void {
       <div v-if="sessions.activeSession" class="mt-4">
         <div class="flex items-center justify-between px-2.5">
           <span class="label-caps">{{
-            isSlaveSession ? "模拟映射" : t("workspace.definitions")
+            isSlaveSession ? t("workspace.simulatorMapping") : t("workspace.definitions")
           }}</span>
           <div class="flex items-center gap-1">
             <button
@@ -316,7 +316,7 @@ function selectSession(sessionId: string): void {
               v-if="!isSlaveSession"
               type="button"
               class="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
-              aria-label="新建读取定义"
+              :aria-label="t('workspace.newDefinition')"
               @click="openCreateDefinition"
             >
               <Plus class="size-3" />
@@ -359,7 +359,7 @@ function selectSession(sessionId: string): void {
                 <button
                   type="button"
                   class="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-overlay-3 hover:text-foreground"
-                  aria-label="编辑读取定义"
+                  :aria-label="t('workspace.editDefinition')"
                   @click.stop="openEditDefinition(definition)"
                 >
                   <PencilLine class="size-3" />
@@ -367,7 +367,7 @@ function selectSession(sessionId: string): void {
                 <button
                   type="button"
                   class="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-error/10 hover:text-error"
-                  aria-label="删除读取定义"
+                  :aria-label="t('workspace.deleteDefinition')"
                   @click.stop="requestDeleteDefinition(definition)"
                 >
                   <Trash2 class="size-3" />
@@ -422,20 +422,30 @@ function selectSession(sessionId: string): void {
         class="border-glass-border bg-[color:var(--glass-strong)] backdrop-blur-2xl"
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>删除读取定义</AlertDialogTitle>
+          <AlertDialogTitle>{{ t("workspace.deleteDefinitionTitle") }}</AlertDialogTitle>
           <AlertDialogDescription>
-            将停止轮询并移除「{{ deleteTarget?.name }}」及其已缓存数据，此操作无法撤销。
+            {{
+              t("workspace.deleteDefinitionDescription", {
+                name: deleteTarget?.name ?? "",
+              })
+            }}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel :disabled="deletingDefinition">取消</AlertDialogCancel>
+          <AlertDialogCancel :disabled="deletingDefinition">
+            {{ t("common.cancel") }}
+          </AlertDialogCancel>
           <Button
             variant="destructive"
             class="text-white"
             :disabled="deletingDefinition"
             @click="confirmDeleteDefinition"
           >
-            {{ deletingDefinition ? "删除中…" : "删除定义" }}
+            {{
+              deletingDefinition
+                ? t("workspace.deletingDefinition")
+                : t("workspace.deleteDefinition")
+            }}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -247,6 +247,32 @@ export const useNetworkStore = defineStore("network", () => {
     Object.assign(session, patch);
   }
 
+  function exportSessions(): NetworkSessionConfig[] {
+    return sessions.value.map(persistedConfig);
+  }
+
+  async function replaceSessions(configs: NetworkSessionConfig[]): Promise<void> {
+    for (const session of sessions.value.filter((entry) => entry.active)) {
+      try {
+        await stop(session.id);
+      } catch {
+        // Importing replaces the local workspace even if a link ignores stop.
+      }
+    }
+    const seen = new Set<string>();
+    const restored: NetworkSession[] = [];
+    for (const config of configs) {
+      const parsed = parseSession(config);
+      if (!parsed) continue;
+      if (seen.has(parsed.id)) parsed.id = newSessionId();
+      seen.add(parsed.id);
+      restored.push(parsed);
+    }
+    sessions.value = restored;
+    activeSessionId.value = restored[0]?.id ?? null;
+    persist();
+  }
+
   async function deleteSession(sessionId: string): Promise<void> {
     const session = sessionById(sessionId);
     if (!session) return;
@@ -355,6 +381,8 @@ export const useNetworkStore = defineStore("network", () => {
     selectSession,
     createSession,
     updateConfig,
+    exportSessions,
+    replaceSessions,
     deleteSession,
     start,
     stop,
