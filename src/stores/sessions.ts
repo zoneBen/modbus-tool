@@ -118,11 +118,18 @@ export const useSessionsStore = defineStore("sessions", () => {
   function applyWorkspace(workspace: WorkspaceSnapshot): void {
     sessions.value = workspace.sessions;
     demo.value = workspace.demo;
-    if (!sessions.value.some((session) => session.id === activeSessionId.value)) {
-      const first =
-        sessions.value.find((session) => session.role === "master") ?? sessions.value[0];
-      activeSessionId.value = first?.id ?? null;
-      activeDefinitionId.value = first?.definitions[0]?.id ?? null;
+    let current = sessions.value.find((session) => session.id === activeSessionId.value);
+    if (!current) {
+      current = sessions.value.find((session) => session.role === "master") ?? sessions.value[0];
+      activeSessionId.value = current?.id ?? null;
+      selectedAddress.value = null;
+      chartFocusAddress.value = null;
+    }
+    const definition = current?.definitions.find(
+      (candidate) => candidate.id === activeDefinitionId.value,
+    );
+    if (!definition) {
+      activeDefinitionId.value = current?.definitions[0]?.id ?? null;
       selectedAddress.value = null;
       chartFocusAddress.value = null;
     }

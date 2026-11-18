@@ -62,6 +62,15 @@ describe("sessions store", () => {
     expect(store.activeDefinition?.name).toBe("Holding");
   });
 
+  it("falls back to the first definition when the active one disappears", () => {
+    const store = useSessionsStore();
+    store.applyWorkspace(workspace);
+    store.setActiveDefinition("missing");
+    store.applyWorkspace(workspace);
+    expect(store.activeDefinitionId).toBe("d1");
+    expect(store.activeDefinition?.name).toBe("Holding");
+  });
+
   it("stores snapshots and bounded history", () => {
     const store = useSessionsStore();
     store.applyWorkspace(workspace);
