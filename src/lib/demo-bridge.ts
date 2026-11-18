@@ -396,13 +396,8 @@ export function createDemoBridge(): IpcApi {
   let debugSessionId: string | null = null;
   let debugTimer: ReturnType<typeof setInterval> | null = null;
   let debugHeartbeat = 0;
-  let demoNetworkState: NetworkState = {
-    active: false,
-    mode: null,
-    endpoint: null,
-    clients: 0,
-  };
-  let networkEchoTimer: ReturnType<typeof setTimeout> | null = null;
+  const demoNetworks = new Map<string, NetworkState>();
+  const networkEchoTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   function emit<K extends AppEventName>(event: K, payload: AppEventMap[K]): void {
     listeners.get(event)?.forEach((handler) => handler(payload));
@@ -1319,7 +1314,7 @@ export function createDemoBridge(): IpcApi {
     return payload.length;
   }
 
-  async function startNetwork(input: NetworkStartInput): Promise<NetworkState> {
+  async function startNetwork(sessionId: string, input: NetworkStartInput): Promise<NetworkState> {
     const serverMode = input.mode === "tcp-server" || input.mode === "udp-server";
     const relayMode = input.mode === "tcp-relay";
     if (serverMode && (input.localPort < 1 || input.localPort > 65535)) {
@@ -1340,31 +1335,39 @@ export function createDemoBridge(): IpcApi {
       : relayMode
         ? `${localHost}:${input.localPort} → ${input.remoteHost}:${input.remotePort}`
         : `${input.remoteHost}:${input.remotePort}`;
-    demoNetworkState = {
+    const state: NetworkState = {
+      sessionId,
       active: true,
       mode: input.mode,
       endpoint,
-      clients: serverMode ? 1 : 1,
+      clients: 1,
     };
-    emit("network:state", demoNetworkState);
-    return demoNetworkState;
+    demoNetworks.set(sessionId, state);
+    emit("network:state", state);
+    return state;
   }
 
-  async function stopNetwork(): Promise<void> {
-    if (networkEchoTimer) {
-      clearTimeout(networkEchoTimer);
-      networkEchoTimer = null;
+  async function stopNetwork(sessionId: string): Promise<void> {
+    const timer = networkEchoTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      networkEchoTimers.delete(sessionId);
     }
-    demoNetworkState = {
-      ...demoNetworkState,
+    const previous = demoNetworks.get(sessionId);
+    const state: NetworkState = {
+      sessionId,
       active: false,
+      mode: previous?.mode ?? null,
+      endpoint: previous?.endpoint ?? null,
       clients: 0,
     };
-    emit("network:state", demoNetworkState);
+    demoNetworks.set(sessionId, state);
+    emit("network:state", state);
   }
 
-  async function sendNetwork(input: RawSendInput): Promise<number> {
-    if (!demoNetworkState.active) throw new Error("网络助手尚未启动");
+  async function sendNetwork(sessionId: string, input: RawSendInput): Promise<number> {
+    const state = demoNetworks.get(sessionId);
+    if (!state?.active) throw new Error("网络助手尚未启动");
     const payload = Array.from(
       encodeRawPayload(input.data, input.mode, {
         appendCr: input.appendCr,
@@ -1372,21 +1375,27 @@ export function createDemoBridge(): IpcApi {
       }),
     );
     emit("network:data", {
+      sessionId,
       direction: "tx",
       data: payload,
-      connection: demoNetworkState.endpoint ?? "demo",
+      connection: state.endpoint ?? "demo",
       timestamp: Date.now(),
     });
-    if (networkEchoTimer) clearTimeout(networkEchoTimer);
-    networkEchoTimer = setTimeout(() => {
-      emit("network:data", {
-        direction: "rx",
-        data: payload,
-        connection: demoNetworkState.endpoint ?? "demo",
-        timestamp: Date.now(),
-      });
-      networkEchoTimer = null;
-    }, 180);
+    const previous = networkEchoTimers.get(sessionId);
+    if (previous) clearTimeout(previous);
+    networkEchoTimers.set(
+      sessionId,
+      setTimeout(() => {
+        emit("network:data", {
+          sessionId,
+          direction: "rx",
+          data: payload,
+          connection: state.endpoint ?? "demo",
+          timestamp: Date.now(),
+        });
+        networkEchoTimers.delete(sessionId);
+      }, 180),
+    );
     return payload.length;
   }
 

@@ -1,5 +1,6 @@
 //! Standalone TCP/UDP debug assistant: servers, clients and a TCP relay.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -15,7 +16,7 @@ use crate::model::{
 
 pub struct NetworkManager {
     bus: EventBus,
-    active: RwLock<Option<NetworkHandle>>,
+    active: RwLock<HashMap<String, NetworkHandle>>,
 }
 
 struct NetworkHandle {
@@ -33,12 +34,16 @@ impl NetworkManager {
     pub fn new(bus: EventBus) -> Self {
         Self {
             bus,
-            active: RwLock::new(None),
+            active: RwLock::new(HashMap::new()),
         }
     }
 
-    pub async fn start(&self, input: NetworkStartInput) -> Result<NetworkStateDto, String> {
-        let _ = self.stop().await;
+    pub async fn start(
+        &self,
+        session_id: String,
+        input: NetworkStartInput,
+    ) -> Result<NetworkStateDto, String> {
+        let _ = self.stop(&session_id).await;
         validate_input(&input)?;
         let mode = input.mode;
         let endpoint = endpoint_for(&input);
@@ -47,8 +52,11 @@ impl NetworkManager {
         let (ready_tx, mut ready_rx) = mpsc::unbounded_channel();
         let bus = self.bus.clone();
         let task_input = input.clone();
+        let task_session = session_id.clone();
+        let final_session = session_id.clone();
         let task = tokio::spawn(async move {
             let result = run_mode(
+                task_session.clone(),
                 task_input,
                 bus.clone(),
                 command_rx,
@@ -63,6 +71,7 @@ impl NetworkManager {
             emit(
                 &bus,
                 AppEvent::NetworkState(NetworkStateDto {
+                    session_id: final_session,
                     active: false,
                     mode: Some(mode.label().to_owned()),
                     endpoint: Some(endpoint),
@@ -74,11 +83,14 @@ impl NetworkManager {
 
         match tokio::time::timeout(Duration::from_secs(6), ready_rx.recv()).await {
             Ok(Some(Ok(state))) => {
-                *self.active.write().await = Some(NetworkHandle {
-                    stop: stop_tx,
-                    commands: command_tx,
-                    task,
-                });
+                self.active.write().await.insert(
+                    session_id,
+                    NetworkHandle {
+                        stop: stop_tx,
+                        commands: command_tx,
+                        task,
+                    },
+                );
                 Ok(state)
             }
             Ok(Some(Err(error))) => {
@@ -99,8 +111,8 @@ impl NetworkManager {
         }
     }
 
-    pub async fn stop(&self) -> Result<(), String> {
-        let handle = self.active.write().await.take();
+    pub async fn stop(&self, session_id: &str) -> Result<(), String> {
+        let handle = self.active.write().await.remove(session_id);
         if let Some(handle) = handle {
             let _ = handle.stop.send(true);
             let _ = tokio::time::timeout(Duration::from_secs(2), handle.task).await;
@@ -108,7 +120,18 @@ impl NetworkManager {
         Ok(())
     }
 
-    pub async fn send(&self, input: RawSendInput) -> Result<usize, String> {
+    pub async fn stop_all(&self) {
+        let handles = {
+            let mut active = self.active.write().await;
+            active.drain().map(|(_, handle)| handle).collect::<Vec<_>>()
+        };
+        for handle in handles {
+            let _ = handle.stop.send(true);
+            let _ = tokio::time::timeout(Duration::from_secs(2), handle.task).await;
+        }
+    }
+
+    pub async fn send(&self, session_id: &str, input: RawSendInput) -> Result<usize, String> {
         let payload = input.encode()?;
         let (reply_tx, reply_rx) = oneshot::channel();
         let command = NetworkCommand {
@@ -118,7 +141,7 @@ impl NetworkManager {
         let sender = {
             let active = self.active.read().await;
             active
-                .as_ref()
+                .get(session_id)
                 .map(|handle| handle.commands.clone())
                 .ok_or_else(|| "网络助手尚未启动".to_owned())?
         };
@@ -184,8 +207,9 @@ fn endpoint_for(input: &NetworkStartInput) -> String {
     }
 }
 
-fn started_state(mode: NetworkMode, endpoint: &str) -> NetworkStateDto {
+fn started_state(session_id: &str, mode: NetworkMode, endpoint: &str) -> NetworkStateDto {
     NetworkStateDto {
+        session_id: session_id.to_owned(),
         active: true,
         mode: Some(mode.label().to_owned()),
         endpoint: Some(endpoint.to_owned()),
@@ -196,6 +220,7 @@ fn started_state(mode: NetworkMode, endpoint: &str) -> NetworkStateDto {
 
 fn emit_state(
     bus: &EventBus,
+    session_id: &str,
     mode: NetworkMode,
     endpoint: &str,
     clients: u32,
@@ -204,6 +229,7 @@ fn emit_state(
     emit(
         bus,
         AppEvent::NetworkState(NetworkStateDto {
+            session_id: session_id.to_owned(),
             active: error.is_none(),
             mode: Some(mode.label().to_owned()),
             endpoint: Some(endpoint.to_owned()),
@@ -213,10 +239,11 @@ fn emit_state(
     );
 }
 
-fn emit_data(bus: &EventBus, direction: &str, data: &[u8], connection: &str) {
+fn emit_data(bus: &EventBus, session_id: &str, direction: &str, data: &[u8], connection: &str) {
     emit(
         bus,
         AppEvent::NetworkData(NetworkDataDto {
+            session_id: session_id.to_owned(),
             direction: direction.to_owned(),
             data: data.to_vec(),
             connection: connection.to_owned(),
@@ -226,6 +253,7 @@ fn emit_data(bus: &EventBus, direction: &str, data: &[u8], connection: &str) {
 }
 
 async fn run_mode(
+    session_id: String,
     input: NetworkStartInput,
     bus: EventBus,
     commands: mpsc::UnboundedReceiver<NetworkCommand>,
@@ -233,15 +261,26 @@ async fn run_mode(
     ready_tx: mpsc::UnboundedSender<Result<NetworkStateDto, String>>,
 ) -> Result<(), String> {
     match input.mode {
-        NetworkMode::TcpServer => run_tcp_server(input, bus, commands, stop_rx, ready_tx).await,
-        NetworkMode::TcpClient => run_tcp_client(input, bus, commands, stop_rx, ready_tx).await,
-        NetworkMode::UdpServer => run_udp_server(input, bus, commands, stop_rx, ready_tx).await,
-        NetworkMode::UdpClient => run_udp_client(input, bus, commands, stop_rx, ready_tx).await,
-        NetworkMode::TcpRelay => run_tcp_relay(input, bus, commands, stop_rx, ready_tx).await,
+        NetworkMode::TcpServer => {
+            run_tcp_server(session_id, input, bus, commands, stop_rx, ready_tx).await
+        }
+        NetworkMode::TcpClient => {
+            run_tcp_client(session_id, input, bus, commands, stop_rx, ready_tx).await
+        }
+        NetworkMode::UdpServer => {
+            run_udp_server(session_id, input, bus, commands, stop_rx, ready_tx).await
+        }
+        NetworkMode::UdpClient => {
+            run_udp_client(session_id, input, bus, commands, stop_rx, ready_tx).await
+        }
+        NetworkMode::TcpRelay => {
+            run_tcp_relay(session_id, input, bus, commands, stop_rx, ready_tx).await
+        }
     }
 }
 
 async fn run_tcp_server(
+    session_id: String,
     input: NetworkStartInput,
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
@@ -260,7 +299,7 @@ async fn run_tcp_server(
     let mode = NetworkMode::TcpServer;
     let (outgoing, _) = broadcast::channel::<Vec<u8>>(128);
     let clients = Arc::new(AtomicU32::new(0));
-    let state = started_state(mode, &endpoint);
+    let state = started_state(&session_id, mode, &endpoint);
     emit(&bus, AppEvent::NetworkState(state.clone()));
     let _ = ready_tx.send(Ok(state));
 
@@ -272,7 +311,7 @@ async fn run_tcp_server(
                 let data = command.data;
                 match outgoing.send(data.clone()) {
                     Ok(count) => {
-                        emit_data(&bus, "tx", &data, "all clients");
+                        emit_data(&bus, &session_id, "tx", &data, "all clients");
                         let _ = command.reply.send(Ok(count));
                     }
                     Err(_) => {
@@ -286,12 +325,13 @@ async fn run_tcp_server(
                 match accepted {
                     Ok((socket, peer)) => {
                         let count = clients.fetch_add(1, Ordering::Relaxed) + 1;
-                        emit_state(&bus, mode, &endpoint, count, None);
+                        emit_state(&bus, &session_id, mode, &endpoint, count, None);
                         tokio::spawn(tcp_server_client(
                             socket,
                             peer.to_string(),
                             outgoing.subscribe(),
                             bus.clone(),
+                            session_id.clone(),
                             mode,
                             endpoint.clone(),
                             clients.clone(),
@@ -312,6 +352,7 @@ async fn tcp_server_client(
     peer: String,
     mut outgoing: broadcast::Receiver<Vec<u8>>,
     bus: EventBus,
+    session_id: String,
     mode: NetworkMode,
     endpoint: String,
     clients: Arc<AtomicU32>,
@@ -336,18 +377,19 @@ async fn tcp_server_client(
             read = reader.read(&mut buffer) => {
                 match read {
                     Ok(0) | Err(_) => break,
-                    Ok(count) => emit_data(&bus, "rx", &buffer[..count], &peer),
+                    Ok(count) => emit_data(&bus, &session_id, "rx", &buffer[..count], &peer),
                 }
             }
         }
     }
     if !*stop_rx.borrow() {
         let count = clients.fetch_sub(1, Ordering::Relaxed).saturating_sub(1);
-        emit_state(&bus, mode, &endpoint, count, None);
+        emit_state(&bus, &session_id, mode, &endpoint, count, None);
     }
 }
 
 async fn run_tcp_client(
+    session_id: String,
     input: NetworkStartInput,
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
@@ -361,7 +403,7 @@ async fn run_tcp_client(
         .map_err(|error| format!("连接 {host}:{port} 失败：{error}"))?;
     let endpoint = endpoint_for(&input);
     let mode = NetworkMode::TcpClient;
-    let state = started_state(mode, &endpoint);
+    let state = started_state(&session_id, mode, &endpoint);
     emit(&bus, AppEvent::NetworkState(state.clone()));
     let _ = ready_tx.send(Ok(state));
     let (mut reader, mut writer) = stream.into_split();
@@ -375,13 +417,13 @@ async fn run_tcp_client(
                     let _ = command.reply.send(Err("发送失败，连接已关闭".to_owned()));
                     break;
                 }
-                emit_data(&bus, "tx", &command.data, &endpoint);
+                emit_data(&bus, &session_id, "tx", &command.data, &endpoint);
                 let _ = command.reply.send(Ok(1));
             }
             read = reader.read(&mut buffer) => {
                 match read {
                     Ok(0) => break,
-                    Ok(count) => emit_data(&bus, "rx", &buffer[..count], &endpoint),
+                    Ok(count) => emit_data(&bus, &session_id, "rx", &buffer[..count], &endpoint),
                     Err(error) => return Err(format!("TCP 连接读取失败：{error}")),
                 }
             }
@@ -391,6 +433,7 @@ async fn run_tcp_client(
 }
 
 async fn run_udp_server(
+    session_id: String,
     input: NetworkStartInput,
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
@@ -407,7 +450,7 @@ async fn run_udp_server(
         .map_err(|error| format!("无法监听 UDP {host}:{}：{error}", input.local_port))?;
     let endpoint = endpoint_for(&input);
     let mode = NetworkMode::UdpServer;
-    let state = started_state(mode, &endpoint);
+    let state = started_state(&session_id, mode, &endpoint);
     emit(&bus, AppEvent::NetworkState(state.clone()));
     let _ = ready_tx.send(Ok(state));
     let mut last_peer: Option<std::net::SocketAddr> = None;
@@ -423,7 +466,7 @@ async fn run_udp_server(
                 };
                 match socket.send_to(&command.data, peer).await {
                     Ok(_) => {
-                        emit_data(&bus, "tx", &command.data, &peer.to_string());
+                        emit_data(&bus, &session_id, "tx", &command.data, &peer.to_string());
                         let _ = command.reply.send(Ok(1));
                     }
                     Err(error) => {
@@ -435,7 +478,7 @@ async fn run_udp_server(
                 match received {
                     Ok((count, peer)) => {
                         last_peer = Some(peer);
-                        emit_data(&bus, "rx", &buffer[..count], &peer.to_string());
+                        emit_data(&bus, &session_id, "rx", &buffer[..count], &peer.to_string());
                     }
                     Err(error) => return Err(format!("UDP 接收失败：{error}")),
                 }
@@ -446,6 +489,7 @@ async fn run_udp_server(
 }
 
 async fn run_udp_client(
+    session_id: String,
     input: NetworkStartInput,
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
@@ -468,7 +512,7 @@ async fn run_udp_client(
         .map_err(|error| format!("连接远端 UDP 失败：{error}"))?;
     let endpoint = endpoint_for(&input);
     let mode = NetworkMode::UdpClient;
-    let state = started_state(mode, &endpoint);
+    let state = started_state(&session_id, mode, &endpoint);
     emit(&bus, AppEvent::NetworkState(state.clone()));
     let _ = ready_tx.send(Ok(state));
     let mut buffer = vec![0u8; 65_535];
@@ -479,7 +523,7 @@ async fn run_udp_client(
                 let Some(command) = command else { break };
                 match socket.send(&command.data).await {
                     Ok(_) => {
-                        emit_data(&bus, "tx", &command.data, &endpoint);
+                        emit_data(&bus, &session_id, "tx", &command.data, &endpoint);
                         let _ = command.reply.send(Ok(1));
                     }
                     Err(error) => {
@@ -489,7 +533,7 @@ async fn run_udp_client(
             }
             received = socket.recv(&mut buffer) => {
                 match received {
-                    Ok(count) => emit_data(&bus, "rx", &buffer[..count], &endpoint),
+                    Ok(count) => emit_data(&bus, &session_id, "rx", &buffer[..count], &endpoint),
                     Err(error) => return Err(format!("UDP 接收失败：{error}")),
                 }
             }
@@ -499,6 +543,7 @@ async fn run_udp_client(
 }
 
 async fn run_tcp_relay(
+    session_id: String,
     input: NetworkStartInput,
     bus: EventBus,
     mut commands: mpsc::UnboundedReceiver<NetworkCommand>,
@@ -520,7 +565,7 @@ async fn run_tcp_relay(
         .map_err(|error| format!("无法监听 {local_host}:{}：{error}", input.local_port))?;
     let endpoint = endpoint_for(&input);
     let mode = NetworkMode::TcpRelay;
-    let state = started_state(mode, &endpoint);
+    let state = started_state(&session_id, mode, &endpoint);
     emit(&bus, AppEvent::NetworkState(state.clone()));
     let _ = ready_tx.send(Ok(state));
 
@@ -534,7 +579,7 @@ async fn run_tcp_relay(
                     let _ = command.reply.send(Err("上游连接已关闭".to_owned()));
                     return Ok(());
                 }
-                emit_data(&bus, "tx", &command.data, "upstream");
+                emit_data(&bus, &session_id, "tx", &command.data, "upstream");
                 let _ = command.reply.send(Ok(1));
             }
             accepted = listener.accept() => {
@@ -545,7 +590,7 @@ async fn run_tcp_relay(
             }
         }
     };
-    emit_state(&bus, mode, &endpoint, 1, None);
+    emit_state(&bus, &session_id, mode, &endpoint, 1, None);
     let (mut local_read, mut local_write) = client.into_split();
     let (mut upstream_read, mut upstream_write) = upstream.into_split();
     let mut local_buffer = [0u8; 8192];
@@ -559,14 +604,14 @@ async fn run_tcp_relay(
                     let _ = command.reply.send(Err("上游连接已关闭".to_owned()));
                     break;
                 }
-                emit_data(&bus, "tx", &command.data, "upstream");
+                emit_data(&bus, &session_id, "tx", &command.data, "upstream");
                 let _ = command.reply.send(Ok(1));
             }
             read = local_read.read(&mut local_buffer) => {
                 match read {
                     Ok(0) => break,
                     Ok(count) => {
-                        emit_data(&bus, "rx", &local_buffer[..count], "local client");
+                        emit_data(&bus, &session_id, "rx", &local_buffer[..count], "local client");
                         if upstream_write.write_all(&local_buffer[..count]).await.is_err() {
                             break;
                         }
@@ -578,7 +623,7 @@ async fn run_tcp_relay(
                 match read {
                     Ok(0) => break,
                     Ok(count) => {
-                        emit_data(&bus, "rx", &upstream_buffer[..count], "upstream");
+                        emit_data(&bus, &session_id, "rx", &upstream_buffer[..count], "upstream");
                         if local_write.write_all(&upstream_buffer[..count]).await.is_err() {
                             break;
                         }
@@ -629,6 +674,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn two_network_sessions_run_concurrently() {
+        let first_port = {
+            let probe = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            probe.local_addr().unwrap().port()
+        };
+        let second_port = {
+            let probe = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            probe.local_addr().unwrap().port()
+        };
+        let manager = NetworkManager::new(event_bus());
+        let first = manager
+            .start("network-a".to_owned(), server_input(first_port))
+            .await
+            .unwrap();
+        let second = manager
+            .start("network-b".to_owned(), server_input(second_port))
+            .await
+            .unwrap();
+
+        assert!(first.active);
+        assert!(second.active);
+        assert_eq!(first.session_id, "network-a");
+        assert_eq!(second.session_id, "network-b");
+
+        manager.stop("network-a").await.unwrap();
+        manager.stop_all().await;
+    }
+
+    #[tokio::test]
     async fn tcp_server_accepts_a_client_and_sends_bytes() {
         let port = {
             let probe = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
@@ -637,13 +711,18 @@ mod tests {
         let bus = event_bus();
         let mut events = bus.subscribe();
         let manager = NetworkManager::new(bus);
-        let state = manager.start(server_input(port)).await.unwrap();
+        let state = manager
+            .start("network-1".to_owned(), server_input(port))
+            .await
+            .unwrap();
         assert!(state.active);
+        assert_eq!(state.session_id, "network-1");
 
         let mut client = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
         let accepted = tokio::time::timeout(Duration::from_secs(2), async {
             while let Ok(event) = events.recv().await {
                 if let AppEvent::NetworkState(state) = event
+                    && state.session_id == "network-1"
                     && state.active
                     && state.clients == 1
                 {
@@ -655,12 +734,15 @@ mod tests {
         assert!(accepted.is_ok(), "client connection was not accepted");
 
         let sent = manager
-            .send(RawSendInput {
-                data: "hello".to_owned(),
-                mode: RawSendMode::Ascii,
-                append_cr: false,
-                append_lf: false,
-            })
+            .send(
+                "network-1",
+                RawSendInput {
+                    data: "hello".to_owned(),
+                    mode: RawSendMode::Ascii,
+                    append_cr: false,
+                    append_lf: false,
+                },
+            )
             .await
             .unwrap();
         assert_eq!(sent, 1);
@@ -672,6 +754,6 @@ mod tests {
             .unwrap();
         assert_eq!(&buffer, b"hello");
 
-        manager.stop().await.unwrap();
+        manager.stop("network-1").await.unwrap();
     }
 }

@@ -38,7 +38,10 @@ export function toDefinitionInput(definition: Definition): DefinitionInput {
     aliases: { ...definition.aliases },
     points: definition.points.map((point) => ({
       ...point,
-      alerts: point.alerts.map((rule) => ({ ...rule })),
+      alerts: point.alerts.map((rule) => ({
+        ...rule,
+        recovery: rule.recovery ? { ...rule.recovery } : undefined,
+      })),
       simulator: point.simulator ? { ...point.simulator } : undefined,
     })),
   };

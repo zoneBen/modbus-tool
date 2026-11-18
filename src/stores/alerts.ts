@@ -38,5 +38,9 @@ export const useAlertsStore = defineStore("alerts", () => {
     unread.value = 0;
   }
 
-  return { records, unread, activeCount, apply, markSeen, clear };
+  function clearSession(sessionId: string): void {
+    records.value = records.value.filter((record) => record.sessionId !== sessionId);
+  }
+
+  return { records, unread, activeCount, apply, markSeen, clear, clearSession };
 });

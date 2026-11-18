@@ -21,7 +21,13 @@ import { resolvePoints, toDefinitionInput } from "@/lib/definition";
 import { formatAddress } from "@/lib/format";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
-import type { AlertOperator, AlertRule, Definition, RegisterPoint } from "@/types/models";
+import type {
+  AlertOperator,
+  AlertRule,
+  AlertSeverity,
+  Definition,
+  RegisterPoint,
+} from "@/types/models";
 
 const open = defineModel<boolean>("open", { default: false });
 const props = defineProps<{
@@ -45,6 +51,12 @@ const operatorOptions = computed<Array<{ label: string; value: AlertOperator }>>
   { label: t("alertRules.operators.ne"), value: "ne" },
 ]);
 
+const severityOptions = computed<Array<{ label: string; value: AlertSeverity }>>(() => [
+  { label: t("alertRules.severityInfo"), value: "info" },
+  { label: t("alertRules.severityWarning"), value: "warning" },
+  { label: t("alertRules.severityCritical"), value: "critical" },
+]);
+
 const bulk = computed(() => props.addresses.length > 1);
 const addressLabel = computed(() =>
   props.addresses.map((address) => formatAddress(address, settings.addressBase)).join(", "),
@@ -53,6 +65,8 @@ const addressLabel = computed(() =>
 function emptyRule(): AlertRule {
   return {
     id: newRuleId(),
+    description: "",
+    severity: "warning",
     operator: "gt",
     value: 0,
     delayMs: 0,
@@ -98,7 +112,14 @@ watch(
       rules.value = [];
       return;
     }
-    rules.value = pointFor(address).alerts.map((rule) => ({ ...rule }));
+    rules.value = pointFor(address).alerts.map((rule) => ({
+      ...rule,
+      description: rule.description ?? "",
+      severity: rule.severity ?? "warning",
+      recovery: rule.recovery
+        ? { ...rule.recovery, delayMs: rule.recovery.delayMs ?? 0 }
+        : undefined,
+    }));
   },
   { immediate: true },
 );
@@ -107,12 +128,21 @@ function addRule(): void {
   rules.value = [...rules.value, emptyRule()];
 }
 
+function setRecovery(rule: AlertRule, enabled: boolean): void {
+  rule.recovery = enabled ? { operator: "lt", value: 0, delayMs: 0 } : undefined;
+}
+
 function removeRule(index: number): void {
   rules.value = rules.value.filter((_, ruleIndex) => ruleIndex !== index);
 }
 
 function normalizeRule(rule: AlertRule): AlertRule | null {
-  if (!Number.isFinite(rule.value) || !Number.isFinite(rule.delayMs)) {
+  if (
+    !Number.isFinite(rule.value) ||
+    !Number.isFinite(rule.delayMs) ||
+    (rule.recovery &&
+      (!Number.isFinite(rule.recovery.value) || !Number.isFinite(rule.recovery.delayMs)))
+  ) {
     return null;
   }
   return {
@@ -120,6 +150,15 @@ function normalizeRule(rule: AlertRule): AlertRule | null {
     value: Number(rule.value),
     delayMs: Math.max(0, Math.trunc(rule.delayMs)),
     enabled: Boolean(rule.enabled),
+    description: (rule.description ?? "").trim(),
+    severity: rule.severity ?? "warning",
+    recovery: rule.recovery
+      ? {
+          operator: rule.recovery.operator,
+          value: Number(rule.recovery.value),
+          delayMs: Math.max(0, Math.trunc(rule.recovery.delayMs)),
+        }
+      : undefined,
   };
 }
 
@@ -212,6 +251,24 @@ async function save(): Promise<void> {
             {{ t("alertRules.bulkHint", { count: addresses.length }) }}
           </p>
           <div class="space-y-3 rounded-xl border border-hairline bg-overlay-1 p-3">
+            <div class="grid grid-cols-[1fr_160px] gap-2">
+              <div class="space-y-1.5">
+                <Label class="text-[11px] text-muted-foreground">
+                  {{ t("alertRules.alertDescription") }}
+                </Label>
+                <Input
+                  v-model="bulkRule.description"
+                  :placeholder="t('alertRules.descriptionPlaceholder')"
+                  class="h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <Label class="text-[11px] text-muted-foreground">
+                  {{ t("alertRules.severity") }}
+                </Label>
+                <FormSelect v-model="bulkRule.severity" :options="severityOptions" />
+              </div>
+            </div>
             <div class="grid grid-cols-[1fr_100px] gap-2">
               <div class="space-y-1.5">
                 <Label class="text-[11px] text-muted-foreground">
@@ -245,6 +302,61 @@ async function save(): Promise<void> {
                 <Switch v-model="bulkRule.enabled" />
               </div>
             </div>
+
+            <div class="mt-3 rounded-lg border border-hairline bg-well/60 p-2.5">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-[11px] font-medium text-foreground">
+                    {{ t("alertRules.recoveryTitle") }}
+                  </p>
+                  <p class="mt-0.5 text-[10.5px] leading-relaxed text-muted-foreground">
+                    {{
+                      bulkRule.recovery
+                        ? t("alertRules.recoveryHint")
+                        : t("alertRules.recoveryDefault")
+                    }}
+                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <span class="text-[10.5px] text-muted-foreground">
+                    {{ t("alertRules.recoveryConfigure") }}
+                  </span>
+                  <Switch
+                    :model-value="Boolean(bulkRule.recovery)"
+                    @update:model-value="(checked) => setRecovery(bulkRule, Boolean(checked))"
+                  />
+                </div>
+              </div>
+              <div v-if="bulkRule.recovery" class="mt-2 grid grid-cols-[1fr_100px_120px] gap-2">
+                <div class="space-y-1">
+                  <Label class="text-[10.5px] text-muted-foreground">
+                    {{ t("alertRules.recoveryOperator") }}
+                  </Label>
+                  <FormSelect v-model="bulkRule.recovery.operator" :options="operatorOptions" />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-[10.5px] text-muted-foreground">
+                    {{ t("alertRules.recoveryThreshold") }}
+                  </Label>
+                  <Input
+                    v-model.number="bulkRule.recovery.value"
+                    type="number"
+                    class="numeric h-8 rounded-lg border-hairline-strong bg-well text-[12px]"
+                  />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-[10.5px] text-muted-foreground">
+                    {{ t("alertRules.recoveryDelay") }}
+                  </Label>
+                  <Input
+                    v-model.number="bulkRule.recovery.delayMs"
+                    type="number"
+                    min="0"
+                    class="numeric h-8 rounded-lg border-hairline-strong bg-well text-[12px]"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </template>
 
@@ -255,6 +367,24 @@ async function save(): Promise<void> {
               :key="rule.id"
               class="space-y-2 rounded-xl border border-hairline bg-overlay-1 p-3"
             >
+              <div class="grid grid-cols-[1fr_160px] gap-2">
+                <div class="space-y-1.5">
+                  <Label class="text-[11px] text-muted-foreground">
+                    {{ t("alertRules.alertDescription") }}
+                  </Label>
+                  <Input
+                    v-model="rule.description"
+                    :placeholder="t('alertRules.descriptionPlaceholder')"
+                    class="h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+                  />
+                </div>
+                <div class="space-y-1.5">
+                  <Label class="text-[11px] text-muted-foreground">
+                    {{ t("alertRules.severity") }}
+                  </Label>
+                  <FormSelect v-model="rule.severity" :options="severityOptions" />
+                </div>
+              </div>
               <div class="grid grid-cols-[1fr_100px_120px_38px] items-end gap-2">
                 <div class="space-y-1.5">
                   <Label class="text-[11px] text-muted-foreground">
@@ -297,6 +427,61 @@ async function save(): Promise<void> {
                   {{ t("alertRules.enabledRules") }}
                 </span>
                 <Switch v-model="rule.enabled" />
+              </div>
+
+              <div class="rounded-lg border border-hairline bg-well/60 p-2.5">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-[11px] font-medium text-foreground">
+                      {{ t("alertRules.recoveryTitle") }}
+                    </p>
+                    <p class="mt-0.5 text-[10.5px] leading-relaxed text-muted-foreground">
+                      {{
+                        rule.recovery
+                          ? t("alertRules.recoveryHint")
+                          : t("alertRules.recoveryDefault")
+                      }}
+                    </p>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <span class="text-[10.5px] text-muted-foreground">
+                      {{ t("alertRules.recoveryConfigure") }}
+                    </span>
+                    <Switch
+                      :model-value="Boolean(rule.recovery)"
+                      @update:model-value="(checked) => setRecovery(rule, Boolean(checked))"
+                    />
+                  </div>
+                </div>
+                <div v-if="rule.recovery" class="mt-2 grid grid-cols-[1fr_100px_120px] gap-2">
+                  <div class="space-y-1">
+                    <Label class="text-[10.5px] text-muted-foreground">
+                      {{ t("alertRules.recoveryOperator") }}
+                    </Label>
+                    <FormSelect v-model="rule.recovery.operator" :options="operatorOptions" />
+                  </div>
+                  <div class="space-y-1">
+                    <Label class="text-[10.5px] text-muted-foreground">
+                      {{ t("alertRules.recoveryThreshold") }}
+                    </Label>
+                    <Input
+                      v-model.number="rule.recovery.value"
+                      type="number"
+                      class="numeric h-8 rounded-lg border-hairline-strong bg-well text-[12px]"
+                    />
+                  </div>
+                  <div class="space-y-1">
+                    <Label class="text-[10.5px] text-muted-foreground">
+                      {{ t("alertRules.recoveryDelay") }}
+                    </Label>
+                    <Input
+                      v-model.number="rule.recovery.delayMs"
+                      type="number"
+                      min="0"
+                      class="numeric h-8 rounded-lg border-hairline-strong bg-well text-[12px]"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

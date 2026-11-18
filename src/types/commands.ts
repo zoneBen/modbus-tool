@@ -97,9 +97,9 @@ export interface IpcApi {
   startDebug(sessionId: string): Promise<void>;
   stopDebug(sessionId: string): Promise<void>;
   sendDebug(sessionId: string, input: RawSendInput): Promise<number>;
-  startNetwork(input: NetworkStartInput): Promise<NetworkState>;
-  stopNetwork(): Promise<void>;
-  sendNetwork(input: RawSendInput): Promise<number>;
+  startNetwork(sessionId: string, input: NetworkStartInput): Promise<NetworkState>;
+  stopNetwork(sessionId: string): Promise<void>;
+  sendNetwork(sessionId: string, input: RawSendInput): Promise<number>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

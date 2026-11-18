@@ -17,7 +17,10 @@ export function pointEnd(point: RegisterPoint): number {
 export function cloneMappingPoint(point: RegisterPoint): RegisterPoint {
   return {
     ...point,
-    alerts: point.alerts.map((rule) => ({ ...rule })),
+    alerts: point.alerts.map((rule) => ({
+      ...rule,
+      recovery: rule.recovery ? { ...rule.recovery } : undefined,
+    })),
     simulator: point.simulator ? { ...point.simulator } : undefined,
   };
 }

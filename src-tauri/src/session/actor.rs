@@ -98,6 +98,7 @@ enum ReadFailure {
 #[derive(Debug, Clone, Default)]
 struct AlertRuntime {
     since: Option<Instant>,
+    recovery_since: Option<Instant>,
     firing: bool,
 }
 
@@ -1264,11 +1265,58 @@ impl Actor {
             for rule in point.alerts.iter().filter(|rule| rule.enabled) {
                 let key = format!("{}:{}:{}", definition.id, point.address, rule.id);
                 let condition = rule.operator.compare(numeric, rule.value);
+                let recovery_condition = !condition
+                    && rule
+                        .recovery
+                        .is_none_or(|recovery| recovery.operator.compare(numeric, recovery.value));
+                let recovery_delay = rule.recovery.map_or(0, |recovery| recovery.delay_ms);
                 let runtime = self.alert_states.entry(key).or_default();
-                if condition {
+                if runtime.firing {
+                    if !condition {
+                        runtime.since = None;
+                        if recovery_condition {
+                            let since = *runtime.recovery_since.get_or_insert_with(Instant::now);
+                            if since.elapsed() >= Duration::from_millis(recovery_delay) {
+                                runtime.firing = false;
+                                runtime.recovery_since = None;
+                                events.push(AlertEventDto {
+                                    rule_id: rule.id.clone(),
+                                    session_id: session_id.clone(),
+                                    definition_id: definition.id.clone(),
+                                    definition_name: definition.name.clone(),
+                                    address: point.address,
+                                    meaning: point.meaning.clone(),
+                                    unit: point.unit.clone(),
+                                    description: rule.description.clone(),
+                                    severity: rule.severity,
+                                    operator: rule.operator,
+                                    threshold: rule.value,
+                                    value: numeric,
+                                    delay_ms: rule.delay_ms,
+                                    triggered: false,
+                                    timestamp: now_ms(),
+                                    recovery_operator: rule
+                                        .recovery
+                                        .map(|recovery| recovery.operator),
+                                    recovery_threshold: rule
+                                        .recovery
+                                        .map(|recovery| recovery.value),
+                                    recovery_delay_ms: rule
+                                        .recovery
+                                        .map(|recovery| recovery.delay_ms),
+                                });
+                            }
+                        } else {
+                            runtime.recovery_since = None;
+                        }
+                    } else {
+                        runtime.recovery_since = None;
+                    }
+                } else if condition {
                     let since = *runtime.since.get_or_insert_with(Instant::now);
-                    if !runtime.firing && since.elapsed() >= Duration::from_millis(rule.delay_ms) {
+                    if since.elapsed() >= Duration::from_millis(rule.delay_ms) {
                         runtime.firing = true;
+                        runtime.recovery_since = None;
                         events.push(AlertEventDto {
                             rule_id: rule.id.clone(),
                             session_id: session_id.clone(),
@@ -1277,34 +1325,22 @@ impl Actor {
                             address: point.address,
                             meaning: point.meaning.clone(),
                             unit: point.unit.clone(),
+                            description: rule.description.clone(),
+                            severity: rule.severity,
                             operator: rule.operator,
                             threshold: rule.value,
                             value: numeric,
                             delay_ms: rule.delay_ms,
                             triggered: true,
                             timestamp: now_ms(),
+                            recovery_operator: rule.recovery.map(|recovery| recovery.operator),
+                            recovery_threshold: rule.recovery.map(|recovery| recovery.value),
+                            recovery_delay_ms: rule.recovery.map(|recovery| recovery.delay_ms),
                         });
                     }
                 } else {
-                    if runtime.firing {
-                        events.push(AlertEventDto {
-                            rule_id: rule.id.clone(),
-                            session_id: session_id.clone(),
-                            definition_id: definition.id.clone(),
-                            definition_name: definition.name.clone(),
-                            address: point.address,
-                            meaning: point.meaning.clone(),
-                            unit: point.unit.clone(),
-                            operator: rule.operator,
-                            threshold: rule.value,
-                            value: numeric,
-                            delay_ms: rule.delay_ms,
-                            triggered: false,
-                            timestamp: now_ms(),
-                        });
-                    }
                     runtime.since = None;
-                    runtime.firing = false;
+                    runtime.recovery_since = None;
                 }
             }
         }

@@ -86,9 +86,11 @@ function createTauriBridge(): IpcApi {
     stopDebug: (sessionId: string) => invoke<void>("debug_stop", { sessionId }),
     sendDebug: (sessionId: string, input: RawSendInput) =>
       invoke<number>("debug_send", { sessionId, input }),
-    startNetwork: (input: NetworkStartInput) => invoke<NetworkState>("network_start", { input }),
-    stopNetwork: () => invoke<void>("network_stop"),
-    sendNetwork: (input: RawSendInput) => invoke<number>("network_send", { input }),
+    startNetwork: (sessionId: string, input: NetworkStartInput) =>
+      invoke<NetworkState>("network_start", { sessionId, input }),
+    stopNetwork: (sessionId: string) => invoke<void>("network_stop", { sessionId }),
+    sendNetwork: (sessionId: string, input: RawSendInput) =>
+      invoke<number>("network_send", { sessionId, input }),
     on: async <K extends AppEventName>(
       event: K,
       handler: (payload: AppEventMap[K]) => void,

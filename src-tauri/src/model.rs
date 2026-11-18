@@ -102,16 +102,43 @@ impl AlertOperator {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+fn default_alert_severity() -> AlertSeverity {
+    AlertSeverity::Warning
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertRecoveryDto {
+    pub operator: AlertOperator,
+    pub value: f64,
+    #[serde(default)]
+    pub delay_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlertRuleDto {
     pub id: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_alert_severity")]
+    pub severity: AlertSeverity,
     pub operator: AlertOperator,
     pub value: f64,
     #[serde(default)]
     pub delay_ms: u64,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<AlertRecoveryDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,12 +151,20 @@ pub struct AlertEventDto {
     pub address: u16,
     pub meaning: String,
     pub unit: String,
+    pub description: String,
+    pub severity: AlertSeverity,
     pub operator: AlertOperator,
     pub threshold: f64,
     pub value: f64,
     pub delay_ms: u64,
     pub triggered: bool,
     pub timestamp: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_operator: Option<AlertOperator>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_threshold: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_delay_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -428,6 +463,15 @@ impl DefinitionInput {
                 }
                 if !rule.value.is_finite() {
                     return Err(format!("点位 {} 的告警阈值必须为有限数值", point.address));
+                }
+                if let Some(recovery) = &mut rule.recovery {
+                    if !recovery.value.is_finite() {
+                        return Err(format!(
+                            "点位 {} 的告警恢复阈值必须为有限数值",
+                            point.address
+                        ));
+                    }
+                    recovery.delay_ms = recovery.delay_ms.min(3_600_000);
                 }
                 rule.delay_ms = rule.delay_ms.min(3_600_000);
             }
@@ -1185,6 +1229,7 @@ pub struct NetworkStartInput {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkStateDto {
+    pub session_id: String,
     pub active: bool,
     pub mode: Option<String>,
     pub endpoint: Option<String>,
@@ -1196,6 +1241,7 @@ pub struct NetworkStateDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkDataDto {
+    pub session_id: String,
     pub direction: String,
     pub data: Vec<u8>,
     pub connection: String,

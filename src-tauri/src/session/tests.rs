@@ -11,9 +11,9 @@ use tokio::sync::Mutex;
 
 use crate::event::{AppEvent, event_bus};
 use crate::model::{
-    AlertOperator, AlertRuleDto, CustomWriteInput, DefinitionInput, NewSessionInput, RawSendInput,
-    RawSendMode, RegisterPointDto, SessionRole, SessionStatus, SimulatorMode, SimulatorPointDto,
-    SlaveValueInput, TransportKind,
+    AlertOperator, AlertRecoveryDto, AlertRuleDto, AlertSeverity, CustomWriteInput,
+    DefinitionInput, NewSessionInput, RawSendInput, RawSendMode, RegisterPointDto, SessionRole,
+    SessionStatus, SimulatorMode, SimulatorPointDto, SlaveValueInput, TransportKind,
 };
 use crate::session::SessionManager;
 
@@ -303,10 +303,13 @@ async fn applies_point_scaling_and_emits_alerts() {
         offset: -5.0,
         alerts: vec![AlertRuleDto {
             id: "alert-1".to_owned(),
+            description: "电压过高".to_owned(),
+            severity: AlertSeverity::Critical,
             operator: AlertOperator::Gt,
             value: 500.0,
             delay_ms: 0,
             enabled: true,
+            recovery: None,
         }],
         simulator: None,
     }];
@@ -340,8 +343,176 @@ async fn applies_point_scaling_and_emits_alerts() {
     let alert_event = alert_event.expect("alert event");
     assert!(alert_event.triggered);
     assert_eq!(alert_event.meaning, "输入电压");
+    assert_eq!(alert_event.description, "电压过高");
+    assert_eq!(alert_event.severity, AlertSeverity::Critical);
     assert_eq!(alert_event.unit, "V");
     assert!((alert_event.value - 995.0).abs() < 1e-6);
+
+    manager.shutdown_all().await;
+    server.abort();
+}
+
+#[tokio::test]
+async fn staged_alert_requires_recovery_condition_before_clearing() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let simulator = Arc::new(Mutex::new(Simulator::new([
+        SlaveUnit::new(1).with_holding_registers([(0, 100), (1, 0)])
+    ])));
+    let server = tokio::spawn(mock_tcp_slave(listener, simulator.clone()));
+
+    let bus = event_bus();
+    let mut events = bus.subscribe();
+    let manager = SessionManager::new(bus);
+    let session = manager.create_session(input(port)).await.expect("create");
+    manager
+        .set_polling(&session.id, false)
+        .await
+        .expect("stop polling");
+
+    let mut definition = definition_input("恢复规则");
+    definition.start_address = 0;
+    definition.quantity = 1;
+    definition.points = vec![RegisterPointDto {
+        address: 0,
+        data_type: DataType::U16,
+        byte_order: OrderPreset::Abcd,
+        byte_pos: None,
+        meaning: "温度".to_owned(),
+        unit: "C".to_owned(),
+        scale: 10.0,
+        offset: -5.0,
+        alerts: vec![AlertRuleDto {
+            id: "alert-recovery".to_owned(),
+            description: "电压恢复测试".to_owned(),
+            severity: AlertSeverity::Warning,
+            operator: AlertOperator::Gt,
+            value: 500.0,
+            delay_ms: 0,
+            enabled: true,
+            recovery: Some(AlertRecoveryDto {
+                operator: AlertOperator::Lt,
+                value: 300.0,
+                delay_ms: 200,
+            }),
+        }],
+        simulator: None,
+    }];
+    let definition = manager
+        .create_definition(&session.id, definition)
+        .await
+        .expect("create definition");
+
+    // 995 > 500: trigger.
+    manager
+        .read_once(&session.id, &definition.id)
+        .await
+        .expect("trigger read");
+    let mut triggered = false;
+    for _ in 0..20 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::Alert(event))) if event.rule_id == "alert-recovery" => {
+                if event.triggered {
+                    triggered = true;
+                }
+            }
+            Ok(Ok(AppEvent::SessionData(snapshot))) if snapshot.definition_id == definition.id => {
+                break;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+    assert!(triggered, "alert should trigger");
+
+    // 495 < 500 but not below the recovery threshold: stay active.
+    simulator
+        .lock()
+        .await
+        .unit_mut(1)
+        .expect("unit")
+        .set_holding(0, 50);
+    manager
+        .read_once(&session.id, &definition.id)
+        .await
+        .expect("intermediate read");
+    let mut cleared_early = false;
+    for _ in 0..20 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::Alert(event)))
+                if event.rule_id == "alert-recovery" && !event.triggered =>
+            {
+                cleared_early = true;
+            }
+            Ok(Ok(AppEvent::SessionData(snapshot))) if snapshot.definition_id == definition.id => {
+                break;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+    assert!(
+        !cleared_early,
+        "alert must not clear before recovery threshold"
+    );
+
+    // 195 < 500 and < 300: recovery condition starts its 200 ms hold.
+    simulator
+        .lock()
+        .await
+        .unit_mut(1)
+        .expect("unit")
+        .set_holding(0, 20);
+    manager
+        .read_once(&session.id, &definition.id)
+        .await
+        .expect("recovery hold read");
+    let mut cleared_early = false;
+    for _ in 0..20 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::Alert(event)))
+                if event.rule_id == "alert-recovery" && !event.triggered =>
+            {
+                cleared_early = true;
+            }
+            Ok(Ok(AppEvent::SessionData(snapshot))) if snapshot.definition_id == definition.id => {
+                break;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+    assert!(
+        !cleared_early,
+        "recovery must wait for its configured hold time"
+    );
+
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    manager
+        .read_once(&session.id, &definition.id)
+        .await
+        .expect("recovery read");
+    let mut cleared = None;
+    for _ in 0..20 {
+        match tokio::time::timeout(Duration::from_secs(2), events.recv()).await {
+            Ok(Ok(AppEvent::Alert(event)))
+                if event.rule_id == "alert-recovery" && !event.triggered =>
+            {
+                cleared = Some(event);
+            }
+            Ok(Ok(AppEvent::SessionData(snapshot))) if snapshot.definition_id == definition.id => {
+                break;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+    let cleared = cleared.expect("recovery event");
+    assert_eq!(cleared.recovery_operator, Some(AlertOperator::Lt));
+    assert_eq!(cleared.recovery_threshold, Some(300.0));
+    assert_eq!(cleared.recovery_delay_ms, Some(200));
+    assert_eq!(cleared.description, "电压恢复测试");
+    assert_eq!(cleared.severity, AlertSeverity::Warning);
 
     manager.shutdown_all().await;
     server.abort();

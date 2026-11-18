@@ -49,7 +49,18 @@ function sampleSession(): Session {
             unit: "C",
             scale: 0.1,
             offset: -5,
-            alerts: [{ id: "rule-1", operator: "gt", value: 80, delayMs: 500, enabled: true }],
+            alerts: [
+              {
+                id: "rule-1",
+                description: "High temperature",
+                severity: "critical",
+                operator: "gt",
+                value: 80,
+                delayMs: 500,
+                enabled: true,
+                recovery: { operator: "lt", value: 60, delayMs: 200 },
+              },
+            ],
           },
           {
             address: 2,
@@ -83,6 +94,13 @@ describe("persisted workspace", () => {
     expect(definition?.points[0]?.scale).toBe(0.1);
     expect(definition?.points[0]?.offset).toBe(-5);
     expect(definition?.points[0]?.alerts[0]?.delayMs).toBe(500);
+    expect(definition?.points[0]?.alerts[0]?.description).toBe("High temperature");
+    expect(definition?.points[0]?.alerts[0]?.severity).toBe("critical");
+    expect(definition?.points[0]?.alerts[0]?.recovery).toEqual({
+      operator: "lt",
+      value: 60,
+      delayMs: 200,
+    });
     expect(definition?.points[1]?.simulator?.mode).toBe("increment");
     expect(definition?.points[1]?.simulator?.refreshMs).toBe(250);
   });

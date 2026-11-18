@@ -25,12 +25,23 @@ export type ByteOrder = "abcd" | "dcba" | "badc" | "cdab";
 
 export type AlertOperator = "gt" | "lt" | "gte" | "lte" | "eq" | "ne";
 
+export type AlertSeverity = "info" | "warning" | "critical";
+
+export interface AlertRecoveryRule {
+  operator: AlertOperator;
+  value: number;
+  delayMs: number;
+}
+
 export interface AlertRule {
   id: string;
+  description: string;
+  severity: AlertSeverity;
   operator: AlertOperator;
   value: number;
   delayMs: number;
   enabled: boolean;
+  recovery?: AlertRecoveryRule;
 }
 
 export type SimulatorMode = "increment" | "decrement" | "random" | "fixed";
@@ -81,12 +92,17 @@ export interface AlertEvent {
   address: number;
   meaning: string;
   unit: string;
+  description: string;
+  severity: AlertSeverity;
   operator: AlertOperator;
   threshold: number;
   value: number;
   delayMs: number;
   triggered: boolean;
   timestamp: number;
+  recoveryOperator?: AlertOperator;
+  recoveryThreshold?: number;
+  recoveryDelayMs?: number;
 }
 
 export type WriteFunctionCode = 5 | 6 | 15 | 16;
@@ -131,6 +147,7 @@ export interface NetworkStartInput {
 }
 
 export interface NetworkState {
+  sessionId: string;
   active: boolean;
   mode: string | null;
   endpoint: string | null;
@@ -139,6 +156,7 @@ export interface NetworkState {
 }
 
 export interface NetworkData {
+  sessionId: string;
   direction: "tx" | "rx";
   data: number[];
   connection: string;

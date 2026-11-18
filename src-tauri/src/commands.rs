@@ -227,23 +227,25 @@ pub async fn debug_send(
 
 #[tauri::command]
 pub async fn network_start(
+    session_id: String,
     input: NetworkStartInput,
     state: State<'_, AppState>,
 ) -> Result<NetworkStateDto, String> {
-    state.network.start(input).await
+    state.network.start(session_id, input).await
 }
 
 #[tauri::command]
-pub async fn network_stop(state: State<'_, AppState>) -> Result<(), String> {
-    state.network.stop().await
+pub async fn network_stop(session_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.network.stop(&session_id).await
 }
 
 #[tauri::command]
 pub async fn network_send(
+    session_id: String,
     input: RawSendInput,
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    state.network.send(input).await
+    state.network.send(&session_id, input).await
 }
 
 #[tauri::command]

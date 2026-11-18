@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AboutOverlay from "@/components/about/AboutOverlay.vue";
-import AlertsDialog from "@/components/alerts/AlertsDialog.vue";
+import AlertsWorkspace from "@/components/alerts/AlertsWorkspace.vue";
 import TrendOverlay from "@/components/chart/TrendOverlay.vue";
 import DebugDialog from "@/components/debug/DebugDialog.vue";
 import ActivityRail from "@/components/layout/ActivityRail.vue";
@@ -15,8 +15,8 @@ import WriteDialog from "@/components/definition/WriteDialog.vue";
 import RegisterGrid from "@/components/grid/RegisterGrid.vue";
 import InspectorPanel from "@/components/inspector/InspectorPanel.vue";
 import FrameMonitor from "@/components/monitor/FrameMonitor.vue";
-import NetworkDialog from "@/components/network/NetworkDialog.vue";
-import ScanDialog from "@/components/scan/ScanDialog.vue";
+import NetworkWorkspace from "@/components/network/NetworkWorkspace.vue";
+import ScanWorkspace from "@/components/scan/ScanWorkspace.vue";
 import EditSessionDialog from "@/components/session/EditSessionDialog.vue";
 import NewSessionDialog from "@/components/session/NewSessionDialog.vue";
 import SettingsDialog from "@/components/settings/SettingsDialog.vue";
@@ -32,49 +32,31 @@ const settings = useSettingsStore();
 const sessions = useSessionsStore();
 const { t } = useI18n();
 const initialDialog = new URLSearchParams(window.location.search).get("dialog");
+type PageView = "workspace" | "network" | "scan" | "alerts";
+const initialPage: PageView =
+  initialDialog === "network" || initialDialog === "scan" || initialDialog === "alerts"
+    ? initialDialog
+    : "workspace";
+const page = ref<PageView>(initialPage);
 const newSessionOpen = ref(initialDialog === "session");
 const settingsOpen = ref(initialDialog === "settings");
-const scanOpen = ref(initialDialog === "scan");
-const networkOpen = ref(initialDialog === "network");
-const alertsOpen = ref(false);
 const writeOpen = ref(false);
 const writeTarget = ref<WriteTarget | null>(null);
 const trendOpen = ref(false);
 const editSessionOpen = ref(false);
 const debugOpen = ref(false);
 const aboutOpen = ref(false);
-const railView = ref<"workspace" | "network" | "scan" | "alerts" | "settings" | "about">(
-  "workspace",
+const railView = computed<"workspace" | "network" | "scan" | "alerts" | "settings" | "about">(
+  () => {
+    if (settingsOpen.value) return "settings";
+    if (aboutOpen.value) return "about";
+    return page.value;
+  },
 );
 
 const monitorStyle = computed(() => ({
   height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
 }));
-
-watch(networkOpen, (open) => {
-  if (open) railView.value = "network";
-  else if (railView.value === "network") railView.value = "workspace";
-});
-
-watch(scanOpen, (open) => {
-  if (open) railView.value = "scan";
-  else if (railView.value === "scan") railView.value = "workspace";
-});
-
-watch(alertsOpen, (open) => {
-  if (open) railView.value = "alerts";
-  else if (railView.value === "alerts") railView.value = "workspace";
-});
-
-watch(settingsOpen, (open) => {
-  if (open) railView.value = "settings";
-  else if (railView.value === "settings") railView.value = "workspace";
-});
-
-watch(aboutOpen, (open) => {
-  if (open) railView.value = "about";
-  else if (railView.value === "about") railView.value = "workspace";
-});
 
 function openDebug(): void {
   const session = sessions.activeSession;
@@ -161,61 +143,66 @@ function startResize(event: PointerEvent): void {
     <div class="relative flex min-h-0 flex-1">
       <ActivityRail
         :active-view="railView"
+        @open-workspace="page = 'workspace'"
         @open-settings="settingsOpen = true"
-        @open-network="networkOpen = true"
-        @open-scan="scanOpen = true"
-        @open-alerts="alertsOpen = true"
+        @open-network="page = 'network'"
+        @open-scan="page = 'scan'"
+        @open-alerts="page = 'alerts'"
         @open-about="aboutOpen = true"
       />
-      <SessionSidebar @new-session="newSessionOpen = true" />
 
-      <main class="flex min-w-0 flex-1 flex-col">
-        <SessionTabs />
-        <SessionToolbar
-          @write="openWriteFromToolbar"
-          @debug="openDebug"
-          @edit-session="editSessionOpen = true"
-        />
+      <template v-if="page === 'workspace'">
+        <SessionSidebar @new-session="newSessionOpen = true" />
 
-        <div class="flex min-h-0 flex-1">
-          <RegisterGrid
-            class="min-w-0 flex-1"
-            @write="openWrite"
-            @new-session="newSessionOpen = true"
-            @open-trend="trendOpen = true"
+        <main class="flex min-w-0 flex-1 flex-col">
+          <SessionTabs />
+          <SessionToolbar
+            @write="openWriteFromToolbar"
+            @debug="openDebug"
+            @edit-session="editSessionOpen = true"
           />
-          <InspectorPanel />
-        </div>
 
-        <div
-          v-if="!settings.monitorCollapsed"
-          class="group relative h-[3px] shrink-0 cursor-row-resize border-y border-hairline bg-overlay-1 transition-colors hover:bg-signal/15"
-          role="separator"
-          aria-orientation="horizontal"
-          @pointerdown="startResize"
-        >
+          <div class="flex min-h-0 flex-1">
+            <RegisterGrid
+              class="min-w-0 flex-1"
+              @write="openWrite"
+              @new-session="newSessionOpen = true"
+              @open-trend="trendOpen = true"
+            />
+            <InspectorPanel />
+          </div>
+
           <div
-            class="absolute left-1/2 top-1/2 h-[2px] w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-overlay-3 transition-colors group-hover:bg-signal/60"
+            v-if="!settings.monitorCollapsed"
+            class="group relative h-[3px] shrink-0 cursor-row-resize border-y border-hairline bg-overlay-1 transition-colors hover:bg-signal/15"
+            role="separator"
+            aria-orientation="horizontal"
+            @pointerdown="startResize"
+          >
+            <div
+              class="absolute left-1/2 top-1/2 h-[2px] w-9 -translate-x-1/2 -translate-y-1/2 rounded-full bg-overlay-3 transition-colors group-hover:bg-signal/60"
+            />
+          </div>
+
+          <FrameMonitor
+            :collapsed="settings.monitorCollapsed"
+            :style="monitorStyle"
+            @toggle="toggleMonitor"
           />
-        </div>
 
-        <FrameMonitor
-          :collapsed="settings.monitorCollapsed"
-          :style="monitorStyle"
-          @toggle="toggleMonitor"
-        />
+          <StatusBar />
+        </main>
+      </template>
 
-        <StatusBar />
-      </main>
+      <NetworkWorkspace v-else-if="page === 'network'" />
+      <ScanWorkspace v-else-if="page === 'scan'" />
+      <AlertsWorkspace v-else-if="page === 'alerts'" />
     </div>
 
     <NewSessionDialog v-model:open="newSessionOpen" />
     <EditSessionDialog v-model:open="editSessionOpen" />
     <DebugDialog v-model:open="debugOpen" />
-    <NetworkDialog v-model:open="networkOpen" />
-    <AlertsDialog v-model:open="alertsOpen" />
     <SettingsDialog v-model:open="settingsOpen" />
-    <ScanDialog v-model:open="scanOpen" />
     <WriteDialog v-model:open="writeOpen" :target="writeTarget" />
     <TrendOverlay v-model:open="trendOpen" />
     <AboutOverlay v-model:open="aboutOpen" />

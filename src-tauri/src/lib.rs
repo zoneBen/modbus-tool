@@ -92,7 +92,7 @@ pub fn run() {
                 let manager = shutdown_manager.clone();
                 let network = shutdown_network.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = network.stop().await;
+                    network.stop_all().await;
                     manager.shutdown_all().await;
                 });
             }

@@ -12,94 +12,163 @@ import type {
   SlaveIdScanInput,
 } from "@/types/models";
 
+export type ScanTaskStatus = "running" | "done" | "error";
+
+export interface ScanTask {
+  id: string;
+  backendId: string | null;
+  name: string;
+  kind: ScanKind;
+  description: string;
+  createdAt: number;
+  status: ScanTaskStatus;
+  progress: ScanProgress | null;
+  results: ScanResult[];
+  error: string | null;
+}
+
+interface OrphanEvents {
+  progress?: ScanProgress;
+  results: ScanResult[];
+  done?: ScanDone;
+}
+
+function localTaskId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `scan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export const useScansStore = defineStore("scans", () => {
-  const scanId = ref<string | null>(null);
-  const kind = ref<ScanKind | null>(null);
-  const progress = ref<ScanProgress | null>(null);
-  const results = ref<ScanResult[]>([]);
-  const running = ref(false);
-  const error = ref<string | null>(null);
-  const pendingKind = ref<ScanKind | null>(null);
+  const tasks = ref<ScanTask[]>([]);
+  const activeTaskId = ref<string | null>(null);
+  const orphans = new Map<string, OrphanEvents>();
+  const removedBackendIds = new Set<string>();
 
-  const percent = computed(() => {
-    const current = progress.value;
-    if (!current || current.total <= 0) return 0;
-    return Math.min(100, Math.round((current.done / current.total) * 100));
-  });
-
-  const foundResults = computed(() =>
-    results.value.filter((result) => ["ok", "exception", "open"].includes(result.status)),
+  const activeTask = computed<ScanTask | null>(
+    () => tasks.value.find((task) => task.id === activeTaskId.value) ?? null,
   );
+  const runningCount = computed(
+    () => tasks.value.filter((task) => task.status === "running").length,
+  );
+  const running = computed(() => runningCount.value > 0);
 
-  function reset(): void {
-    scanId.value = null;
-    kind.value = null;
-    progress.value = null;
-    results.value = [];
-    running.value = false;
-    error.value = null;
-    pendingKind.value = null;
+  function taskById(taskId: string): ScanTask | undefined {
+    return tasks.value.find((task) => task.id === taskId);
   }
 
-  function begin(id: string, scanKind: ScanKind): void {
-    scanId.value = id;
-    kind.value = scanKind;
-    results.value = [];
-    progress.value = null;
-    error.value = null;
-    running.value = true;
-    pendingKind.value = null;
+  function taskByBackendId(scanId: string): ScanTask | undefined {
+    return tasks.value.find((task) => task.backendId === scanId);
   }
 
-  async function startScan(scanKind: ScanKind, starter: () => Promise<string>): Promise<string> {
-    reset();
-    kind.value = scanKind;
-    pendingKind.value = scanKind;
-    running.value = true;
+  function selectTask(taskId: string): void {
+    if (taskById(taskId)) activeTaskId.value = taskId;
+  }
+
+  function percent(task: ScanTask): number {
+    if (!task.progress || task.progress.total <= 0) return 0;
+    return Math.min(100, Math.round((task.progress.done / task.progress.total) * 100));
+  }
+
+  function foundResults(task: ScanTask): ScanResult[] {
+    return task.results.filter((result) => ["ok", "exception", "open"].includes(result.status));
+  }
+
+  function orphanFor(scanId: string): OrphanEvents {
+    let entry = orphans.get(scanId);
+    if (!entry) {
+      entry = { results: [] };
+      orphans.set(scanId, entry);
+    }
+    return entry;
+  }
+
+  function applyOrphanEvents(scanId: string): void {
+    const entry = orphans.get(scanId);
+    if (!entry) return;
+    if (entry.progress) applyProgress(entry.progress);
+    for (const result of entry.results) applyResult(result);
+    if (entry.done) applyDone(entry.done);
+    orphans.delete(scanId);
+  }
+
+  function bindBackend(taskId: string, backendId: string): void {
+    const task = taskById(taskId);
+    if (!task) return;
+    task.backendId = backendId;
+    applyOrphanEvents(backendId);
+  }
+
+  async function createTask(
+    kind: ScanKind,
+    name: string,
+    description: string,
+    starter: () => Promise<string>,
+  ): Promise<string> {
+    const id = localTaskId();
+    const task: ScanTask = {
+      id,
+      backendId: null,
+      name,
+      kind,
+      description,
+      createdAt: Date.now(),
+      status: "running",
+      progress: null,
+      results: [],
+      error: null,
+    };
+    tasks.value = [...tasks.value, task];
+    activeTaskId.value = id;
     try {
-      const id = await starter();
-      if (scanId.value === null) begin(id, scanKind);
-      pendingKind.value = null;
+      const backendId = await starter();
+      bindBackend(id, backendId);
       return id;
     } catch (error: unknown) {
-      reset();
+      const current = taskById(id);
+      if (current) {
+        current.status = "error";
+        current.error = error instanceof Error ? error.message : String(error);
+      }
       throw error;
     }
   }
 
   function applyProgress(update: ScanProgress): void {
-    if (scanId.value === null && pendingKind.value === update.kind) {
-      scanId.value = update.scanId;
-      kind.value = update.kind;
-      results.value = [];
-      running.value = true;
+    if (removedBackendIds.has(update.scanId)) return;
+    const task = taskByBackendId(update.scanId);
+    if (!task) {
+      orphanFor(update.scanId).progress = update;
+      return;
     }
-    if (update.scanId !== scanId.value) return;
-    progress.value = update;
-    if (update.error) error.value = update.error;
-    if (update.finished) running.value = false;
+    task.progress = update;
+    if (update.error) task.error = update.error;
+    if (update.finished) task.status = update.error ? "error" : "done";
   }
 
   function applyResult(result: ScanResult): void {
-    if (scanId.value === null && pendingKind.value === result.kind) {
-      scanId.value = result.scanId;
-      kind.value = result.kind;
-      running.value = true;
+    if (removedBackendIds.has(result.scanId)) return;
+    const task = taskByBackendId(result.scanId);
+    if (!task) {
+      orphanFor(result.scanId).results.push(result);
+      return;
     }
-    if (result.scanId !== scanId.value) return;
-    results.value = [...results.value, result];
+    task.results = [...task.results, result];
   }
 
   function applyDone(done: ScanDone): void {
-    if (done.scanId !== scanId.value) return;
-    running.value = false;
-    pendingKind.value = null;
-    if (done.error) error.value = done.error;
-    if (progress.value) {
-      progress.value = {
-        ...progress.value,
-        done: progress.value.done,
-        total: progress.value.total,
+    if (removedBackendIds.has(done.scanId)) return;
+    const task = taskByBackendId(done.scanId);
+    if (!task) {
+      orphanFor(done.scanId).done = done;
+      return;
+    }
+    task.status = done.error ? "error" : "done";
+    if (done.error) task.error = done.error;
+    if (task.progress) {
+      task.progress = {
+        ...task.progress,
         found: done.found,
         finished: true,
         ...(done.error ? { error: done.error } : {}),
@@ -107,36 +176,83 @@ export const useScansStore = defineStore("scans", () => {
     }
   }
 
-  async function startSlaveIds(input: SlaveIdScanInput): Promise<string> {
-    return startScan("slaveId", () => ipc.scanSlaveIds(input));
+  async function startSlaveIds(
+    input: SlaveIdScanInput,
+    name: string,
+    description: string,
+  ): Promise<string> {
+    return createTask("slaveId", name, description, () => ipc.scanSlaveIds(input));
   }
 
-  async function startAddresses(input: AddressScanInput): Promise<string> {
-    return startScan("address", () => ipc.scanAddresses(input));
+  async function startAddresses(
+    input: AddressScanInput,
+    name: string,
+    description: string,
+  ): Promise<string> {
+    return createTask("address", name, description, () => ipc.scanAddresses(input));
   }
 
-  async function startBaudRates(input: BaudScanInput): Promise<string> {
-    return startScan("baud", () => ipc.scanBaudRates(input));
+  async function startBaudRates(
+    input: BaudScanInput,
+    name: string,
+    description: string,
+  ): Promise<string> {
+    return createTask("baud", name, description, () => ipc.scanBaudRates(input));
   }
 
-  async function startNetwork(input: NetworkScanInput): Promise<string> {
-    return startScan("network", () => ipc.scanNetwork(input));
+  async function startNetwork(
+    input: NetworkScanInput,
+    name: string,
+    description: string,
+  ): Promise<string> {
+    return createTask("network", name, description, () => ipc.scanNetwork(input));
   }
 
-  async function cancel(): Promise<void> {
-    const id = scanId.value;
-    if (!id) return;
-    await ipc.cancelScan(id);
-    running.value = false;
+  async function cancel(taskId: string): Promise<void> {
+    const task = taskById(taskId);
+    if (!task || task.status !== "running") return;
+    if (task.backendId) await ipc.cancelScan(task.backendId);
+  }
+
+  async function removeTask(taskId: string): Promise<void> {
+    const task = taskById(taskId);
+    if (!task) return;
+    if (task.backendId) {
+      removedBackendIds.add(task.backendId);
+      orphans.delete(task.backendId);
+    }
+    if (task.status === "running" && task.backendId) {
+      try {
+        await ipc.cancelScan(task.backendId);
+      } catch {
+        // Removing the local task is still possible if cancellation races.
+      }
+    }
+    tasks.value = tasks.value.filter((entry) => entry.id !== taskId);
+    if (activeTaskId.value === taskId) {
+      activeTaskId.value = tasks.value[0]?.id ?? null;
+    }
+  }
+
+  function clearResults(taskId: string): void {
+    const task = taskById(taskId);
+    if (task) task.results = [];
+  }
+
+  function clearFinished(): void {
+    tasks.value = tasks.value.filter((task) => task.status === "running");
+    if (!tasks.value.some((task) => task.id === activeTaskId.value)) {
+      activeTaskId.value = tasks.value[0]?.id ?? null;
+    }
   }
 
   return {
-    scanId,
-    kind,
-    progress,
-    results,
+    tasks,
+    activeTaskId,
+    activeTask,
     running,
-    error,
+    runningCount,
+    selectTask,
     percent,
     foundResults,
     startSlaveIds,
@@ -144,7 +260,9 @@ export const useScansStore = defineStore("scans", () => {
     startBaudRates,
     startNetwork,
     cancel,
-    reset,
+    removeTask,
+    clearResults,
+    clearFinished,
     applyProgress,
     applyResult,
     applyDone,

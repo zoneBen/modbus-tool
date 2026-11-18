@@ -184,7 +184,7 @@ const toggles = computed(() => [
       <div class="flex items-center justify-between px-5 py-3 text-[11px] text-muted-foreground">
         <div class="flex items-center gap-2">
           <span class="font-medium text-foreground">Modbus Tool</span>
-          <span class="numeric">v0.2.1 · Preview</span>
+          <span class="numeric">v0.3.0 · Preview</span>
         </div>
         <span
           v-if="sessions.demo"

@@ -26,6 +26,7 @@ withDefaults(
 );
 
 const emit = defineEmits<{
+  (event: "open-workspace"): void;
   (event: "open-settings"): void;
   (event: "open-network"): void;
   (event: "open-scan"): void;
@@ -66,6 +67,7 @@ const { t } = useI18n();
                   : 'text-muted-foreground hover:bg-overlay-3 hover:text-foreground'
               "
               aria-label="工作台"
+              @click="emit('open-workspace')"
             >
               <span
                 v-if="activeView === 'workspace'"
@@ -83,7 +85,7 @@ const { t } = useI18n();
               type="button"
               class="relative flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
               :class="
-                activeView === 'network' || network.active
+                activeView === 'network' || network.activeCount
                   ? 'bg-rx/10 text-rx'
                   : 'text-muted-foreground hover:text-foreground'
               "
@@ -96,7 +98,7 @@ const { t } = useI18n();
               />
               <Network class="size-[18px]" />
               <span
-                v-if="network.active"
+                v-if="network.activeCount"
                 class="status-dot status-dot-live absolute right-2 top-2 scale-75 text-signal"
               />
             </button>
