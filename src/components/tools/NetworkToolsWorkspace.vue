@@ -2,6 +2,12 @@
 import { Activity, Globe2, Radar, Radio, Route, Search, Server, Terminal } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import ArpTool from "@/components/tools/network/ArpTool.vue";
+import DnsTool from "@/components/tools/network/DnsTool.vue";
+import HttpTool from "@/components/tools/network/HttpTool.vue";
+import PingTool from "@/components/tools/network/PingTool.vue";
+import TracerouteTool from "@/components/tools/network/TracerouteTool.vue";
+import TelnetTool from "@/components/tools/network/TelnetTool.vue";
 import ToolPlaceholder from "@/components/tools/ToolPlaceholder.vue";
 import ToolboxWorkspace from "@/components/tools/ToolboxWorkspace.vue";
 import type { ToolboxItem } from "@/components/tools/ToolboxWorkspace.vue";
@@ -62,7 +68,14 @@ const activeItem = computed(() => items.value.find((item) => item.id === active.
     :items="items"
     accent="rx"
   >
+    <ArpTool v-if="active === 'arp'" />
+    <DnsTool v-else-if="active === 'dns'" />
+    <TelnetTool v-else-if="active === 'telnet'" />
+    <HttpTool v-else-if="active === 'http'" />
+    <PingTool v-else-if="active === 'ping'" />
+    <TracerouteTool v-else-if="active === 'traceroute'" />
     <ToolPlaceholder
+      v-else
       :title="activeItem?.title ?? t('networkTools.title')"
       :description="activeItem?.description ?? ''"
     />

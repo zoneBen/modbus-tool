@@ -40,11 +40,30 @@ import {
   wordsToDataBytes,
   writeSingleRequestPdu,
 } from "./demo-codec";
+import type {
+  ArpCapabilities,
+  ArpEntry,
+  ArpScanInput,
+  ArpScanResult,
+  DnsQueryInput,
+  DnsResult,
+  HttpRequestInput,
+  HttpResponse,
+  PingInput,
+  PingHostResult,
+  TelnetResult,
+  TelnetTestInput,
+  TracerouteInput,
+} from "@/types/tools";
 import { resolvePoints } from "./definition";
 import { formatFunctionCode, formatNumber, snapshotKey } from "./format";
 import { encodeRawPayload } from "./raw-send";
 
 const TICK_MS = 720;
+
+function demoWait(ms = 220): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 const MAX_FRAME_HISTORY = 400;
 
 type AnyHandler = (payload: unknown) => void;
@@ -1161,6 +1180,296 @@ export function createDemoBridge(): IpcApi {
     );
   }
 
+  async function toolDnsQuery(input: DnsQueryInput): Promise<DnsResult> {
+    await demoWait(260);
+    if (!input.name.trim()) {
+      throw { code: "invalidName", detail: "DNS name is required" };
+    }
+    const status = input.name.toLowerCase().includes("nxdomain") ? "nxdomain" : "ok";
+    const answers =
+      status === "nxdomain"
+        ? []
+        : [
+            {
+              name: input.name.endsWith(".") ? input.name : `${input.name}.`,
+              recordType: input.recordType,
+              ttl: 300,
+              value:
+                input.recordType === "MX"
+                  ? "10 mail.demo.local."
+                  : input.recordType === "TXT"
+                    ? '"v=modbus-tool-demo"'
+                    : input.recordType === "AAAA"
+                      ? "2001:db8::10"
+                      : input.recordType === "PTR"
+                        ? "demo.local."
+                        : "192.0.2.10",
+            },
+          ];
+    return {
+      question: input.name,
+      recordType: input.recordType,
+      server: input.server?.trim() || "system",
+      status,
+      elapsedMs: 18.6,
+      answers,
+    };
+  }
+
+  async function toolTelnetTest(input: TelnetTestInput): Promise<TelnetResult> {
+    await demoWait(260);
+    if (!input.host.trim()) {
+      throw { code: "invalidHost", detail: "Host is required" };
+    }
+    const text = input.port === 23 ? "220 demo telnet ready\r\n" : "SSH-2.0-modbus-tool-demo\r\n";
+    return {
+      host: input.host,
+      port: input.port,
+      connected: true,
+      latencyMs: 7.8,
+      bytesRead: new TextEncoder().encode(text).length,
+      text,
+      hex: Array.from(new TextEncoder().encode(text))
+        .map((byte) => byte.toString(16).padStart(2, "0").toUpperCase())
+        .join(" "),
+    };
+  }
+
+  async function toolArpCapabilities(): Promise<ArpCapabilities> {
+    await demoWait(160);
+    return {
+      native: true,
+      npcapAvailable: true,
+      elevated: true,
+      adapters: [
+        {
+          name: "{demo-ethernet}",
+          description: "Demo Ethernet",
+          ip: "192.168.1.10",
+          cidr: "192.168.1.0/24",
+          mac: "02:00:00:00:00:01",
+          npcapName: "\\Device\\NPF_{demo-ethernet}",
+        },
+      ],
+      npcapInterfaces: [
+        {
+          name: "\\Device\\NPF_{demo-ethernet}",
+          description: "Demo Ethernet (Npcap)",
+        },
+      ],
+    };
+  }
+
+  async function toolArpScan(input: ArpScanInput): Promise<ArpScanResult> {
+    await demoWait(420);
+    const base = input.cidr.split("/")[0]?.split(".").slice(0, 3).join(".") ?? "192.168.1";
+    const entries: ArpEntry[] = [
+      {
+        ip: `${base}.1`,
+        mac: "02:00:00:00:00:01",
+        interface: "Demo Ethernet",
+        source: "native" as const,
+        replies: 1,
+        conflict: false,
+      },
+      {
+        ip: `${base}.20`,
+        mac: "02:00:00:00:00:20",
+        interface: "Demo Ethernet",
+        source: "native" as const,
+        replies: 1,
+        conflict: false,
+      },
+    ];
+    if (input.enhanced) {
+      entries.push({
+        ip: `${base}.20`,
+        mac: "02:00:00:00:00:21",
+        interface: "Demo Ethernet",
+        source: "npcap" as const,
+        replies: 2,
+        conflict: true,
+      });
+    }
+    return {
+      cidr: input.cidr,
+      elapsedMs: 318.4,
+      enhanced: input.enhanced,
+      entries,
+      conflicts: input.enhanced ? 1 : 0,
+    };
+  }
+
+  async function pickFile(): Promise<string | null> {
+    await demoWait(80);
+    return "C:\\demo\\modbus-tool-demo.json";
+  }
+
+  async function pickDirectory(): Promise<string | null> {
+    await demoWait(80);
+    return "C:\\demo\\workspace";
+  }
+
+  let toolTaskSequence = 0;
+  const toolTimers = new Map<string, ReturnType<typeof setInterval>>();
+  const toolKinds = new Map<string, "ping" | "traceroute">();
+
+  async function toolPingStart(input: PingInput): Promise<string> {
+    await demoWait(120);
+    const targets = input.targets
+      .split(/[\s,;]+/)
+      .map((target) => target.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    if (!targets.length) {
+      throw { code: "noTargets", detail: "Enter at least one host or CIDR" };
+    }
+    toolTaskSequence += 1;
+    const taskId = `demo-tool-${toolTaskSequence}`;
+    toolKinds.set(taskId, "ping");
+    const total = targets.length;
+    let step = 0;
+    emit("tool:event", { event: "pingProgress", taskId, done: 0, total });
+    toolTimers.set(
+      taskId,
+      setInterval(() => {
+        const target = targets[step];
+        step += 1;
+        if (target) {
+          const received = step === 2 ? 0 : Math.min(input.count, 2 + (step % 3));
+          const result: PingHostResult = {
+            host: target,
+            address: target.includes("/") ? "192.0.2.10" : target,
+            sent: input.count,
+            received,
+            lossPercent: Math.round(((input.count - received) / input.count) * 1000) / 10,
+            minMs: received ? 1.2 + step : undefined,
+            avgMs: received ? 2.4 + step : undefined,
+            maxMs: received ? 4.1 + step : undefined,
+            status: received ? "ok" : "timeout",
+            error: received ? undefined : { code: "timeout", detail: "ICMP timeout" },
+          };
+          emit("tool:event", { event: "pingResult", taskId, result });
+        }
+        emit("tool:event", {
+          event: "pingProgress",
+          taskId,
+          done: Math.min(step, total),
+          total,
+        });
+        if (step >= total) {
+          clearInterval(toolTimers.get(taskId));
+          toolTimers.delete(taskId);
+          toolKinds.delete(taskId);
+          emit("tool:event", {
+            event: "pingDone",
+            taskId,
+            completed: total,
+            failed: 1,
+            error: undefined,
+          });
+        }
+      }, 260),
+    );
+    return taskId;
+  }
+
+  async function toolTracerouteStart(input: TracerouteInput): Promise<string> {
+    await demoWait(120);
+    toolTaskSequence += 1;
+    const taskId = `demo-tool-${toolTaskSequence}`;
+    toolKinds.set(taskId, "traceroute");
+    let hop = 0;
+    toolTimers.set(
+      taskId,
+      setInterval(() => {
+        hop += 1;
+        const reached = hop >= 5;
+        emit("tool:event", {
+          event: "tracerouteHop",
+          taskId,
+          hop: {
+            hop,
+            address: reached ? "192.0.2.10" : `10.0.0.${hop}`,
+            hostname: reached ? input.target : `hop-${hop}.demo.local`,
+            rttsMs: [1.1 + hop, null, 2.2 + hop],
+            status: reached ? "reached" : "ttlExpired",
+            reached,
+          },
+        });
+        if (reached) {
+          clearInterval(toolTimers.get(taskId));
+          toolTimers.delete(taskId);
+          toolKinds.delete(taskId);
+          emit("tool:event", { event: "tracerouteDone", taskId, reached: true });
+        }
+      }, 320),
+    );
+    return taskId;
+  }
+
+  async function toolTaskCancel(taskId: string): Promise<boolean> {
+    const timer = toolTimers.get(taskId);
+    if (!timer) return false;
+    clearInterval(timer);
+    toolTimers.delete(taskId);
+    const kind = toolKinds.get(taskId);
+    toolKinds.delete(taskId);
+    if (kind === "traceroute") {
+      emit("tool:event", {
+        event: "tracerouteDone",
+        taskId,
+        reached: false,
+        error: { code: "cancelled", detail: "Task cancelled" },
+      });
+    } else {
+      emit("tool:event", {
+        event: "pingDone",
+        taskId,
+        completed: 0,
+        failed: 0,
+        error: { code: "cancelled", detail: "Task cancelled" },
+      });
+    }
+    return true;
+  }
+
+  async function toolHttpRequest(input: HttpRequestInput): Promise<HttpResponse> {
+    await demoWait(320);
+    if (!/^https?:\/\//i.test(input.url.trim())) {
+      throw { code: "invalidUrl", detail: "Only http and https URLs are supported" };
+    }
+    const ok = !input.url.includes("/404");
+    const body =
+      input.method === "HEAD"
+        ? ""
+        : JSON.stringify(
+            {
+              demo: true,
+              method: input.method,
+              url: input.url,
+              receivedBody: input.body ?? null,
+            },
+            null,
+            2,
+          );
+    return {
+      status: ok ? 200 : 404,
+      statusText: ok ? "OK" : "Not Found",
+      finalUrl: input.url,
+      elapsedMs: 32.4,
+      headers: [
+        { name: "content-type", value: "application/json; charset=utf-8" },
+        { name: "x-modbus-tool-demo", value: "1" },
+      ],
+      body,
+      bodyBytes: new TextEncoder().encode(body).length,
+      truncated: false,
+      contentType: "application/json; charset=utf-8",
+      binary: false,
+    };
+  }
+
   async function cancelScan(scanId: string): Promise<void> {
     const interval = scanTimers.get(scanId);
     if (interval) clearInterval(interval);
@@ -1589,6 +1898,16 @@ export function createDemoBridge(): IpcApi {
     scanBaudRates,
     scanNetwork,
     cancelScan,
+    toolDnsQuery,
+    toolTelnetTest,
+    toolHttpRequest,
+    toolPingStart,
+    toolTracerouteStart,
+    toolTaskCancel,
+    toolArpCapabilities,
+    toolArpScan,
+    pickFile,
+    pickDirectory,
     writeRegister,
     writeCustom,
     startDebug,

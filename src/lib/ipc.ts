@@ -20,6 +20,20 @@ import type {
   UpdateSessionInput,
   WorkspaceSnapshot,
 } from "@/types/models";
+import type {
+  ArpCapabilities,
+  ArpScanInput,
+  ArpScanResult,
+  DnsQueryInput,
+  DnsResult,
+  HttpRequestInput,
+  HttpResponse,
+  PingInput,
+  TelnetResult,
+  TelnetTestInput,
+  ToolFileFilter,
+  TracerouteInput,
+} from "@/types/tools";
 import { createDemoBridge } from "./demo-bridge";
 
 function createTauriBridge(): IpcApi {
@@ -91,6 +105,28 @@ function createTauriBridge(): IpcApi {
     stopNetwork: (sessionId: string) => invoke<void>("network_stop", { sessionId }),
     sendNetwork: (sessionId: string, input: RawSendInput) =>
       invoke<number>("network_send", { sessionId, input }),
+    toolDnsQuery: (input: DnsQueryInput) => invoke<DnsResult>("tool_dns_query", { input }),
+    toolTelnetTest: (input: TelnetTestInput) => invoke<TelnetResult>("tool_telnet_test", { input }),
+    toolHttpRequest: (input: HttpRequestInput) =>
+      invoke<HttpResponse>("tool_http_request", { input }),
+    pickFile: async (filters: ToolFileFilter[] = []) => {
+      const path = await open({
+        multiple: false,
+        directory: false,
+        filters: filters.length ? filters : undefined,
+      });
+      return typeof path === "string" ? path : null;
+    },
+    pickDirectory: async () => {
+      const path = await open({ multiple: false, directory: true });
+      return typeof path === "string" ? path : null;
+    },
+    toolPingStart: (input: PingInput) => invoke<string>("tool_ping_start", { input }),
+    toolTracerouteStart: (input: TracerouteInput) =>
+      invoke<string>("tool_traceroute_start", { input }),
+    toolTaskCancel: (taskId: string) => invoke<boolean>("tool_task_cancel", { taskId }),
+    toolArpCapabilities: () => invoke<ArpCapabilities>("tool_arp_capabilities"),
+    toolArpScan: (input: ArpScanInput) => invoke<ArpScanResult>("tool_arp_scan", { input }),
     on: async <K extends AppEventName>(
       event: K,
       handler: (payload: AppEventMap[K]) => void,

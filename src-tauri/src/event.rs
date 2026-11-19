@@ -7,6 +7,7 @@ use crate::model::{
     NetworkStateDto, ScanDoneDto, ScanProgressDto, ScanResultDto, SessionStatusEventDto,
     WorkspaceSnapshotDto,
 };
+use crate::tools::event::ToolEventDto;
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -25,6 +26,7 @@ pub enum AppEvent {
     ScanProgress(ScanProgressDto),
     ScanResult(ScanResultDto),
     ScanDone(ScanDoneDto),
+    Tool(ToolEventDto),
 }
 
 pub type EventBus = broadcast::Sender<AppEvent>;

@@ -26,6 +26,21 @@ import type {
   UpdateSessionInput,
   WorkspaceSnapshot,
 } from "./models";
+import type {
+  ArpCapabilities,
+  ArpScanInput,
+  ArpScanResult,
+  DnsQueryInput,
+  DnsResult,
+  HttpRequestInput,
+  HttpResponse,
+  PingInput,
+  TelnetResult,
+  TelnetTestInput,
+  ToolEvent,
+  ToolFileFilter,
+  TracerouteInput,
+} from "./tools";
 
 export type AppEventName =
   | "session:data"
@@ -39,7 +54,8 @@ export type AppEventName =
   | "workspace:updated"
   | "scan:progress"
   | "scan:result"
-  | "scan:done";
+  | "scan:done"
+  | "tool:event";
 
 export interface AppEventMap {
   "session:data": DefinitionSnapshot;
@@ -54,6 +70,7 @@ export interface AppEventMap {
   "scan:progress": ScanProgress;
   "scan:result": ScanResult;
   "scan:done": ScanDone;
+  "tool:event": ToolEvent;
 }
 
 export interface IpcApi {
@@ -100,6 +117,16 @@ export interface IpcApi {
   startNetwork(sessionId: string, input: NetworkStartInput): Promise<NetworkState>;
   stopNetwork(sessionId: string): Promise<void>;
   sendNetwork(sessionId: string, input: RawSendInput): Promise<number>;
+  toolDnsQuery(input: DnsQueryInput): Promise<DnsResult>;
+  toolTelnetTest(input: TelnetTestInput): Promise<TelnetResult>;
+  toolHttpRequest(input: HttpRequestInput): Promise<HttpResponse>;
+  pickFile(filters?: ToolFileFilter[]): Promise<string | null>;
+  pickDirectory(): Promise<string | null>;
+  toolPingStart(input: PingInput): Promise<string>;
+  toolTracerouteStart(input: TracerouteInput): Promise<string>;
+  toolTaskCancel(taskId: string): Promise<boolean>;
+  toolArpCapabilities(): Promise<ArpCapabilities>;
+  toolArpScan(input: ArpScanInput): Promise<ArpScanResult>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

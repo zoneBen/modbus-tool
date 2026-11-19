@@ -8,4 +8,5 @@ pub struct AppState {
     pub manager: Arc<SessionManager>,
     pub scans: Arc<ScanManager>,
     pub network: Arc<NetworkManager>,
+    pub tools: Arc<crate::tools::ToolsManager>,
 }

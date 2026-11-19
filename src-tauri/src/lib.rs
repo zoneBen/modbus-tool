@@ -6,6 +6,7 @@ mod network;
 mod scan;
 mod session;
 mod state;
+mod tools;
 mod transport;
 
 use std::sync::Arc;
@@ -60,6 +61,9 @@ fn forward(app: &tauri::AppHandle, event: AppEvent) {
         AppEvent::ScanDone(payload) => {
             let _ = app.emit("scan:done", payload);
         }
+        AppEvent::Tool(payload) => {
+            let _ = app.emit("tool:event", payload);
+        }
     }
 }
 
@@ -73,13 +77,16 @@ pub fn run() {
     let manager = Arc::new(SessionManager::new(bus.clone()));
     let scans = Arc::new(ScanManager::new(bus.clone()));
     let network = Arc::new(NetworkManager::new(bus.clone()));
+    let tools = Arc::new(tools::ToolsManager::new(bus.clone()));
     let setup_bus = bus.clone();
     let state_manager = manager.clone();
     let state_scans = scans.clone();
     let state_network = network.clone();
+    let state_tools = tools.clone();
     let shutdown_manager = manager.clone();
     let shutdown_network = network.clone();
     let shutdown_scans = scans.clone();
+    let shutdown_tools = tools.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -87,16 +94,19 @@ pub fn run() {
             manager: state_manager,
             scans: state_scans,
             network: state_network,
+            tools: state_tools,
         })
         .on_window_event(move |_window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let manager = shutdown_manager.clone();
                 let network = shutdown_network.clone();
                 let scans = shutdown_scans.clone();
+                let tools = shutdown_tools.clone();
                 tauri::async_runtime::spawn(async move {
                     network.stop_all().await;
                     manager.shutdown_all().await;
                     scans.shutdown_all();
+                    tools.shutdown();
                 });
             }
         })
@@ -147,6 +157,14 @@ pub fn run() {
             commands::scan_baud_rates,
             commands::scan_network,
             commands::scan_cancel,
+            tools::commands::tool_dns_query,
+            tools::commands::tool_telnet_test,
+            tools::commands::tool_http_request,
+            tools::commands::tool_ping_start,
+            tools::commands::tool_traceroute_start,
+            tools::commands::tool_task_cancel,
+            tools::commands::tool_arp_capabilities,
+            tools::commands::tool_arp_scan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
