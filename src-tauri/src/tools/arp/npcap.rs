@@ -58,10 +58,10 @@ pub struct NpcapApi {
 #[cfg(windows)]
 impl NpcapApi {
     pub fn load() -> ToolResult<Self> {
+        let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_owned());
         let candidates = [
-            "wpcap.dll",
-            "C:\\Windows\\System32\\Npcap\\wpcap.dll",
-            "C:\\Windows\\System32\\wpcap.dll",
+            format!("{system_root}\\System32\\Npcap\\wpcap.dll"),
+            format!("{system_root}\\System32\\wpcap.dll"),
         ];
         let mut last_error = None;
         for candidate in &candidates {
