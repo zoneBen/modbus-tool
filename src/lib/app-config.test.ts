@@ -52,6 +52,26 @@ describe("app config", () => {
         devTool: "hash",
         prefs: { "dev.base.radix": 2 },
       },
+      {
+        version: 1,
+        brokers: [
+          {
+            id: "broker-1",
+            name: "Local",
+            host: "127.0.0.1",
+            port: 1883,
+            protocol: "3.1.1",
+            clientId: "",
+            username: "",
+            tls: false,
+            caPath: "",
+            keepAlive: 60,
+            cleanSession: true,
+          },
+        ],
+        activeId: "broker-1",
+        subscriptions: { "broker-1": [{ topic: "demo/#", qos: 0 }] },
+      },
     );
     const parsed = parseAppConfig(JSON.stringify(config));
     expect(parsed.kind).toBe(APP_CONFIG_KIND);
@@ -63,6 +83,8 @@ describe("app config", () => {
     expect(parsed.tools?.networkTool).toBe("arp");
     expect(parsed.tools?.devTool).toBe("hash");
     expect(parsed.tools?.prefs).toEqual({ "dev.base.radix": 2 });
+    expect(parsed.mqtt?.brokers).toHaveLength(1);
+    expect(parsed.mqtt?.subscriptions["broker-1"]?.[0]?.topic).toBe("demo/#");
   });
 
   it("rejects malformed files with stable error codes", () => {

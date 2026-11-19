@@ -8,6 +8,7 @@ use crate::model::{
     WorkspaceSnapshotDto,
 };
 use crate::tools::event::ToolEventDto;
+use crate::tools::model::{MqttMessageDto, MqttStateDto};
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -27,6 +28,8 @@ pub enum AppEvent {
     ScanResult(ScanResultDto),
     ScanDone(ScanDoneDto),
     Tool(ToolEventDto),
+    MqttState(MqttStateDto),
+    MqttMessage(MqttMessageDto),
 }
 
 pub type EventBus = broadcast::Sender<AppEvent>;

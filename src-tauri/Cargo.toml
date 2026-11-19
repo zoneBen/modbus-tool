@@ -1,6 +1,6 @@
 [package]
 name = "modbus-tool"
-version = "0.5.0"
+version = "0.6.0"
 description = "Lightweight Modbus master, slave simulator and packet monitor"
 authors = ["zoneBen"]
 edition = "2024"
@@ -23,8 +23,12 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync",
 serialport = "4"
 ipnet = "2"
 futures = "0.3"
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "charset", "gzip", "brotli", "http2", "system-proxy"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "charset", "gzip", "brotli", "http2", "system-proxy", "multipart"] }
 hickory-resolver = "0.24"
+axum = { version = "0.8", features = ["multipart"] }
+tokio-util = { version = "0.7", features = ["io"] }
+rumqttc = { version = "0.25", default-features = false, features = ["use-native-tls"] }
+urlencoding = "2"
 sha2 = "0.10"
 sha1 = "0.10"
 md-5 = "0.10"

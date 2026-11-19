@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Activity, Download, Square } from "@lucide/vue";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import { useToolEventBuffer } from "@/composables/useToolEventBuffer";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { ipc } from "@/lib/ipc";
 import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
-import type { PingHostResult, ToolErrorPayload } from "@/types/tools";
+import type { PingHostResult, ToolErrorPayload, ToolEvent } from "@/types/tools";
 
 const { t } = useI18n();
 const toolbox = useToolboxStore();
@@ -21,11 +22,10 @@ const timeoutMs = toolbox.toolPref("network.ping.timeout", "1000");
 const concurrency = toolbox.toolPref("network.ping.concurrency", "16");
 const payloadSize = toolbox.toolPref("network.ping.payload", "32");
 const running = ref(false);
-const taskId = ref<string | null>(null);
 const progress = ref({ done: 0, total: 0 });
 const results = ref<PingHostResult[]>([]);
 const error = ref<string | null>(null);
-let unlisten: (() => void) | null = null;
+const resultTab = ref<"alive" | "all">("alive");
 
 const percent = computed(() =>
   progress.value.total > 0
@@ -33,46 +33,48 @@ const percent = computed(() =>
     : 0,
 );
 const okCount = computed(() => results.value.filter((result) => result.status === "ok").length);
+const aliveResults = computed(() => results.value.filter((result) => result.status === "ok"));
+const visibleResults = computed(() =>
+  resultTab.value === "alive" ? aliveResults.value : results.value,
+);
 
-onMounted(async () => {
-  unlisten = await ipc.on("tool:event", (event) => {
-    if (!taskId.value || event.taskId !== taskId.value) return;
-    if (event.event === "pingProgress") {
-      progress.value = { done: event.done, total: event.total };
-    } else if (event.event === "pingResult") {
-      results.value = [...results.value, event.result];
-    } else if (event.event === "pingDone") {
-      running.value = false;
-      taskId.value = null;
-      if (event.error) {
-        error.value = toolErrorText(t, event.error);
-      }
+function onEvent(event: ToolEvent): void {
+  if (event.event === "pingProgress") {
+    progress.value = { done: event.done, total: event.total };
+  } else if (event.event === "pingResult") {
+    results.value = [...results.value, event.result];
+  } else if (event.event === "pingDone") {
+    running.value = false;
+    unbind();
+    if (event.error) {
+      error.value = toolErrorText(t, event.error);
     }
-  });
-});
+  }
+}
 
-onBeforeUnmount(() => {
-  unlisten?.();
-  unlisten = null;
-});
+const { taskId, bind, unbind } = useToolEventBuffer(onEvent);
 
 async function start(): Promise<void> {
   if (running.value) return;
   error.value = null;
   results.value = [];
   progress.value = { done: 0, total: 0 };
+  resultTab.value = "alive";
   running.value = true;
   try {
-    taskId.value = await ipc.toolPingStart({
-      targets: targets.value,
-      count: Math.min(10, Math.max(1, Number(count.value) || 3)),
-      intervalMs: Math.min(5000, Math.max(100, Number(intervalMs.value) || 200)),
-      timeoutMs: Math.min(5000, Math.max(100, Number(timeoutMs.value) || 1000)),
-      concurrency: Math.min(32, Math.max(1, Number(concurrency.value) || 16)),
-      payloadSize: Math.min(1400, Math.max(8, Number(payloadSize.value) || 32)),
-    });
+    bind(
+      await ipc.toolPingStart({
+        targets: targets.value,
+        count: Math.min(10, Math.max(1, Number(count.value) || 3)),
+        intervalMs: Math.min(5000, Math.max(100, Number(intervalMs.value) || 200)),
+        timeoutMs: Math.min(5000, Math.max(100, Number(timeoutMs.value) || 1000)),
+        concurrency: Math.min(32, Math.max(1, Number(concurrency.value) || 16)),
+        payloadSize: Math.min(1400, Math.max(8, Number(payloadSize.value) || 32)),
+      }),
+    );
   } catch (cause: unknown) {
     running.value = false;
+    unbind();
     error.value = toolErrorText(t, cause);
   }
 }
@@ -264,7 +266,39 @@ const statusTone: Record<string, string> = {
             />
           </div>
         </div>
-        <div class="overflow-x-auto">
+        <div class="flex items-center gap-1 border-b border-hairline px-3 py-1.5">
+          <button
+            type="button"
+            class="rounded-md px-2 py-1 text-[10.5px] transition-colors"
+            :class="
+              resultTab === 'alive'
+                ? 'bg-signal/10 text-signal'
+                : 'text-muted-foreground hover:bg-overlay-2 hover:text-foreground'
+            "
+            @click="resultTab = 'alive'"
+          >
+            {{ t("networkTools.ping.tabAlive", { count: aliveResults.length }) }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-2 py-1 text-[10.5px] transition-colors"
+            :class="
+              resultTab === 'all'
+                ? 'bg-signal/10 text-signal'
+                : 'text-muted-foreground hover:bg-overlay-2 hover:text-foreground'
+            "
+            @click="resultTab = 'all'"
+          >
+            {{ t("networkTools.ping.tabAll", { count: results.length }) }}
+          </button>
+        </div>
+        <div
+          v-if="!visibleResults.length"
+          class="px-4 py-8 text-center text-[11px] text-muted-foreground"
+        >
+          {{ running ? t("networkTools.ping.waiting") : t("networkTools.ping.noAlive") }}
+        </div>
+        <div v-else class="overflow-x-auto">
           <table class="w-full border-collapse text-[11px]">
             <thead class="bg-surface">
               <tr class="border-b border-hairline">
@@ -299,7 +333,7 @@ const statusTone: Record<string, string> = {
             </thead>
             <tbody>
               <tr
-                v-for="result in results"
+                v-for="result in visibleResults"
                 :key="result.host"
                 class="border-b border-hairline last:border-0"
               >

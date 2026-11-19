@@ -1,7 +1,7 @@
 export type NetworkToolId =
-  "arp" | "ping" | "traceroute" | "dns" | "telnet" | "http" | "fileserver" | "mqtt";
+  "arp" | "ping" | "latency" | "traceroute" | "dns" | "telnet" | "http" | "fileserver" | "mqtt";
 
-export type DevToolId = "formatter" | "timestamp" | "base" | "hash" | "search";
+export type DevToolId = "formatter" | "yaml" | "timestamp" | "base" | "hash" | "search";
 
 export interface ToolCatalogEntry<Id extends string> {
   id: Id;
@@ -21,6 +21,12 @@ export const NETWORK_TOOLS: readonly ToolCatalogEntry<NetworkToolId>[] = [
     id: "ping",
     labelKey: "networkTools.tools.ping.title",
     descriptionKey: "networkTools.tools.ping.description",
+    phase: 1,
+  },
+  {
+    id: "latency",
+    labelKey: "networkTools.tools.latency.title",
+    descriptionKey: "networkTools.tools.latency.description",
     phase: 1,
   },
   {
@@ -69,6 +75,12 @@ export const DEV_TOOLS: readonly ToolCatalogEntry<DevToolId>[] = [
     phase: 1,
   },
   {
+    id: "yaml",
+    labelKey: "devTools.tools.yaml.title",
+    descriptionKey: "devTools.tools.yaml.description",
+    phase: 1,
+  },
+  {
     id: "timestamp",
     labelKey: "devTools.tools.timestamp.title",
     descriptionKey: "devTools.tools.timestamp.description",
@@ -106,5 +118,5 @@ export function isToolAvailable(
   tool: ToolCatalogEntry<string>,
   implemented: ReadonlySet<string>,
 ): boolean {
-  return tool.phase === 1 && implemented.has(tool.id);
+  return tool.phase <= 2 && implemented.has(tool.id);
 }

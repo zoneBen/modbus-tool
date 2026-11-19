@@ -64,6 +64,12 @@ fn forward(app: &tauri::AppHandle, event: AppEvent) {
         AppEvent::Tool(payload) => {
             let _ = app.emit("tool:event", payload);
         }
+        AppEvent::MqttState(payload) => {
+            let _ = app.emit("mqtt:state", payload);
+        }
+        AppEvent::MqttMessage(payload) => {
+            let _ = app.emit("mqtt:message", payload);
+        }
     }
 }
 
@@ -78,15 +84,21 @@ pub fn run() {
     let scans = Arc::new(ScanManager::new(bus.clone()));
     let network = Arc::new(NetworkManager::new(bus.clone()));
     let tools = Arc::new(tools::ToolsManager::new(bus.clone()));
+    let fileserver = Arc::new(tools::FileServerManager::new());
+    let mqtt = Arc::new(tools::MqttManager::new(bus.clone()));
     let setup_bus = bus.clone();
     let state_manager = manager.clone();
     let state_scans = scans.clone();
     let state_network = network.clone();
     let state_tools = tools.clone();
+    let state_fileserver = fileserver.clone();
+    let state_mqtt = mqtt.clone();
     let shutdown_manager = manager.clone();
     let shutdown_network = network.clone();
     let shutdown_scans = scans.clone();
     let shutdown_tools = tools.clone();
+    let shutdown_fileserver = fileserver.clone();
+    let shutdown_mqtt = mqtt.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -95,6 +107,8 @@ pub fn run() {
             scans: state_scans,
             network: state_network,
             tools: state_tools,
+            fileserver: state_fileserver,
+            mqtt: state_mqtt,
         })
         .on_window_event(move |_window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
@@ -102,11 +116,15 @@ pub fn run() {
                 let network = shutdown_network.clone();
                 let scans = shutdown_scans.clone();
                 let tools = shutdown_tools.clone();
+                let fileserver = shutdown_fileserver.clone();
+                let mqtt = shutdown_mqtt.clone();
                 tauri::async_runtime::spawn(async move {
                     network.stop_all().await;
                     manager.shutdown_all().await;
                     scans.shutdown_all();
                     tools.shutdown();
+                    mqtt.stop_all().await;
+                    fileserver.shutdown().await;
                 });
             }
         })
@@ -161,12 +179,21 @@ pub fn run() {
             tools::commands::tool_telnet_test,
             tools::commands::tool_http_request,
             tools::commands::tool_ping_start,
+            tools::commands::tool_latency_start,
             tools::commands::tool_traceroute_start,
             tools::commands::tool_task_cancel,
             tools::commands::tool_arp_capabilities,
             tools::commands::tool_arp_scan,
             tools::commands::tool_hash_start,
             tools::commands::tool_search_start,
+            tools::commands::tool_fileserver_start,
+            tools::commands::tool_fileserver_stop,
+            tools::commands::tool_fileserver_status,
+            tools::commands::tool_mqtt_start,
+            tools::commands::tool_mqtt_stop,
+            tools::commands::tool_mqtt_publish,
+            tools::commands::tool_mqtt_subscribe,
+            tools::commands::tool_mqtt_unsubscribe,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

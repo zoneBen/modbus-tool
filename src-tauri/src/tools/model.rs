@@ -108,6 +108,14 @@ pub struct HttpHeaderInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HttpFormFieldInput {
+    pub name: String,
+    #[serde(default)]
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HttpRequestInput {
     pub method: String,
     pub url: String,
@@ -115,12 +123,24 @@ pub struct HttpRequestInput {
     pub headers: Vec<HttpHeaderInput>,
     #[serde(default)]
     pub body: Option<String>,
+    #[serde(default = "default_body_mode")]
+    pub body_mode: String,
+    #[serde(default)]
+    pub form_fields: Vec<HttpFormFieldInput>,
+    #[serde(default)]
+    pub upload_path: Option<String>,
+    #[serde(default)]
+    pub upload_field: Option<String>,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
     #[serde(default = "default_true")]
     pub follow_redirects: bool,
     #[serde(default)]
     pub ca_path: Option<String>,
+}
+
+fn default_body_mode() -> String {
+    "raw".to_owned()
 }
 
 fn default_true() -> bool {
@@ -419,4 +439,179 @@ pub struct SearchDoneDto {
     pub skipped: u64,
     pub truncated: bool,
     pub error: Option<ToolErrorDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinuousPingInput {
+    pub host: String,
+    #[serde(default = "default_latency_interval")]
+    pub interval_ms: u64,
+    #[serde(default = "default_ping_timeout")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_ping_payload")]
+    pub payload_size: usize,
+}
+
+fn default_latency_interval() -> u64 {
+    1000
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatencySampleDto {
+    pub task_id: String,
+    pub timestamp_ms: u64,
+    pub address: String,
+    pub status: String,
+    pub rtt_ms: Option<f64>,
+    pub seq: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatencyDoneDto {
+    pub task_id: String,
+    pub sent: u32,
+    pub received: u32,
+    pub lost: u32,
+    pub min_ms: Option<f64>,
+    pub avg_ms: Option<f64>,
+    pub max_ms: Option<f64>,
+    pub error: Option<ToolErrorDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileServerStartInput {
+    pub root: String,
+    #[serde(default = "default_fileserver_host")]
+    pub host: String,
+    #[serde(default = "default_fileserver_port")]
+    pub port: u16,
+}
+
+fn default_fileserver_host() -> String {
+    "127.0.0.1".to_owned()
+}
+
+fn default_fileserver_port() -> u16 {
+    80
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileServerFileDto {
+    pub name: String,
+    pub size: u64,
+    pub modified_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileServerRequestDto {
+    pub timestamp_ms: u64,
+    pub remote: String,
+    pub method: String,
+    pub path: String,
+    pub status: u16,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileServerStatusDto {
+    pub running: bool,
+    pub root: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub urls: Vec<String>,
+    pub started_at: Option<u64>,
+    pub uploads: u64,
+    pub downloads: u64,
+    pub files: Vec<FileServerFileDto>,
+    pub requests: Vec<FileServerRequestDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MqttBrokerInput {
+    pub broker_id: String,
+    pub host: String,
+    #[serde(default = "default_mqtt_port")]
+    pub port: u16,
+    #[serde(default = "default_mqtt_protocol")]
+    pub protocol: String,
+    #[serde(default)]
+    pub client_id: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub tls: bool,
+    #[serde(default)]
+    pub ca_path: Option<String>,
+    #[serde(default = "default_mqtt_keep_alive")]
+    pub keep_alive: u16,
+    #[serde(default = "default_true")]
+    pub clean_session: bool,
+}
+
+fn default_mqtt_port() -> u16 {
+    1883
+}
+
+fn default_mqtt_protocol() -> String {
+    "3.1.1".to_owned()
+}
+
+fn default_mqtt_keep_alive() -> u16 {
+    60
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MqttStateDto {
+    pub broker_id: String,
+    pub status: String,
+    pub detail: Option<String>,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MqttMessageDto {
+    pub broker_id: String,
+    pub topic: String,
+    pub payload_text: String,
+    pub payload_hex: String,
+    pub payload_bytes: usize,
+    pub payload_truncated: bool,
+    pub qos: u8,
+    pub retain: bool,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MqttPublishInput {
+    pub broker_id: String,
+    pub topic: String,
+    pub payload: String,
+    #[serde(default)]
+    pub payload_mode: String,
+    #[serde(default)]
+    pub qos: u8,
+    #[serde(default)]
+    pub retain: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MqttSubscribeInput {
+    pub broker_id: String,
+    pub topic: String,
+    #[serde(default)]
+    pub qos: u8,
 }

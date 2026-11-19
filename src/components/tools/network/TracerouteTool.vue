@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Copy, Route, Square } from "@lucide/vue";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import { useToolEventBuffer } from "@/composables/useToolEventBuffer";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { ipc } from "@/lib/ipc";
 import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
-import type { TracerouteHop } from "@/types/tools";
+import type { ToolEvent, TracerouteHop } from "@/types/tools";
 
 const { t } = useI18n();
 const toolbox = useToolboxStore();
@@ -21,35 +22,27 @@ const probes = toolbox.toolPref("network.traceroute.probes", "3");
 const timeoutMs = toolbox.toolPref("network.traceroute.timeout", "1000");
 const resolveNames = toolbox.toolPref("network.traceroute.resolveNames", true);
 const running = ref(false);
-const taskId = ref<string | null>(null);
 const hops = ref<TracerouteHop[]>([]);
 const reached = ref(false);
 const error = ref<string | null>(null);
-let unlisten: (() => void) | null = null;
 
 const progressPercent = computed(() => {
   const max = Math.max(1, Number(maxHops.value) || 30);
   return Math.min(100, Math.round((hops.value.length / max) * 100));
 });
 
-onMounted(async () => {
-  unlisten = await ipc.on("tool:event", (event) => {
-    if (!taskId.value || event.taskId !== taskId.value) return;
-    if (event.event === "tracerouteHop") {
-      hops.value = [...hops.value, event.hop];
-    } else if (event.event === "tracerouteDone") {
-      running.value = false;
-      taskId.value = null;
-      reached.value = event.reached;
-      if (event.error) error.value = toolErrorText(t, event.error);
-    }
-  });
-});
+function onEvent(event: ToolEvent): void {
+  if (event.event === "tracerouteHop") {
+    hops.value = [...hops.value, event.hop];
+  } else if (event.event === "tracerouteDone") {
+    running.value = false;
+    unbind();
+    reached.value = event.reached;
+    if (event.error) error.value = toolErrorText(t, event.error);
+  }
+}
 
-onBeforeUnmount(() => {
-  unlisten?.();
-  unlisten = null;
-});
+const { taskId, bind, unbind } = useToolEventBuffer(onEvent);
 
 async function start(): Promise<void> {
   if (running.value) return;
@@ -62,15 +55,18 @@ async function start(): Promise<void> {
   reached.value = false;
   running.value = true;
   try {
-    taskId.value = await ipc.toolTracerouteStart({
-      target: target.value.trim(),
-      maxHops: Math.min(64, Math.max(1, Number(maxHops.value) || 30)),
-      probes: Math.min(3, Math.max(1, Number(probes.value) || 3)),
-      timeoutMs: Math.min(5000, Math.max(100, Number(timeoutMs.value) || 1000)),
-      resolveNames: resolveNames.value,
-    });
+    bind(
+      await ipc.toolTracerouteStart({
+        target: target.value.trim(),
+        maxHops: Math.min(64, Math.max(1, Number(maxHops.value) || 30)),
+        probes: Math.min(3, Math.max(1, Number(probes.value) || 3)),
+        timeoutMs: Math.min(5000, Math.max(100, Number(timeoutMs.value) || 1000)),
+        resolveNames: resolveNames.value,
+      }),
+    );
   } catch (cause: unknown) {
     running.value = false;
+    unbind();
     error.value = toolErrorText(t, cause);
   }
 }

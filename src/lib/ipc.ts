@@ -24,11 +24,17 @@ import type {
   ArpCapabilities,
   ArpScanInput,
   ArpScanResult,
+  ContinuousPingInput,
   DnsQueryInput,
   DnsResult,
+  FileServerStartInput,
+  FileServerStatus,
   HttpRequestInput,
   HashInput,
   HttpResponse,
+  MqttBrokerInput,
+  MqttPublishInput,
+  MqttSubscribeInput,
   PingInput,
   SearchInput,
   TelnetResult,
@@ -123,7 +129,10 @@ function createTauriBridge(): IpcApi {
       const path = await open({ multiple: false, directory: true });
       return typeof path === "string" ? path : null;
     },
+    readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
     toolPingStart: (input: PingInput) => invoke<string>("tool_ping_start", { input }),
+    toolLatencyStart: (input: ContinuousPingInput) =>
+      invoke<string>("tool_latency_start", { input }),
     toolTracerouteStart: (input: TracerouteInput) =>
       invoke<string>("tool_traceroute_start", { input }),
     toolTaskCancel: (taskId: string) => invoke<boolean>("tool_task_cancel", { taskId }),
@@ -131,6 +140,17 @@ function createTauriBridge(): IpcApi {
     toolArpScan: (input: ArpScanInput) => invoke<ArpScanResult>("tool_arp_scan", { input }),
     toolHashStart: (input: HashInput) => invoke<string>("tool_hash_start", { input }),
     toolSearchStart: (input: SearchInput) => invoke<string>("tool_search_start", { input }),
+    toolFileserverStart: (input: FileServerStartInput) =>
+      invoke<FileServerStatus>("tool_fileserver_start", { input }),
+    toolFileserverStop: () => invoke<FileServerStatus>("tool_fileserver_stop"),
+    toolFileserverStatus: () => invoke<FileServerStatus>("tool_fileserver_status"),
+    toolMqttStart: (input: MqttBrokerInput) => invoke<void>("tool_mqtt_start", { input }),
+    toolMqttStop: (brokerId: string) => invoke<boolean>("tool_mqtt_stop", { brokerId }),
+    toolMqttPublish: (input: MqttPublishInput) => invoke<void>("tool_mqtt_publish", { input }),
+    toolMqttSubscribe: (input: MqttSubscribeInput) =>
+      invoke<void>("tool_mqtt_subscribe", { input }),
+    toolMqttUnsubscribe: (brokerId: string, topic: string) =>
+      invoke<void>("tool_mqtt_unsubscribe", { brokerId, topic }),
     on: async <K extends AppEventName>(
       event: K,
       handler: (payload: AppEventMap[K]) => void,

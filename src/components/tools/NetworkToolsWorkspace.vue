@@ -1,10 +1,23 @@
 <script setup lang="ts">
-import { Activity, Globe2, Radar, Radio, Route, Search, Server, Terminal } from "@lucide/vue";
+import {
+  Activity,
+  ChartLine,
+  Globe2,
+  Radar,
+  Radio,
+  Route,
+  Search,
+  Server,
+  Terminal,
+} from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ArpTool from "@/components/tools/network/ArpTool.vue";
 import DnsTool from "@/components/tools/network/DnsTool.vue";
+import FileServerTool from "@/components/tools/network/FileServerTool.vue";
 import HttpTool from "@/components/tools/network/HttpTool.vue";
+import LatencyTool from "@/components/tools/network/LatencyTool.vue";
+import MqttTool from "@/components/tools/network/MqttTool.vue";
 import PingTool from "@/components/tools/network/PingTool.vue";
 import TracerouteTool from "@/components/tools/network/TracerouteTool.vue";
 import TelnetTool from "@/components/tools/network/TelnetTool.vue";
@@ -27,6 +40,7 @@ const { t } = useI18n();
 const icons = {
   arp: Radar,
   ping: Activity,
+  latency: ChartLine,
   traceroute: Route,
   dns: Search,
   telnet: Terminal,
@@ -45,8 +59,8 @@ const items = computed<ToolboxItem[]>(() =>
     title: t(tool.labelKey),
     description: t(tool.descriptionKey),
     icon: icons[tool.id],
-    disabled: tool.phase > 1,
-    badge: tool.phase > 1 ? t("tools.comingSoon") : undefined,
+    disabled: tool.phase > 2,
+    badge: tool.phase > 2 ? t("tools.comingSoon") : undefined,
   })),
 );
 
@@ -73,7 +87,10 @@ const activeItem = computed(() => items.value.find((item) => item.id === active.
     <TelnetTool v-else-if="active === 'telnet'" />
     <HttpTool v-else-if="active === 'http'" />
     <PingTool v-else-if="active === 'ping'" />
+    <LatencyTool v-else-if="active === 'latency'" />
     <TracerouteTool v-else-if="active === 'traceroute'" />
+    <FileServerTool v-else-if="active === 'fileserver'" />
+    <MqttTool v-else-if="active === 'mqtt'" />
     <ToolPlaceholder
       v-else
       :title="activeItem?.title ?? t('networkTools.title')"

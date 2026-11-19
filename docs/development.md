@@ -61,9 +61,11 @@ docs/architecture.md   协议矩阵、Actor 与事件流
 - 不包含硬编码密钥
 - 设备报文、扫描输入、定义参数在 Rust 边界校验长度、功能码、地址与数量范围
 - 会话配置在工作区/全局配置导入时校验字段与版本，恢复后默认保持断开
-- 工具箱：Ping/路由跟踪/ARP 使用 Windows iphlpapi；ARP 增强模式运行时加载 Npcap `wpcap.dll` 并需要管理员权限；非 Windows 返回明确错误
-- HTTP/MQTT TLS 使用 native-tls（Windows SChannel），不引入 OpenSSL/AWS-LC 构建链
-- 美化器使用 Prettier standalone + xml-formatter 动态加载，避免进入首屏 bundle
+- 工具箱：Ping/持续 Ping/路由跟踪/ARP 使用 Windows iphlpapi；ARP 增强模式运行时加载 Npcap `wpcap.dll` 并需要管理员权限；非 Windows 返回明确错误
+- HTTP/MQTT TLS 使用 native-tls（Windows SChannel），不引入 OpenSSL/AWS-LC 构建链；MQTT 密码不持久化
+- Web 文件服务默认只监听回环地址，界面在切换 0.0.0.0 时持续提示无访问密码风险；上传文件名消毒、路径穿越防护、重名自动后缀、请求体上限 512MB；共享根目录 canonicalize 后校验为目录
+- 美化器使用 Prettier standalone + xml-formatter 动态加载，避免进入首屏 bundle；YAML 校验使用 `yaml` 包在前端解析，不上传文件内容
+- 工具长任务使用前端事件缓冲与后端 taskId 关联，避免任务在 invoke 返回前完成导致 UI 停在 0%
 
 ## 相关文档
 

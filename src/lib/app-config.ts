@@ -2,6 +2,7 @@ import type { AppSettingsSnapshot } from "@/stores/settings";
 import type { NetworkSessionConfig } from "@/stores/network";
 import type { PersistedSession } from "@/lib/persisted-workspace";
 import type { ToolboxConfig } from "@/stores/toolbox";
+import type { MqttConfigSnapshot } from "@/stores/mqtt";
 import type { DefinitionInput } from "@/types/models";
 
 export const APP_CONFIG_KIND = "modbus-tool-config";
@@ -15,6 +16,7 @@ export interface AppConfigFile {
   sessions: PersistedSession[];
   networkSessions: NetworkSessionConfig[];
   tools?: ToolboxConfig;
+  mqtt?: MqttConfigSnapshot;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,6 +73,7 @@ export function parseAppConfig(text: string): AppConfigFile {
     sessions,
     networkSessions,
     tools: isRecord(parsed.tools) ? (parsed.tools as unknown as ToolboxConfig) : undefined,
+    mqtt: isRecord(parsed.mqtt) ? (parsed.mqtt as unknown as MqttConfigSnapshot) : undefined,
   };
 }
 
@@ -79,6 +82,7 @@ export function buildAppConfig(
   sessions: PersistedSession[],
   networkSessions: NetworkSessionConfig[],
   tools?: ToolboxConfig,
+  mqtt?: MqttConfigSnapshot,
 ): AppConfigFile {
   return {
     kind: APP_CONFIG_KIND,
@@ -88,5 +92,6 @@ export function buildAppConfig(
     sessions,
     networkSessions,
     tools,
+    mqtt,
   };
 }

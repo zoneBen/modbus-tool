@@ -30,11 +30,19 @@ import type {
   ArpCapabilities,
   ArpScanInput,
   ArpScanResult,
+  ContinuousPingInput,
   DnsQueryInput,
   DnsResult,
+  FileServerStartInput,
+  FileServerStatus,
   HttpRequestInput,
   HashInput,
   HttpResponse,
+  MqttBrokerInput,
+  MqttMessage,
+  MqttPublishInput,
+  MqttState,
+  MqttSubscribeInput,
   PingInput,
   SearchInput,
   TelnetResult,
@@ -57,7 +65,9 @@ export type AppEventName =
   | "scan:progress"
   | "scan:result"
   | "scan:done"
-  | "tool:event";
+  | "tool:event"
+  | "mqtt:state"
+  | "mqtt:message";
 
 export interface AppEventMap {
   "session:data": DefinitionSnapshot;
@@ -73,6 +83,8 @@ export interface AppEventMap {
   "scan:result": ScanResult;
   "scan:done": ScanDone;
   "tool:event": ToolEvent;
+  "mqtt:state": MqttState;
+  "mqtt:message": MqttMessage;
 }
 
 export interface IpcApi {
@@ -124,13 +136,23 @@ export interface IpcApi {
   toolHttpRequest(input: HttpRequestInput): Promise<HttpResponse>;
   pickFile(filters?: ToolFileFilter[]): Promise<string | null>;
   pickDirectory(): Promise<string | null>;
+  readTextFile(path: string): Promise<string>;
   toolPingStart(input: PingInput): Promise<string>;
+  toolLatencyStart(input: ContinuousPingInput): Promise<string>;
   toolTracerouteStart(input: TracerouteInput): Promise<string>;
   toolTaskCancel(taskId: string): Promise<boolean>;
   toolArpCapabilities(): Promise<ArpCapabilities>;
   toolArpScan(input: ArpScanInput): Promise<ArpScanResult>;
   toolHashStart(input: HashInput): Promise<string>;
   toolSearchStart(input: SearchInput): Promise<string>;
+  toolFileserverStart(input: FileServerStartInput): Promise<FileServerStatus>;
+  toolFileserverStop(): Promise<FileServerStatus>;
+  toolFileserverStatus(): Promise<FileServerStatus>;
+  toolMqttStart(input: MqttBrokerInput): Promise<void>;
+  toolMqttStop(brokerId: string): Promise<boolean>;
+  toolMqttPublish(input: MqttPublishInput): Promise<void>;
+  toolMqttSubscribe(input: MqttSubscribeInput): Promise<void>;
+  toolMqttUnsubscribe(brokerId: string, topic: string): Promise<void>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

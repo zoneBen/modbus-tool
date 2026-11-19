@@ -82,8 +82,14 @@ export interface TelnetResult {
 }
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+export type HttpBodyMode = "none" | "raw" | "json" | "form" | "multipart";
 
 export interface HttpHeaderInput {
+  name: string;
+  value: string;
+}
+
+export interface HttpFormFieldInput {
   name: string;
   value: string;
 }
@@ -93,6 +99,10 @@ export interface HttpRequestInput {
   url: string;
   headers: HttpHeaderInput[];
   body?: string;
+  bodyMode: HttpBodyMode;
+  formFields: HttpFormFieldInput[];
+  uploadPath?: string;
+  uploadField?: string;
   timeoutMs: number;
   followRedirects: boolean;
   caPath?: string;
@@ -145,6 +155,33 @@ export interface PingDone {
   error?: ToolErrorPayload;
 }
 
+export interface ContinuousPingInput {
+  host: string;
+  intervalMs: number;
+  timeoutMs: number;
+  payloadSize: number;
+}
+
+export interface LatencySample {
+  taskId: string;
+  timestampMs: number;
+  address: string;
+  status: string;
+  rttMs?: number;
+  seq: number;
+}
+
+export interface LatencyDone {
+  taskId: string;
+  sent: number;
+  received: number;
+  lost: number;
+  minMs?: number;
+  avgMs?: number;
+  maxMs?: number;
+  error?: ToolErrorPayload;
+}
+
 export interface TracerouteInput {
   target: string;
   maxHops: number;
@@ -180,6 +217,18 @@ export type ToolEvent =
     }
   | { event: "tracerouteHop"; taskId: string; hop: TracerouteHop }
   | { event: "tracerouteDone"; taskId: string; reached: boolean; error?: ToolErrorPayload }
+  | { event: "latencySample"; taskId: string; sample: LatencySample }
+  | {
+      event: "latencyDone";
+      taskId: string;
+      sent: number;
+      received: number;
+      lost: number;
+      minMs?: number;
+      avgMs?: number;
+      maxMs?: number;
+      error?: ToolErrorPayload;
+    }
   | { event: "hashProgress"; taskId: string; done: number; total: number }
   | { event: "hashDone"; taskId: string; result?: HashResult; error?: ToolErrorPayload }
   | { event: "searchProgress"; taskId: string; files: number; matches: number }
@@ -294,4 +343,90 @@ export interface SearchDone {
   skipped: number;
   truncated: boolean;
   error?: ToolErrorPayload;
+}
+
+export interface FileServerStartInput {
+  root: string;
+  host: string;
+  port: number;
+}
+
+export interface FileServerFile {
+  name: string;
+  size: number;
+  modifiedMs: number;
+}
+
+export interface FileServerRequest {
+  timestampMs: number;
+  remote: string;
+  method: string;
+  path: string;
+  status: number;
+  bytes: number;
+}
+
+export interface FileServerStatus {
+  running: boolean;
+  root: string | null;
+  host: string | null;
+  port: number | null;
+  urls: string[];
+  startedAt: number | null;
+  uploads: number;
+  downloads: number;
+  files: FileServerFile[];
+  requests: FileServerRequest[];
+}
+
+export type MqttProtocol = "3.1.1" | "5";
+
+export interface MqttBrokerInput {
+  brokerId: string;
+  host: string;
+  port: number;
+  protocol: MqttProtocol;
+  clientId: string;
+  username: string;
+  password?: string;
+  tls: boolean;
+  caPath?: string;
+  keepAlive: number;
+  cleanSession: boolean;
+}
+
+export type MqttStatus = "connecting" | "connected" | "reconnecting" | "disconnected" | "error";
+
+export interface MqttState {
+  brokerId: string;
+  status: MqttStatus;
+  detail: string | null;
+  timestampMs: number;
+}
+
+export interface MqttMessage {
+  brokerId: string;
+  topic: string;
+  payloadText: string;
+  payloadHex: string;
+  payloadBytes: number;
+  payloadTruncated: boolean;
+  qos: number;
+  retain: boolean;
+  timestampMs: number;
+}
+
+export interface MqttPublishInput {
+  brokerId: string;
+  topic: string;
+  payload: string;
+  payloadMode: "text" | "hex";
+  qos: number;
+  retain: boolean;
+}
+
+export interface MqttSubscribeInput {
+  brokerId: string;
+  topic: string;
+  qos: number;
 }

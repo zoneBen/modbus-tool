@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Copy, FolderOpen, Search, Square } from "@lucide/vue";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
+import { useToolEventBuffer } from "@/composables/useToolEventBuffer";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { ipc } from "@/lib/ipc";
 import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
-import type { SearchHit } from "@/types/tools";
+import type { SearchHit, ToolEvent } from "@/types/tools";
 
 const { t } = useI18n();
 const toolbox = useToolboxStore();
@@ -30,14 +31,34 @@ const maxFileSizeMb = toolbox.toolPref("dev.search.maxFileSize", "10");
 const maxResults = toolbox.toolPref("dev.search.maxResults", "1000");
 const skipHidden = toolbox.toolPref("dev.search.skipHidden", true);
 const running = ref(false);
-const taskId = ref<string | null>(null);
 const hits = ref<SearchHit[]>([]);
 const progress = ref({ files: 0, matches: 0 });
 const done = ref<{ skipped: number; truncated: boolean; files: number; matches: number } | null>(
   null,
 );
 const error = ref<string | null>(null);
-let unlisten: (() => void) | null = null;
+
+function onEvent(event: ToolEvent): void {
+  if (event.event === "searchProgress") {
+    progress.value = { files: event.files, matches: event.matches };
+  } else if (event.event === "searchHits") {
+    hits.value = [...hits.value, ...event.hits];
+  } else if (event.event === "searchDone") {
+    running.value = false;
+    unbind();
+    done.value = {
+      skipped: event.skipped,
+      truncated: event.truncated,
+      files: event.files,
+      matches: event.matches,
+    };
+    if (event.error && event.error.code !== "cancelled") {
+      error.value = toolErrorText(t, event.error);
+    }
+  }
+}
+
+const { taskId, bind, unbind } = useToolEventBuffer(onEvent);
 
 const modeOptions = computed(() => [
   { label: t("devTools.search.literal"), value: "literal" as const },
@@ -47,34 +68,6 @@ const encodingOptions = ["auto", "utf-8", "utf-16le", "utf-16be", "gb18030"].map
   label: value.toUpperCase(),
   value,
 }));
-
-onMounted(async () => {
-  unlisten = await ipc.on("tool:event", (event) => {
-    if (!taskId.value || event.taskId !== taskId.value) return;
-    if (event.event === "searchProgress") {
-      progress.value = { files: event.files, matches: event.matches };
-    } else if (event.event === "searchHits") {
-      hits.value = [...hits.value, ...event.hits];
-    } else if (event.event === "searchDone") {
-      running.value = false;
-      taskId.value = null;
-      done.value = {
-        skipped: event.skipped,
-        truncated: event.truncated,
-        files: event.files,
-        matches: event.matches,
-      };
-      if (event.error && event.error.code !== "cancelled") {
-        error.value = toolErrorText(t, event.error);
-      }
-    }
-  });
-});
-
-onBeforeUnmount(() => {
-  unlisten?.();
-  unlisten = null;
-});
 
 async function browse(): Promise<void> {
   const path = await ipc.pickDirectory();
@@ -97,20 +90,23 @@ async function start(): Promise<void> {
   progress.value = { files: 0, matches: 0 };
   running.value = true;
   try {
-    taskId.value = await ipc.toolSearchStart({
-      folder: folder.value.trim(),
-      query: query.value,
-      mode: mode.value,
-      caseSensitive: caseSensitive.value,
-      include: include.value,
-      exclude: exclude.value,
-      encoding: encoding.value,
-      maxFileSize: Math.min(1024, Math.max(1, Number(maxFileSizeMb.value) || 10)) * 1024 * 1024,
-      maxResults: Math.min(10_000, Math.max(1, Number(maxResults.value) || 1000)),
-      skipHidden: skipHidden.value,
-    });
+    bind(
+      await ipc.toolSearchStart({
+        folder: folder.value.trim(),
+        query: query.value,
+        mode: mode.value,
+        caseSensitive: caseSensitive.value,
+        include: include.value,
+        exclude: exclude.value,
+        encoding: encoding.value,
+        maxFileSize: Math.min(1024, Math.max(1, Number(maxFileSizeMb.value) || 10)) * 1024 * 1024,
+        maxResults: Math.min(10_000, Math.max(1, Number(maxResults.value) || 1000)),
+        skipHidden: skipHidden.value,
+      }),
+    );
   } catch (cause: unknown) {
     running.value = false;
+    unbind();
     error.value = toolErrorText(t, cause);
   }
 }

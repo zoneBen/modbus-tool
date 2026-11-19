@@ -1,8 +1,8 @@
 use serde::Serialize;
 
 use super::model::{
-    HashDoneDto, PingDoneDto, PingHostResultDto, SearchDoneDto, SearchHitDto, TracerouteDoneDto,
-    TracerouteHopDto,
+    HashDoneDto, LatencyDoneDto, LatencySampleDto, PingDoneDto, PingHostResultDto, SearchDoneDto,
+    SearchHitDto, TracerouteDoneDto, TracerouteHopDto,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,6 +27,11 @@ pub enum ToolEventDto {
         hop: TracerouteHopDto,
     },
     TracerouteDone(TracerouteDoneDto),
+    LatencySample {
+        task_id: String,
+        sample: LatencySampleDto,
+    },
+    LatencyDone(LatencyDoneDto),
     HashProgress {
         task_id: String,
         done: u64,

@@ -2,10 +2,13 @@ mod arp;
 pub mod commands;
 mod dns;
 pub mod event;
+mod fileserver;
 mod hash;
 mod http_client;
 mod icmp;
+mod latency;
 pub mod model;
+mod mqtt;
 mod ping;
 mod search;
 mod tasks;
@@ -16,9 +19,12 @@ use uuid::Uuid;
 
 use crate::event::EventBus;
 
+pub use self::fileserver::FileServerManager;
+pub use self::mqtt::MqttManager;
+
 use self::model::{
-    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, HashInput, PingInput, SearchInput,
-    ToolResult, TracerouteInput,
+    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, ContinuousPingInput, HashInput, PingInput,
+    SearchInput, ToolResult, TracerouteInput,
 };
 use self::tasks::ToolTasks;
 
@@ -56,6 +62,26 @@ impl ToolsManager {
 
     pub async fn arp_scan(&self, input: ArpScanInput) -> ToolResult<ArpScanResultDto> {
         arp::scan(input).await
+    }
+
+    pub fn start_latency(&self, input: ContinuousPingInput) -> ToolResult<String> {
+        if input.host.trim().is_empty() {
+            return Err(model::ToolErrorDto::new(
+                "invalidHost",
+                "Target host is required",
+            ));
+        }
+        let task_id = Uuid::new_v4().to_string();
+        let cancel = self.tasks.register(&task_id);
+        let bus = self.bus.clone();
+        let tasks = self.tasks.clone();
+        let run_id = task_id.clone();
+        tauri::async_runtime::spawn(async move {
+            let run_id_for_task = run_id.clone();
+            latency::run(run_id, input, cancel, tasks.clone(), bus).await;
+            tasks.finish(&run_id_for_task);
+        });
+        Ok(task_id)
     }
 
     pub fn start_hash(&self, input: HashInput) -> ToolResult<String> {

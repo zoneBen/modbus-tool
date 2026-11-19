@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Copy, FolderOpen, Hash, Square } from "@lucide/vue";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import { useToolEventBuffer } from "@/composables/useToolEventBuffer";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,18 +11,33 @@ import { Label } from "@/components/ui/label";
 import { ipc } from "@/lib/ipc";
 import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
-import type { HashResult } from "@/types/tools";
+import type { HashResult, ToolEvent } from "@/types/tools";
 
 const { t } = useI18n();
 const toolbox = useToolboxStore();
 const filePath = ref("");
 const algorithms = toolbox.toolPref<string[]>("dev.hash.algorithms", ["sha256"]);
 const running = ref(false);
-const taskId = ref<string | null>(null);
 const progress = ref({ done: 0, total: 0 });
 const result = ref<HashResult | null>(null);
 const error = ref<string | null>(null);
-let unlisten: (() => void) | null = null;
+
+function onEvent(event: ToolEvent): void {
+  if (event.event === "hashProgress") {
+    progress.value = { done: event.done, total: event.total };
+  } else if (event.event === "hashDone") {
+    running.value = false;
+    unbind();
+    if (event.error) {
+      error.value = toolErrorText(t, event.error);
+    } else if (event.result) {
+      progress.value = { done: event.result.size, total: event.result.size };
+      result.value = event.result;
+    }
+  }
+}
+
+const { taskId, bind, unbind } = useToolEventBuffer(onEvent);
 
 const options = [
   { value: "md5", label: "MD5" },
@@ -38,28 +54,6 @@ const percent = computed(() =>
       ? 0
       : 100,
 );
-
-onMounted(async () => {
-  unlisten = await ipc.on("tool:event", (event) => {
-    if (!taskId.value || event.taskId !== taskId.value) return;
-    if (event.event === "hashProgress") {
-      progress.value = { done: event.done, total: event.total };
-    } else if (event.event === "hashDone") {
-      running.value = false;
-      taskId.value = null;
-      if (event.error) {
-        error.value = toolErrorText(t, event.error);
-      } else if (event.result) {
-        result.value = event.result;
-      }
-    }
-  });
-});
-
-onBeforeUnmount(() => {
-  unlisten?.();
-  unlisten = null;
-});
 
 function toggleAlgorithm(value: string): void {
   algorithms.value = algorithms.value.includes(value)
@@ -87,12 +81,15 @@ async function start(): Promise<void> {
   progress.value = { done: 0, total: 0 };
   running.value = true;
   try {
-    taskId.value = await ipc.toolHashStart({
-      path: filePath.value.trim(),
-      algorithms: algorithms.value,
-    });
+    bind(
+      await ipc.toolHashStart({
+        path: filePath.value.trim(),
+        algorithms: algorithms.value,
+      }),
+    );
   } catch (cause: unknown) {
     running.value = false;
+    unbind();
     error.value = toolErrorText(t, cause);
   }
 }

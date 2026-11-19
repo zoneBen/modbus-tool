@@ -1,12 +1,15 @@
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use reqwest::header::{CONTENT_TYPE, HeaderName, HeaderValue};
+use reqwest::multipart::{Form, Part};
 use reqwest::{Certificate, Method, Url, redirect};
 
 use super::model::{HttpHeaderDto, HttpRequestInput, HttpResponseDto, ToolErrorDto, ToolResult};
 
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 const MAX_CA_BYTES: u64 = 1024 * 1024;
+const MAX_UPLOAD_BYTES: u64 = 32 * 1024 * 1024;
 
 pub async fn request(input: HttpRequestInput) -> ToolResult<HttpResponseDto> {
     let url = Url::parse(input.url.trim())
@@ -25,6 +28,20 @@ pub async fn request(input: HttpRequestInput) -> ToolResult<HttpResponseDto> {
             "At most 100 headers are allowed",
         ));
     }
+    let body_mode = input.body_mode.trim().to_ascii_lowercase();
+    if !matches!(
+        body_mode.as_str(),
+        "none" | "raw" | "json" | "form" | "multipart"
+    ) {
+        return Err(ToolErrorDto::new(
+            "invalidBodyMode",
+            format!("Unsupported body mode: {body_mode}"),
+        ));
+    }
+    let has_content_type = input
+        .headers
+        .iter()
+        .any(|header| header.name.trim().eq_ignore_ascii_case("content-type"));
 
     let timeout_duration = Duration::from_millis(input.timeout_ms.clamp(100, 120_000));
     let mut builder = reqwest::Client::builder()
@@ -60,16 +77,89 @@ pub async fn request(input: HttpRequestInput) -> ToolResult<HttpResponseDto> {
         .map_err(|error| ToolErrorDto::new("clientBuildFailed", error.to_string()))?;
     let mut request = client.request(method.clone(), url);
     for header in &input.headers {
+        if body_mode == "multipart" && header.name.trim().eq_ignore_ascii_case("content-type") {
+            continue;
+        }
         let name = HeaderName::from_bytes(header.name.trim().as_bytes())
             .map_err(|error| ToolErrorDto::new("invalidHeader", error.to_string()))?;
         let value = HeaderValue::from_str(&header.value)
             .map_err(|error| ToolErrorDto::new("invalidHeader", error.to_string()))?;
         request = request.header(name, value);
     }
-    if let Some(body) = input.body.as_deref()
-        && !matches!(method, Method::GET | Method::HEAD)
-    {
-        request = request.body(body.to_owned());
+
+    if !matches!(method, Method::GET | Method::HEAD) {
+        match body_mode.as_str() {
+            "multipart" => {
+                let mut form = Form::new();
+                for field in &input.form_fields {
+                    let name = field.name.trim();
+                    if !name.is_empty() {
+                        form = form.text(name.to_owned(), field.value.clone());
+                    }
+                }
+                if let Some(path) = input
+                    .upload_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|path| !path.is_empty())
+                {
+                    let metadata = tokio::fs::metadata(path).await.map_err(|error| {
+                        ToolErrorDto::new("uploadReadFailed", error.to_string())
+                    })?;
+                    if !metadata.is_file() {
+                        return Err(ToolErrorDto::new(
+                            "uploadReadFailed",
+                            "Upload path is not a file",
+                        ));
+                    }
+                    if metadata.len() > MAX_UPLOAD_BYTES {
+                        return Err(ToolErrorDto::new(
+                            "uploadTooLarge",
+                            format!(
+                                "Upload exceeds the {} MB limit",
+                                MAX_UPLOAD_BYTES / 1024 / 1024
+                            ),
+                        ));
+                    }
+                    let bytes = tokio::fs::read(path).await.map_err(|error| {
+                        ToolErrorDto::new("uploadReadFailed", error.to_string())
+                    })?;
+                    let file_name = Path::new(path)
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "file".to_owned());
+                    let field_name = input
+                        .upload_field
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or("file");
+                    form = form.part(
+                        field_name.to_owned(),
+                        Part::bytes(bytes).file_name(file_name),
+                    );
+                }
+                request = request.multipart(form);
+            }
+            "form" => {
+                if !has_content_type {
+                    request = request.header(CONTENT_TYPE, "application/x-www-form-urlencoded");
+                }
+                request = request.body(encode_form(&input.form_fields));
+            }
+            "json" => {
+                if !has_content_type {
+                    request = request.header(CONTENT_TYPE, "application/json");
+                }
+                request = request.body(input.body.clone().unwrap_or_default());
+            }
+            "none" => {}
+            _ => {
+                if let Some(body) = input.body.as_deref() {
+                    request = request.body(body.to_owned());
+                }
+            }
+        }
     }
 
     let started = Instant::now();
@@ -136,6 +226,21 @@ pub async fn request(input: HttpRequestInput) -> ToolResult<HttpResponseDto> {
         content_type,
         binary: !textual,
     })
+}
+
+fn encode_form(fields: &[super::model::HttpFormFieldInput]) -> String {
+    fields
+        .iter()
+        .filter(|field| !field.name.trim().is_empty())
+        .map(|field| {
+            format!(
+                "{}={}",
+                urlencoding::encode(field.name.trim()),
+                urlencoding::encode(&field.value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 fn is_textual_content_type(value: &str) -> bool {
@@ -214,6 +319,10 @@ mod tests {
                 value: "demo".to_owned(),
             }],
             body: Some("hello".to_owned()),
+            body_mode: "raw".to_owned(),
+            form_fields: Vec::new(),
+            upload_path: None,
+            upload_field: None,
             timeout_ms: 2000,
             follow_redirects: false,
             ca_path: None,
@@ -232,5 +341,24 @@ mod tests {
         assert!(is_textual_content_type("application/json; charset=utf-8"));
         assert!(is_textual_content_type("text/plain"));
         assert!(!is_textual_content_type("image/png"));
+    }
+
+    #[test]
+    fn encodes_form_fields() {
+        let encoded = encode_form(&[
+            super::super::model::HttpFormFieldInput {
+                name: "name".to_owned(),
+                value: "a b&c".to_owned(),
+            },
+            super::super::model::HttpFormFieldInput {
+                name: "empty".to_owned(),
+                value: String::new(),
+            },
+            super::super::model::HttpFormFieldInput {
+                name: "  ".to_owned(),
+                value: "ignored".to_owned(),
+            },
+        ]);
+        assert_eq!(encoded, "name=a%20b%26c&empty=");
     }
 }

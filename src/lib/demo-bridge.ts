@@ -45,12 +45,18 @@ import type {
   ArpEntry,
   ArpScanInput,
   ArpScanResult,
+  ContinuousPingInput,
   DnsQueryInput,
+  FileServerStartInput,
+  FileServerStatus,
   HashInput,
   SearchInput,
   DnsResult,
   HttpRequestInput,
   HttpResponse,
+  MqttBrokerInput,
+  MqttPublishInput,
+  MqttSubscribeInput,
   PingInput,
   PingHostResult,
   TelnetResult,
@@ -1419,9 +1425,15 @@ export function createDemoBridge(): IpcApi {
     return "C:\\demo\\workspace";
   }
 
+  async function readTextFile(_path: string): Promise<string> {
+    await demoWait(80);
+    return "name: modbus-tool\nversion: 0.6.0\nports:\n  - 502\n  - 1502\n";
+  }
+
   let toolTaskSequence = 0;
   const toolTimers = new Map<string, ReturnType<typeof setInterval>>();
-  const toolKinds = new Map<string, "ping" | "traceroute" | "hash" | "search">();
+  const toolKinds = new Map<string, "ping" | "traceroute" | "latency" | "hash" | "search">();
+  const latencyStats = new Map<string, { sent: number; received: number; rtts: number[] }>();
 
   async function toolPingStart(input: PingInput): Promise<string> {
     await demoWait(120);
@@ -1517,6 +1529,56 @@ export function createDemoBridge(): IpcApi {
     return taskId;
   }
 
+  async function toolLatencyStart(input: ContinuousPingInput): Promise<string> {
+    await demoWait(120);
+    if (!input.host.trim()) {
+      throw { code: "invalidHost", detail: "Target host is required" };
+    }
+    toolTaskSequence += 1;
+    const taskId = `demo-tool-${toolTaskSequence}`;
+    toolKinds.set(taskId, "latency");
+    let seq = 0;
+    let sent = 0;
+    let received = 0;
+    const rtts: number[] = [];
+    toolTimers.set(
+      taskId,
+      setInterval(
+        () => {
+          seq += 1;
+          sent += 1;
+          const lost = seq % 11 === 0 || seq % 17 === 0;
+          const base = 12 + Math.sin(seq / 3) * 4;
+          const rtt = lost ? undefined : Math.round((base + Math.random() * 6) * 10) / 10;
+          if (rtt !== undefined) {
+            received += 1;
+            rtts.push(rtt);
+          }
+          const stats = latencyStats.get(taskId);
+          if (stats) {
+            stats.sent = sent;
+            stats.received = received;
+          }
+          emit("tool:event", {
+            event: "latencySample",
+            taskId,
+            sample: {
+              taskId,
+              timestampMs: Date.now(),
+              address: input.host.includes(".") ? input.host : "192.0.2.10",
+              status: lost ? "timeout" : "ok",
+              rttMs: rtt,
+              seq,
+            },
+          });
+        },
+        Math.max(200, input.intervalMs),
+      ),
+    );
+    latencyStats.set(taskId, { sent, received, rtts });
+    return taskId;
+  }
+
   async function toolTaskCancel(taskId: string): Promise<boolean> {
     const timer = toolTimers.get(taskId);
     if (!timer) return false;
@@ -1529,6 +1591,24 @@ export function createDemoBridge(): IpcApi {
         event: "tracerouteDone",
         taskId,
         reached: false,
+        error: { code: "cancelled", detail: "Task cancelled" },
+      });
+    } else if (kind === "latency") {
+      const stats = latencyStats.get(taskId) ?? { sent: 0, received: 0, rtts: [] };
+      latencyStats.delete(taskId);
+      emit("tool:event", {
+        event: "latencyDone",
+        taskId,
+        sent: stats.sent,
+        received: stats.received,
+        lost: stats.sent - stats.received,
+        minMs: stats.rtts.length ? Math.min(...stats.rtts) : undefined,
+        avgMs: stats.rtts.length
+          ? Math.round(
+              (stats.rtts.reduce((sum, value) => sum + value, 0) / stats.rtts.length) * 10,
+            ) / 10
+          : undefined,
+        maxMs: stats.rtts.length ? Math.max(...stats.rtts) : undefined,
         error: { code: "cancelled", detail: "Task cancelled" },
       });
     } else if (kind === "hash") {
@@ -1573,7 +1653,10 @@ export function createDemoBridge(): IpcApi {
               demo: true,
               method: input.method,
               url: input.url,
+              bodyMode: input.bodyMode,
               receivedBody: input.body ?? null,
+              formFields: input.formFields,
+              uploadedFile: input.uploadPath ?? null,
             },
             null,
             2,
@@ -1988,6 +2071,169 @@ export function createDemoBridge(): IpcApi {
     emit("session:data", next);
   }
 
+  let demoFileServer: FileServerStatus = {
+    running: false,
+    root: null,
+    host: null,
+    port: null,
+    urls: [],
+    startedAt: null,
+    uploads: 0,
+    downloads: 0,
+    files: [],
+    requests: [],
+  };
+
+  async function toolFileserverStart(input: FileServerStartInput): Promise<FileServerStatus> {
+    await demoWait(240);
+    if (!input.root.trim()) {
+      throw { code: "invalidRoot", detail: "Select a folder to share" };
+    }
+    const host = input.host || "127.0.0.1";
+    const port = input.port || 80;
+    const urls =
+      host === "0.0.0.0"
+        ? [`http://127.0.0.1:${port}`, `http://192.168.1.10:${port}`]
+        : [`http://${host}:${port}`];
+    demoFileServer = {
+      running: true,
+      root: input.root,
+      host,
+      port,
+      urls,
+      startedAt: Date.now(),
+      uploads: 2,
+      downloads: 5,
+      files: [
+        { name: "firmware.bin", size: 2_457_600, modifiedMs: Date.now() - 3_600_000 },
+        { name: "notes.txt", size: 1_824, modifiedMs: Date.now() - 900_000 },
+      ],
+      requests: [
+        {
+          timestampMs: Date.now() - 42_000,
+          remote: "192.168.1.24",
+          method: "GET",
+          path: "/download/firmware.bin",
+          status: 200,
+          bytes: 2_457_600,
+        },
+        {
+          timestampMs: Date.now() - 120_000,
+          remote: "192.168.1.31",
+          method: "POST",
+          path: "/upload",
+          status: 303,
+          bytes: 18_432,
+        },
+      ],
+    };
+    return clone(demoFileServer);
+  }
+
+  async function toolFileserverStop(): Promise<FileServerStatus> {
+    await demoWait(180);
+    demoFileServer = {
+      ...demoFileServer,
+      running: false,
+      urls: [],
+    };
+    return clone(demoFileServer);
+  }
+
+  async function toolFileserverStatus(): Promise<FileServerStatus> {
+    await demoWait(60);
+    return clone(demoFileServer);
+  }
+
+  const mqttTimers = new Map<string, ReturnType<typeof setInterval>>();
+
+  async function toolMqttStart(input: MqttBrokerInput): Promise<void> {
+    await demoWait(160);
+    if (!input.host.trim()) {
+      throw { code: "invalidHost", detail: "Broker host is required" };
+    }
+    if (mqttTimers.has(input.brokerId)) {
+      throw { code: "brokerAlreadyRunning", detail: "This broker is already connected" };
+    }
+    emit("mqtt:state", {
+      brokerId: input.brokerId,
+      status: "connecting",
+      detail: null,
+      timestampMs: Date.now(),
+    });
+    let step = 0;
+    let connected = false;
+    const timer = setInterval(() => {
+      step += 1;
+      if (!connected) {
+        connected = true;
+        emit("mqtt:state", {
+          brokerId: input.brokerId,
+          status: "connected",
+          detail: null,
+          timestampMs: Date.now(),
+        });
+        return;
+      }
+      if (step % 3 === 0) {
+        const payload = JSON.stringify({ demo: true, seq: step, value: 20 + Math.random() * 6 });
+        emit("mqtt:message", {
+          brokerId: input.brokerId,
+          topic: "demo/telemetry",
+          payloadText: payload,
+          payloadHex: Array.from(new TextEncoder().encode(payload))
+            .map((byte) => byte.toString(16).padStart(2, "0").toUpperCase())
+            .join(" "),
+          payloadBytes: new TextEncoder().encode(payload).length,
+          payloadTruncated: false,
+          qos: 0,
+          retain: false,
+          timestampMs: Date.now(),
+        });
+      }
+    }, 700);
+    mqttTimers.set(input.brokerId, timer);
+  }
+
+  async function toolMqttStop(brokerId: string): Promise<boolean> {
+    await demoWait(120);
+    const timer = mqttTimers.get(brokerId);
+    if (!timer) return false;
+    clearInterval(timer);
+    mqttTimers.delete(brokerId);
+    emit("mqtt:state", {
+      brokerId,
+      status: "disconnected",
+      detail: null,
+      timestampMs: Date.now(),
+    });
+    return true;
+  }
+
+  async function toolMqttPublish(input: MqttPublishInput): Promise<void> {
+    await demoWait(80);
+    if (!mqttTimers.has(input.brokerId)) {
+      throw { code: "brokerNotRunning", detail: "Broker is not connected" };
+    }
+    if (!input.topic.trim()) {
+      throw { code: "invalidTopic", detail: "Topic is required" };
+    }
+  }
+
+  async function toolMqttSubscribe(input: MqttSubscribeInput): Promise<void> {
+    await demoWait(80);
+    if (!mqttTimers.has(input.brokerId)) {
+      throw { code: "brokerNotRunning", detail: "Broker is not connected" };
+    }
+    if (!input.topic.trim()) {
+      throw { code: "invalidTopic", detail: "Topic filter is required" };
+    }
+  }
+
+  async function toolMqttUnsubscribe(_brokerId: string, _topic: string): Promise<void> {
+    await demoWait(60);
+  }
+
   async function on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,
@@ -2027,14 +2273,24 @@ export function createDemoBridge(): IpcApi {
     toolTelnetTest,
     toolHttpRequest,
     toolPingStart,
+    toolLatencyStart,
     toolTracerouteStart,
     toolTaskCancel,
     toolArpCapabilities,
     toolArpScan,
     toolHashStart,
     toolSearchStart,
+    toolFileserverStart,
+    toolFileserverStop,
+    toolFileserverStatus,
+    toolMqttStart,
+    toolMqttStop,
+    toolMqttPublish,
+    toolMqttSubscribe,
+    toolMqttUnsubscribe,
     pickFile,
     pickDirectory,
+    readTextFile,
     writeRegister,
     writeCustom,
     startDebug,

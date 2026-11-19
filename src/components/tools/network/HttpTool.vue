@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, FolderOpen, Globe2, Plus, Send, X } from "@lucide/vue";
+import { Copy, FileUp, FolderOpen, Globe2, Plus, Send, X } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -12,16 +12,18 @@ import { Switch } from "@/components/ui/switch";
 import { ipc } from "@/lib/ipc";
 import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
-import type { HttpMethod, HttpResponse } from "@/types/tools";
+import type { HttpBodyMode, HttpMethod, HttpResponse } from "@/types/tools";
 
 const { t } = useI18n();
 const toolbox = useToolboxStore();
 const method = toolbox.toolPref<HttpMethod>("network.http.method", "POST");
 const url = toolbox.toolPref("network.http.url", "https://example.com/");
-const headers = ref<Array<{ name: string; value: string }>>([
-  { name: "Content-Type", value: "application/json" },
-]);
+const headers = ref<Array<{ name: string; value: string }>>([]);
+const bodyMode = toolbox.toolPref<HttpBodyMode>("network.http.bodyMode", "json");
 const body = ref('{\n  "hello": "world"\n}');
+const formFields = ref<Array<{ name: string; value: string }>>([{ name: "", value: "" }]);
+const uploadPath = ref("");
+const uploadField = toolbox.toolPref("network.http.uploadField", "file");
 const timeoutMs = toolbox.toolPref("network.http.timeout", "15000");
 const followRedirects = toolbox.toolPref("network.http.followRedirects", true);
 const caPath = ref("");
@@ -37,6 +39,13 @@ const methodOptions: Array<{ label: HttpMethod; value: HttpMethod }> = [
   "DELETE",
   "HEAD",
 ].map((value) => ({ label: value as HttpMethod, value: value as HttpMethod }));
+
+const bodyModeOptions = computed<Array<{ label: string; value: HttpBodyMode }>>(() =>
+  (["none", "json", "form", "multipart", "raw"] as HttpBodyMode[]).map((value) => ({
+    label: t(`networkTools.http.bodyModes.${value}`),
+    value,
+  })),
+);
 
 const bodyDisabled = computed(() => method.value === "GET" || method.value === "HEAD");
 const displayBody = computed(() => {
@@ -58,6 +67,19 @@ function addHeader(): void {
 
 function removeHeader(index: number): void {
   headers.value.splice(index, 1);
+}
+
+function addFormField(): void {
+  formFields.value.push({ name: "", value: "" });
+}
+
+function removeFormField(index: number): void {
+  formFields.value.splice(index, 1);
+}
+
+async function browseUpload(): Promise<void> {
+  const path = await ipc.pickFile();
+  if (path) uploadPath.value = path;
 }
 
 async function browseCa(): Promise<void> {
@@ -83,6 +105,15 @@ async function send(): Promise<void> {
         .map((header) => ({ name: header.name.trim(), value: header.value }))
         .filter((header) => header.name),
       body: bodyDisabled.value ? undefined : body.value,
+      bodyMode: bodyDisabled.value ? "none" : bodyMode.value,
+      formFields: formFields.value
+        .map((field) => ({ name: field.name.trim(), value: field.value }))
+        .filter((field) => field.name),
+      uploadPath:
+        !bodyDisabled.value && bodyMode.value === "multipart" && uploadPath.value.trim()
+          ? uploadPath.value.trim()
+          : undefined,
+      uploadField: uploadField.value.trim() || "file",
       timeoutMs: Math.min(120_000, Math.max(100, Number(timeoutMs.value) || 15000)),
       followRedirects: followRedirects.value,
       caPath: caPath.value.trim() || undefined,
@@ -189,14 +220,127 @@ async function copy(value: string): Promise<void> {
           </p>
         </div>
 
-        <div class="space-y-1.5">
-          <Label class="text-[11px] text-muted-foreground">{{ t("networkTools.http.body") }}</Label>
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <Label class="text-[11px] text-muted-foreground">{{
+              t("networkTools.http.body")
+            }}</Label>
+            <div class="w-[150px]">
+              <FormSelect v-model="bodyMode" :options="bodyModeOptions" />
+            </div>
+            <span class="text-[10.5px] text-muted-foreground">
+              {{ t("networkTools.http.bodyModeHint") }}
+            </span>
+          </div>
+
+          <p
+            v-if="bodyDisabled"
+            class="rounded-lg border border-hairline bg-well px-3 py-2 text-[10.5px] text-muted-foreground"
+          >
+            {{ t("networkTools.http.bodyDisabled") }}
+          </p>
+
+          <template v-else-if="bodyMode === 'none'">
+            <p class="text-[10.5px] text-muted-foreground">
+              {{ t("networkTools.http.noBody") }}
+            </p>
+          </template>
+
+          <template v-else-if="bodyMode === 'form' || bodyMode === 'multipart'">
+            <div class="flex items-center justify-between">
+              <span class="text-[10.5px] text-muted-foreground">
+                {{ t("networkTools.http.formFields") }}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 gap-1 px-1.5 text-[10.5px] text-muted-foreground"
+                @click="addFormField"
+              >
+                <Plus class="size-3" />
+                {{ t("networkTools.http.addField") }}
+              </Button>
+            </div>
+            <div class="space-y-1.5">
+              <div
+                v-for="(field, index) in formFields"
+                :key="index"
+                class="flex items-center gap-2"
+              >
+                <Input
+                  v-model="field.name"
+                  class="numeric h-8 w-[220px] shrink-0 rounded-lg border-hairline-strong bg-well text-[11px]"
+                  :placeholder="t('networkTools.http.fieldName')"
+                />
+                <Input
+                  v-model="field.value"
+                  class="h-8 min-w-0 flex-1 rounded-lg border-hairline-strong bg-well text-[11px]"
+                  :placeholder="t('networkTools.http.fieldValue')"
+                />
+                <button
+                  type="button"
+                  class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-error/10 hover:text-error"
+                  :aria-label="t('networkTools.http.removeField')"
+                  @click="removeFormField(index)"
+                >
+                  <X class="size-3.5" />
+                </button>
+              </div>
+              <p v-if="!formFields.length" class="text-[10.5px] text-muted-foreground">
+                {{ t("networkTools.http.noFields") }}
+              </p>
+            </div>
+            <div v-if="bodyMode === 'multipart'" class="space-y-1.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <Label class="shrink-0 text-[10.5px] text-muted-foreground">{{
+                  t("networkTools.http.uploadField")
+                }}</Label>
+                <Input
+                  v-model="uploadField"
+                  class="numeric h-8 w-[150px] rounded-lg border-hairline-strong bg-well text-[11px]"
+                  placeholder="file"
+                />
+                <Input
+                  v-model="uploadPath"
+                  class="numeric h-8 min-w-0 flex-1 rounded-lg border-hairline-strong bg-well text-[11px]"
+                  :placeholder="t('networkTools.http.uploadPlaceholder')"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-8 shrink-0 gap-1 border-hairline-strong bg-transparent text-[11px]"
+                  @click="browseUpload"
+                >
+                  <FolderOpen class="size-3" />
+                  {{ t("networkTools.http.browse") }}
+                </Button>
+                <Button
+                  v-if="uploadPath"
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 shrink-0 text-[10.5px] text-muted-foreground"
+                  @click="uploadPath = ''"
+                >
+                  {{ t("common.clear") }}
+                </Button>
+              </div>
+              <p class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <FileUp class="size-3" />
+                {{ t("networkTools.http.uploadHint") }}
+              </p>
+            </div>
+          </template>
+
           <textarea
+            v-else
             v-model="body"
-            :disabled="bodyDisabled"
             rows="6"
-            class="scrollbar-thin numeric w-full resize-y rounded-lg border border-hairline-strong bg-well px-3 py-2 text-[11.5px] text-foreground outline-none transition-colors focus:border-signal/50 disabled:opacity-45"
-            :placeholder="t('networkTools.http.bodyPlaceholder')"
+            class="scrollbar-thin numeric w-full resize-y rounded-lg border border-hairline-strong bg-well px-3 py-2 text-[11.5px] text-foreground outline-none transition-colors focus:border-signal/50"
+            :placeholder="
+              bodyMode === 'json'
+                ? t('networkTools.http.jsonPlaceholder')
+                : t('networkTools.http.bodyPlaceholder')
+            "
           />
         </div>
 
