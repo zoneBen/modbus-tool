@@ -64,7 +64,7 @@ impl NpcapApi {
             "C:\\Windows\\System32\\wpcap.dll",
         ];
         let mut last_error = None;
-        for candidate in candidates {
+        for candidate in &candidates {
             // SAFETY: loading a system capture library by name. The handle is retained for the
             // lifetime of NpcapApi and all resolved symbols are used only while it is alive.
             let library = unsafe { libloading::Library::new(candidate) };
