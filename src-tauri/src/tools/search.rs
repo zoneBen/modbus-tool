@@ -168,7 +168,7 @@ fn search_blocking(
                 continue;
             }
         };
-        if is_binary(&bytes) {
+        if is_binary(&bytes, &input.encoding) {
             skipped += 1;
             continue;
         }
@@ -269,7 +269,13 @@ fn decode_bytes<'a>(bytes: &'a [u8], encoding: &str) -> Option<Cow<'a, str>> {
     Some(text)
 }
 
-fn is_binary(bytes: &[u8]) -> bool {
+fn is_binary(bytes: &[u8], encoding: &str) -> bool {
+    if matches!(encoding, "utf-16le" | "utf-16be")
+        || bytes.starts_with(&[0xff, 0xfe])
+        || bytes.starts_with(&[0xfe, 0xff])
+    {
+        return false;
+    }
     bytes.iter().take(8192).any(|byte| *byte == 0)
 }
 
@@ -324,8 +330,9 @@ mod tests {
             decode_bytes(b"hello", "utf-8").expect("utf8"),
             Cow::Borrowed("hello")
         );
-        assert!(is_binary(b"abc\0def"));
-        assert!(!is_binary(b"hello"));
+        assert!(is_binary(b"abc\0def", "auto"));
+        assert!(!is_binary(b"hello", "auto"));
+        assert!(!is_binary(&[0xff, 0xfe, b'h', 0, b'i', 0], "auto"));
     }
 
     #[test]
@@ -367,5 +374,33 @@ mod tests {
         assert_eq!(outcome.files, 1);
         assert_eq!(outcome.matches, 2);
         assert_eq!(outcome.skipped, 1);
+    }
+
+    #[test]
+    fn searches_utf16_with_bom() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            temp.path().join("utf16.txt"),
+            [
+                0xff, 0xfe, b'n', 0, b'e', 0, b'e', 0, b'd', 0, b'l', 0, b'e', 0,
+            ],
+        )
+        .expect("write");
+        let bus = crate::event::event_bus();
+        let cancel = AtomicBool::new(false);
+        let input = SearchInput {
+            folder: temp.path().to_string_lossy().into_owned(),
+            query: "needle".to_owned(),
+            mode: "literal".to_owned(),
+            case_sensitive: false,
+            include: String::new(),
+            exclude: String::new(),
+            encoding: "auto".to_owned(),
+            max_file_size: 1024 * 1024,
+            max_results: 100,
+            skip_hidden: true,
+        };
+        let outcome = search_blocking("test", &input, &cancel, &bus).expect("search");
+        assert_eq!(outcome.matches, 1);
     }
 }
