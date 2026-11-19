@@ -268,7 +268,7 @@ export default {
   scan: {
     title: "Device scan",
     subtitle:
-      "Slave IDs, register addresses, serial baud rates and LAN hosts. Multiple scan tasks can run concurrently.",
+      "Slave IDs, register addresses, serial baud rates, IPs and ports. Multiple scan tasks can run concurrently.",
     newScan: "New scan",
     noTasks: "No scan tasks yet",
     noTasksHint:
@@ -282,7 +282,7 @@ export default {
       slaveId: "Slave IDs",
       address: "Register addresses",
       baud: "Baud rates",
-      network: "LAN hosts",
+      network: "IP / ports",
     },
     status: {
       running: "Scanning",
@@ -303,6 +303,14 @@ export default {
     found: "Found {count}",
     target: "Target",
     resultStatus: "Status",
+    resultStatuses: {
+      open: "Open",
+      ok: "Responded",
+      exception: "Exception",
+      timeout: "Timeout",
+      error: "Error",
+    },
+    service: "Service",
     detail: "Detail",
     latency: "Latency",
     noResults: "No scan results yet",
@@ -340,8 +348,23 @@ export default {
     network: "LAN",
     cidr: "CIDR range",
     concurrency: "Concurrency",
+    ports: "Ports",
+    portsHint: "{count} ports parsed · comma/space separated and ranges, up to {max}",
+    portErrors: {
+      empty: "Enter at least one port",
+      invalid: "Invalid port list. Use 1–65535 or a range, e.g. 80,443,8000-8100",
+      tooMany: "A scan can contain at most {max} ports",
+    },
+    presets: {
+      modbus: "502 only",
+      common: "Common",
+      web: "Web",
+    },
+    grabBanner: "Read banner",
+    grabBannerHint: "Read up to 512 bytes after connecting to identify the service",
     probeModbus: "Validate Modbus response",
-    probeModbusHint: "When disabled, only TCP port reachability is checked",
+    probeModbusHint:
+      "When disabled, only TCP reachability is checked; when enabled, Modbus is probed on port 502 only",
     probeSlaveId: "Probe slave ID",
     taskName: "Task name",
     taskNamePlaceholder: "e.g. Production line scan",

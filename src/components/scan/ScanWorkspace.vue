@@ -45,6 +45,12 @@ function statusLabel(task: ScanTask): string {
   return t(`scan.status.${task.status}`);
 }
 
+function resultStatusLabel(status: string): string {
+  return t(`scan.resultStatuses.${status}`);
+}
+
+const isNetworkTask = computed(() => scans.activeTask?.kind === "network");
+
 function progressText(task: ScanTask): string {
   if (!task.progress) return "0/0";
   return `${task.progress.done}/${task.progress.total}`;
@@ -113,11 +119,28 @@ async function exportResults(): Promise<void> {
     toast.info(t("scan.exportEmpty"));
     return;
   }
-  const header = ["target", "status", "detail", "latencyMs"];
+  const network = task.kind === "network";
+  const header = [
+    "target",
+    ...(network ? ["port", "service"] : []),
+    "status",
+    "detail",
+    "latencyMs",
+    ...(network ? ["banner"] : []),
+  ];
   const lines = [header.map(csvCell).join(",")];
   for (const result of task.results) {
     lines.push(
-      [result.label, result.status, result.detail, result.latencyMs ?? ""].map(csvCell).join(","),
+      [
+        result.label,
+        ...(network ? [result.port ?? "", result.service ?? ""] : []),
+        result.status,
+        result.detail,
+        result.latencyMs ?? "",
+        ...(network ? [result.banner ?? ""] : []),
+      ]
+        .map(csvCell)
+        .join(","),
     );
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -388,6 +411,18 @@ const finishedCount = computed(
                 <th class="px-3 py-2 text-left font-medium text-muted-foreground">
                   {{ t("scan.target") }}
                 </th>
+                <th
+                  v-if="isNetworkTask"
+                  class="px-2 py-2 text-left font-medium text-muted-foreground"
+                >
+                  {{ t("scan.ports") }}
+                </th>
+                <th
+                  v-if="isNetworkTask"
+                  class="px-2 py-2 text-left font-medium text-muted-foreground"
+                >
+                  {{ t("scan.service") }}
+                </th>
                 <th class="px-2 py-2 text-left font-medium text-muted-foreground">
                   {{ t("scan.resultStatus") }}
                 </th>
@@ -402,20 +437,33 @@ const finishedCount = computed(
             <tbody>
               <tr
                 v-for="(result, index) in scans.activeTask.results"
-                :key="`${result.label}-${index}`"
+                :key="`${result.label}-${result.port ?? index}`"
                 class="border-b border-hairline last:border-0"
               >
                 <td class="numeric px-3 py-1.5 text-foreground">{{ result.label }}</td>
+                <td v-if="isNetworkTask" class="numeric px-2 py-1.5 text-muted-foreground">
+                  {{ result.port ?? "—" }}
+                </td>
+                <td v-if="isNetworkTask" class="px-2 py-1.5 text-muted-foreground">
+                  {{ result.service ?? "—" }}
+                </td>
                 <td class="px-2 py-1.5">
                   <span
-                    class="rounded border px-1 py-0.5 text-[10px] uppercase"
+                    class="rounded border px-1 py-0.5 text-[10px]"
                     :class="statusTone[result.status]"
                   >
-                    {{ result.status }}
+                    {{ resultStatusLabel(result.status) }}
                   </span>
                 </td>
-                <td class="max-w-[420px] truncate px-2 py-1.5 text-muted-foreground">
-                  {{ result.detail }}
+                <td class="max-w-[420px] px-2 py-1.5 text-muted-foreground">
+                  <p class="truncate">{{ result.detail }}</p>
+                  <p
+                    v-if="result.banner"
+                    class="mt-0.5 truncate text-[10px] text-muted-foreground/75"
+                    :title="result.banner"
+                  >
+                    Banner: {{ result.banner }}
+                  </p>
                 </td>
                 <td class="numeric px-3 py-1.5 text-right text-muted-foreground">
                   {{ result.latencyMs !== undefined ? formatLatency(result.latencyMs) : "—" }}

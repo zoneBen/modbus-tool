@@ -362,10 +362,13 @@ export interface BaudScanInput {
 
 export interface NetworkScanInput {
   cidr: string;
-  port: number;
+  /** Legacy single-port field; new callers should send `ports`. */
+  port?: number;
+  ports: number[];
   timeoutMs: number;
   concurrency: number;
   probeModbus: boolean;
+  grabBanner: boolean;
   slaveId: number;
 }
 
@@ -391,6 +394,9 @@ export interface ScanResult {
   address?: number;
   baudRate?: number;
   endpoint?: string;
+  port?: number;
+  service?: string;
+  banner?: string;
 }
 
 export interface ScanDone {

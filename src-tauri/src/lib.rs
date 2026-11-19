@@ -79,6 +79,7 @@ pub fn run() {
     let state_network = network.clone();
     let shutdown_manager = manager.clone();
     let shutdown_network = network.clone();
+    let shutdown_scans = scans.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -91,9 +92,11 @@ pub fn run() {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let manager = shutdown_manager.clone();
                 let network = shutdown_network.clone();
+                let scans = shutdown_scans.clone();
                 tauri::async_runtime::spawn(async move {
                     network.stop_all().await;
                     manager.shutdown_all().await;
+                    scans.shutdown_all();
                 });
             }
         })

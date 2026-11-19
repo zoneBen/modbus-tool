@@ -9,6 +9,7 @@ use std::time::Duration;
 use futures::StreamExt;
 use ipnet::IpNet;
 use modbus_core::{Framing, PduRequest, PduResponse, frame};
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep, timeout};
 use uuid::Uuid;
@@ -106,6 +107,17 @@ impl ScanManager {
             }
             None => false,
         }
+    }
+
+    pub fn shutdown_all(&self) {
+        let mut tasks = self
+            .tasks
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        for flag in tasks.values() {
+            flag.store(true, Ordering::Relaxed);
+        }
+        tasks.clear();
     }
 
     fn register(&self, id: &str, cancel: Arc<AtomicBool>) {
@@ -366,6 +378,9 @@ async fn run_slave_scan(
                 address: Some(input.address),
                 baud_rate: None,
                 endpoint: None,
+                port: None,
+                service: None,
+                banner: None,
             },
         );
         done += 1;
@@ -514,6 +529,9 @@ async fn run_address_scan(
                         address: Some(block_start),
                         baud_rate: None,
                         endpoint: None,
+                        port: None,
+                        service: None,
+                        banner: None,
                     },
                 );
             }
@@ -676,6 +694,9 @@ async fn run_baud_scan(
                 address: Some(input.address),
                 baud_rate: Some(baud_rate),
                 endpoint: Some(input.serial_port.clone()),
+                port: None,
+                service: None,
+                banner: None,
             },
         );
         done += 1;
@@ -747,31 +768,52 @@ async fn run_network_scan(
         );
         return;
     }
-    let total = hosts.len() as u64;
+    let ports = match input.effective_ports() {
+        Ok(ports) => ports,
+        Err(message) => {
+            finish_with_error(&bus, &scan_id, kind, &message);
+            return;
+        }
+    };
+    let total = (hosts.len() * ports.len()) as u64;
+    if total > 65_536 {
+        finish_with_error(
+            &bus,
+            &scan_id,
+            kind,
+            "扫描组合过大，请减少主机或端口数量（最多 65536 次探测）",
+        );
+        return;
+    }
     let timeout_duration = Duration::from_millis(input.timeout_ms.clamp(100, 5000));
     let concurrency = input.concurrency.clamp(1, 128);
     let mut done = 0u64;
     let mut found = 0u64;
     let mut cancelled = false;
-    emit_progress(&bus, &scan_id, kind, 0, total, 0, "探测主机", false, None);
+    emit_progress(&bus, &scan_id, kind, 0, total, 0, "扫描端口", false, None);
 
-    let mut stream = futures::stream::iter(hosts.into_iter().map(|host| {
+    let endpoints: Vec<(Ipv4Addr, u16)> = hosts
+        .into_iter()
+        .flat_map(|host| ports.iter().copied().map(move |port| (host, port)))
+        .collect();
+    let mut stream = futures::stream::iter(endpoints.into_iter().map(|(host, port)| {
         let scan_id = scan_id.clone();
         let cancel = cancel.clone();
-        let port = input.port;
-        let probe_modbus = input.probe_modbus;
+        let probe_modbus = input.probe_modbus && port == 502;
+        let grab_banner = input.grab_banner;
         let slave_id = input.slave_id;
         async move {
             if cancel.load(Ordering::Relaxed) {
                 return None;
             }
-            probe_host(
+            probe_endpoint(
                 scan_id,
                 host,
                 port,
                 timeout_duration,
                 probe_modbus,
                 slave_id,
+                grab_banner,
             )
             .await
         }
@@ -788,7 +830,7 @@ async fn run_network_scan(
             found += 1;
             emit(&bus, AppEvent::ScanResult(result));
         }
-        if done.is_multiple_of(16) || done == total {
+        if done.is_multiple_of(32) || done == total {
             emit_progress(
                 &bus,
                 &scan_id,
@@ -796,7 +838,7 @@ async fn run_network_scan(
                 done,
                 total,
                 found,
-                "探测主机",
+                "扫描端口",
                 false,
                 None,
             );
@@ -816,7 +858,7 @@ async fn run_network_scan(
         done,
         total,
         found,
-        "探测主机",
+        "扫描端口",
         true,
         error.clone(),
     );
@@ -831,23 +873,31 @@ async fn run_network_scan(
     );
 }
 
-async fn probe_host(
+#[allow(clippy::too_many_arguments)] // Probe keeps the scan context explicit.
+async fn probe_endpoint(
     scan_id: String,
     host: Ipv4Addr,
     port: u16,
     timeout_duration: Duration,
     probe_modbus: bool,
     slave_id: u8,
+    grab_banner: bool,
 ) -> Option<ScanResultDto> {
     let started = Instant::now();
-    let stream = timeout(timeout_duration, TcpStream::connect((host, port)))
+    let mut stream = timeout(timeout_duration, TcpStream::connect((host, port)))
         .await
         .ok()?
         .ok()?;
     let latency_ms = round1(started.elapsed().as_secs_f64() * 1000.0);
     let endpoint = format!("{host}:{port}");
+    let service = service_name(port).map(str::to_owned);
 
     if !probe_modbus {
+        let banner = if grab_banner {
+            read_banner(&mut stream).await
+        } else {
+            None
+        };
         return Some(ScanResultDto {
             scan_id,
             kind: ScanKind::Network,
@@ -859,6 +909,9 @@ async fn probe_host(
             address: None,
             baud_rate: None,
             endpoint: Some(endpoint),
+            port: Some(port),
+            service,
+            banner,
         });
     }
 
@@ -897,7 +950,61 @@ async fn probe_host(
         address: None,
         baud_rate: None,
         endpoint: Some(endpoint),
+        port: Some(port),
+        service,
+        banner: None,
     })
+}
+
+async fn read_banner(stream: &mut TcpStream) -> Option<String> {
+    let mut buffer = [0u8; 512];
+    let read = timeout(Duration::from_millis(300), stream.read(&mut buffer))
+        .await
+        .ok()?
+        .ok()?;
+    if read == 0 {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&buffer[..read]);
+    let cleaned: String = text
+        .chars()
+        .take(512)
+        .map(|character| {
+            if character == '\r'
+                || character == '\n'
+                || character == '\t'
+                || !character.is_control()
+            {
+                character
+            } else {
+                '·'
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim();
+    (!trimmed.is_empty()).then(|| trimmed.chars().take(200).collect())
+}
+
+fn service_name(port: u16) -> Option<&'static str> {
+    match port {
+        20 | 21 => Some("FTP"),
+        22 => Some("SSH"),
+        23 => Some("Telnet"),
+        25 => Some("SMTP"),
+        53 => Some("DNS"),
+        80 | 8080 => Some("HTTP"),
+        110 => Some("POP3"),
+        143 => Some("IMAP"),
+        443 | 8443 => Some("HTTPS"),
+        445 => Some("SMB"),
+        502 => Some("Modbus"),
+        1433 => Some("SQL Server"),
+        3306 => Some("MySQL"),
+        3389 => Some("RDP"),
+        5432 => Some("PostgreSQL"),
+        6379 => Some("Redis"),
+        _ => None,
+    }
 }
 
 #[allow(clippy::too_many_arguments)] // Reporting helper with a fixed, explicit shape.
@@ -1091,9 +1198,11 @@ mod tests {
         let scan_id = manager.start_network_scan(NetworkScanInput {
             cidr: "127.0.0.0/30".to_owned(),
             port,
+            ports: Vec::new(),
             timeout_ms: 400,
             concurrency: 4,
             probe_modbus: false,
+            grab_banner: false,
             slave_id: 1,
         });
 
@@ -1106,5 +1215,57 @@ mod tests {
                 .any(|result| matches!(result.status.as_str(), "open" | "ok" | "exception"))
         );
         drop(listener);
+    }
+
+    #[tokio::test]
+    async fn scans_multiple_network_ports() {
+        let first = TcpListener::bind("127.0.0.1:0").await.expect("bind first");
+        let second = TcpListener::bind("127.0.0.1:0").await.expect("bind second");
+        let first_port = first.local_addr().expect("first addr").port();
+        let second_port = second.local_addr().expect("second addr").port();
+        let bus = event_bus();
+        let mut events = bus.subscribe();
+        let manager = ScanManager::new(bus);
+        let scan_id = manager.start_network_scan(NetworkScanInput {
+            cidr: "127.0.0.0/30".to_owned(),
+            port: 502,
+            ports: vec![first_port, second_port, first_port],
+            timeout_ms: 400,
+            concurrency: 4,
+            probe_modbus: false,
+            grab_banner: false,
+            slave_id: 1,
+        });
+
+        let mut results = Vec::new();
+        let done = wait_for_done(&mut events, &scan_id, &mut results).await;
+        assert_eq!(done.found, 2);
+        assert!(results.iter().any(|result| result.port == Some(first_port)));
+        assert!(
+            results
+                .iter()
+                .any(|result| result.port == Some(second_port))
+        );
+        drop(first);
+        drop(second);
+    }
+
+    #[test]
+    fn network_scan_input_dedupes_ports_and_caps_them() {
+        let mut input = NetworkScanInput {
+            cidr: "127.0.0.1/32".to_owned(),
+            port: 502,
+            ports: vec![8080, 80, 8080, 0, 443],
+            timeout_ms: 400,
+            concurrency: 4,
+            probe_modbus: false,
+            grab_banner: false,
+            slave_id: 1,
+        };
+        assert_eq!(input.effective_ports().expect("ports"), vec![80, 443, 8080]);
+        input.ports = (1..=257).collect();
+        assert!(input.effective_ports().is_err());
+        input.ports.clear();
+        assert_eq!(input.effective_ports().expect("legacy port"), vec![502]);
     }
 }

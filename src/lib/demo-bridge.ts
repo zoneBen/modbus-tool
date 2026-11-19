@@ -1048,6 +1048,9 @@ export function createDemoBridge(): IpcApi {
           address: partial.address,
           baudRate: partial.baudRate,
           endpoint: partial.endpoint,
+          port: partial.port,
+          service: partial.service,
+          banner: partial.banner,
         };
         emit("scan:result", result);
       }
@@ -1131,22 +1134,27 @@ export function createDemoBridge(): IpcApi {
 
   async function scanNetwork(input: NetworkScanInput): Promise<string> {
     const total = 128;
-    const foundHosts = new Map<number, string>([
-      [12, "192.168.1.10"],
-      [28, "192.168.1.20"],
-      [95, "192.168.1.100"],
-    ]);
+    const ports = input.ports?.length ? [...new Set(input.ports)] : [input.port ?? 502];
+    const foundHosts = ["192.168.1.10", "192.168.1.20", "192.168.1.100"];
+    const foundSteps = [12, 28, 95];
     return startDemoScan(
       "network",
       total,
       (step) => {
-        const host = foundHosts.get(step);
-        if (!host) return null;
+        const hostIndex = foundSteps.indexOf(step);
+        if (hostIndex < 0) return null;
+        const host = foundHosts[hostIndex] ?? "192.168.1.10";
+        const port = ports[hostIndex % ports.length] ?? 502;
+        const modbus = input.probeModbus && port === 502;
         return {
-          label: `${host}:${input.port}`,
-          status: input.probeModbus ? "ok" : "open",
-          detail: input.probeModbus ? "Modbus 从站响应" : "TCP 端口开放",
-          endpoint: `${host}:${input.port}`,
+          label: `${host}:${port}`,
+          status: modbus ? "ok" : "open",
+          detail: modbus ? "Modbus 从站响应" : "TCP 端口开放",
+          endpoint: `${host}:${port}`,
+          port,
+          service:
+            port === 502 ? "Modbus" : port === 80 ? "HTTP" : port === 443 ? "HTTPS" : undefined,
+          banner: input.grabBanner && port !== 502 ? "SSH-2.0-demo" : undefined,
         };
       },
       45,

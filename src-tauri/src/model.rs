@@ -1412,16 +1412,41 @@ pub struct BaudScanInput {
 #[serde(rename_all = "camelCase")]
 pub struct NetworkScanInput {
     pub cidr: String,
+    /// Legacy single-port field; still accepted for old clients and configs.
     #[serde(default = "default_modbus_port")]
     pub port: u16,
+    #[serde(default)]
+    pub ports: Vec<u16>,
     #[serde(default = "default_network_timeout")]
     pub timeout_ms: u64,
     #[serde(default = "default_concurrency")]
     pub concurrency: usize,
     #[serde(default = "default_true")]
     pub probe_modbus: bool,
+    #[serde(default)]
+    pub grab_banner: bool,
     #[serde(default = "default_one_u8")]
     pub slave_id: u8,
+}
+
+impl NetworkScanInput {
+    pub fn effective_ports(&self) -> Result<Vec<u16>, String> {
+        let mut ports = if self.ports.is_empty() {
+            vec![self.port]
+        } else {
+            self.ports.clone()
+        };
+        ports.retain(|port| *port > 0);
+        ports.sort_unstable();
+        ports.dedup();
+        if ports.is_empty() {
+            return Err("至少选择一个端口".to_owned());
+        }
+        if ports.len() > 256 {
+            return Err("单次扫描最多 256 个端口".to_owned());
+        }
+        Ok(ports)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1456,6 +1481,12 @@ pub struct ScanResultDto {
     pub baud_rate: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub banner: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

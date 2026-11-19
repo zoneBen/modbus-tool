@@ -33,9 +33,11 @@ describe("scans store", () => {
       {
         cidr: "192.168.1.0/30",
         port: 502,
+        ports: [502],
         timeoutMs: 200,
         concurrency: 8,
         probeModbus: false,
+        grabBanner: false,
         slaveId: 1,
       },
       "LAN",

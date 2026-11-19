@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSerialPorts } from "@/composables/useSerialPorts";
+import { MAX_SCAN_PORTS, parsePortList } from "@/lib/port-list";
 import { useScansStore } from "@/stores/scans";
 import type { Framing, FunctionCode, ScanKind, ScanLinkInput } from "@/types/models";
 
@@ -55,10 +56,11 @@ const baudAddress = ref("0");
 const baudQuantity = ref("1");
 const baudTimeout = ref("300");
 const cidr = ref("192.168.1.0/24");
-const netPort = ref("502");
+const netPorts = ref("502");
 const netTimeout = ref("400");
 const netConcurrency = ref("64");
 const probeModbus = ref(true);
+const grabBanner = ref(false);
 const netSlaveId = ref("1");
 
 const kindTabs = computed<Array<{ kind: ScanKind; label: string }>>(() => [
@@ -67,6 +69,24 @@ const kindTabs = computed<Array<{ kind: ScanKind; label: string }>>(() => [
   { kind: "baud", label: t("scan.kindLabels.baud") },
   { kind: "network", label: t("scan.kindLabels.network") },
 ]);
+
+const portParse = computed(() => parsePortList(netPorts.value));
+
+const portPresets = computed(() => [
+  { label: t("scan.presets.modbus"), value: "502" },
+  { label: t("scan.presets.common"), value: "22, 80, 443, 502, 8080" },
+  { label: t("scan.presets.web"), value: "80, 443, 8000, 8080, 8443" },
+]);
+
+function portErrorText(): string | null {
+  const error = portParse.value.error;
+  if (!error) return null;
+  return t(`scan.portErrors.${error}`, { max: MAX_SCAN_PORTS });
+}
+
+function applyPortPreset(value: string): void {
+  netPorts.value = value;
+}
 
 const functionOptions = [
   { label: "FC01", value: "1" },
@@ -192,17 +212,24 @@ async function start(): Promise<void> {
         toast.error(t("scan.cidrRequired"));
         return;
       }
+      const parsedPorts = parsePortList(netPorts.value);
+      if (parsedPorts.error) {
+        toast.error(t(`scan.portErrors.${parsedPorts.error}`, { max: MAX_SCAN_PORTS }));
+        return;
+      }
       taskId = await scans.startNetwork(
         {
           cidr: cidr.value.trim(),
-          port: Math.max(1, Number(netPort.value) || 502),
+          port: parsedPorts.ports[0],
+          ports: parsedPorts.ports,
           timeoutMs: Math.max(100, Number(netTimeout.value) || 400),
           concurrency: Math.min(128, Math.max(1, Number(netConcurrency.value) || 64)),
           probeModbus: probeModbus.value,
+          grabBanner: grabBanner.value,
           slaveId: Math.max(1, Number(netSlaveId.value) || 1),
         },
         taskName(),
-        `${cidr.value.trim()}:${netPort.value}`,
+        `${cidr.value.trim()} · ${parsedPorts.ports.length} ${t("scan.ports")}`,
       );
     }
     emit("started", taskId);
@@ -535,52 +562,97 @@ async function start(): Promise<void> {
 
         <div
           v-if="activeKind === 'network'"
-          class="grid grid-cols-3 gap-2 rounded-xl border border-hairline bg-well-soft p-3"
+          class="space-y-3 rounded-xl border border-hairline bg-well-soft p-3"
         >
-          <div class="col-span-2 space-y-1">
-            <Label class="text-[11px] text-muted-foreground">{{ t("scan.cidr") }}</Label>
-            <Input
-              v-model="cidr"
-              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
-              placeholder="192.168.1.0/24"
-            />
-          </div>
-          <div class="space-y-1">
-            <Label class="text-[11px] text-muted-foreground">{{ t("scan.port") }}</Label>
-            <Input
-              v-model="netPort"
-              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
-            />
-          </div>
-          <div class="space-y-1">
-            <Label class="text-[11px] text-muted-foreground">{{ t("scan.timeout") }}</Label>
-            <Input
-              v-model="netTimeout"
-              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
-            />
-          </div>
-          <div class="space-y-1">
-            <Label class="text-[11px] text-muted-foreground">{{ t("scan.concurrency") }}</Label>
-            <Input
-              v-model="netConcurrency"
-              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
-            />
-          </div>
-          <div class="space-y-1">
-            <Label class="text-[11px] text-muted-foreground">{{ t("scan.probeSlaveId") }}</Label>
-            <Input
-              v-model="netSlaveId"
-              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
-            />
-          </div>
-          <div
-            class="col-span-3 flex items-center justify-between rounded-lg border border-hairline px-3 py-2"
-          >
-            <div>
-              <p class="text-[11px] text-foreground">{{ t("scan.probeModbus") }}</p>
-              <p class="text-[10.5px] text-muted-foreground">{{ t("scan.probeModbusHint") }}</p>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="col-span-2 space-y-1">
+              <Label class="text-[11px] text-muted-foreground">{{ t("scan.cidr") }}</Label>
+              <Input
+                v-model="cidr"
+                class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+                placeholder="192.168.1.0/24"
+              />
             </div>
-            <Switch v-model="probeModbus" />
+            <div class="space-y-1">
+              <Label class="text-[11px] text-muted-foreground">{{ t("scan.timeout") }}</Label>
+              <Input
+                v-model="netTimeout"
+                class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+              />
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <Label class="text-[11px] text-muted-foreground">{{ t("scan.ports") }}</Label>
+              <div class="flex flex-wrap items-center gap-1">
+                <button
+                  v-for="preset in portPresets"
+                  :key="preset.value"
+                  type="button"
+                  class="rounded-md border border-hairline bg-overlay-1 px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                  @click="applyPortPreset(preset.value)"
+                >
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+            <Input
+              v-model="netPorts"
+              class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+              :class="portParse.error ? 'border-error/50' : ''"
+              placeholder="22, 80, 443, 502, 8000-8100"
+            />
+            <p
+              class="text-[10.5px] leading-relaxed"
+              :class="portParse.error ? 'text-error' : 'text-muted-foreground'"
+            >
+              {{
+                portErrorText() ??
+                t("scan.portsHint", {
+                  count: portParse.ports.length,
+                  max: MAX_SCAN_PORTS,
+                })
+              }}
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div class="space-y-1">
+              <Label class="text-[11px] text-muted-foreground">{{ t("scan.concurrency") }}</Label>
+              <Input
+                v-model="netConcurrency"
+                class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+              />
+            </div>
+            <div class="space-y-1">
+              <Label class="text-[11px] text-muted-foreground">{{ t("scan.probeSlaveId") }}</Label>
+              <Input
+                v-model="netSlaveId"
+                class="numeric h-9 rounded-lg border-hairline-strong bg-well text-[12px]"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div
+              class="flex items-center justify-between gap-3 rounded-lg border border-hairline px-3 py-2"
+            >
+              <div>
+                <p class="text-[11px] text-foreground">{{ t("scan.probeModbus") }}</p>
+                <p class="text-[10.5px] text-muted-foreground">{{ t("scan.probeModbusHint") }}</p>
+              </div>
+              <Switch v-model="probeModbus" />
+            </div>
+            <div
+              class="flex items-center justify-between gap-3 rounded-lg border border-hairline px-3 py-2"
+            >
+              <div>
+                <p class="text-[11px] text-foreground">{{ t("scan.grabBanner") }}</p>
+                <p class="text-[10.5px] text-muted-foreground">{{ t("scan.grabBannerHint") }}</p>
+              </div>
+              <Switch v-model="grabBanner" />
+            </div>
           </div>
         </div>
       </div>
