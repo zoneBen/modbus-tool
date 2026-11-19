@@ -50,6 +50,7 @@ describe("app config", () => {
         version: 1,
         networkTool: "arp",
         devTool: "hash",
+        prefs: { "dev.base.radix": 2 },
       },
     );
     const parsed = parseAppConfig(JSON.stringify(config));
@@ -61,6 +62,7 @@ describe("app config", () => {
     expect(parsed.networkSessions[0]?.mode).toBe("tcp-client");
     expect(parsed.tools?.networkTool).toBe("arp");
     expect(parsed.tools?.devTool).toBe("hash");
+    expect(parsed.tools?.prefs).toEqual({ "dev.base.radix": 2 });
   });
 
   it("rejects malformed files with stable error codes", () => {

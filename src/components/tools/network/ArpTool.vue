@@ -9,17 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ipc } from "@/lib/ipc";
+import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
 import type { ArpCapabilities, ArpScanResult } from "@/types/tools";
 
 const { t } = useI18n();
+const toolbox = useToolboxStore();
 const capabilities = ref<ArpCapabilities | null>(null);
-const adapterName = ref("");
-const interfaceName = ref("");
-const cidr = ref("192.168.1.0/24");
-const timeoutMs = ref("2500");
-const concurrency = ref("32");
-const enhanced = ref(false);
+const adapterName = toolbox.toolPref("network.arp.adapter", "");
+const interfaceName = toolbox.toolPref("network.arp.interface", "");
+const cidr = toolbox.toolPref("network.arp.cidr", "192.168.1.0/24");
+const timeoutMs = toolbox.toolPref("network.arp.timeout", "2500");
+const concurrency = toolbox.toolPref("network.arp.concurrency", "32");
+const enhanced = toolbox.toolPref("network.arp.enhanced", false);
 const busy = ref(false);
 const loading = ref(true);
 const result = ref<ArpScanResult | null>(null);
@@ -58,9 +60,9 @@ const enhancedHint = computed(() => {
 onMounted(async () => {
   try {
     capabilities.value = await ipc.toolArpCapabilities();
-    const first = capabilities.value.adapters[0];
-    if (first) {
-      adapterName.value = first.name;
+    const available = capabilities.value.adapters;
+    if (!available.some((adapter) => adapter.name === adapterName.value)) {
+      adapterName.value = available[0]?.name ?? "";
     }
   } catch (cause: unknown) {
     error.value = toolErrorText(t, cause);

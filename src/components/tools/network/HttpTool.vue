@@ -10,18 +10,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ipc } from "@/lib/ipc";
+import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
 import type { HttpMethod, HttpResponse } from "@/types/tools";
 
 const { t } = useI18n();
-const method = ref<HttpMethod>("POST");
-const url = ref("https://example.com/");
+const toolbox = useToolboxStore();
+const method = toolbox.toolPref<HttpMethod>("network.http.method", "POST");
+const url = toolbox.toolPref("network.http.url", "https://example.com/");
 const headers = ref<Array<{ name: string; value: string }>>([
   { name: "Content-Type", value: "application/json" },
 ]);
 const body = ref('{\n  "hello": "world"\n}');
-const timeoutMs = ref("15000");
-const followRedirects = ref(true);
+const timeoutMs = toolbox.toolPref("network.http.timeout", "15000");
+const followRedirects = toolbox.toolPref("network.http.followRedirects", true);
 const caPath = ref("");
 const busy = ref(false);
 const result = ref<HttpResponse | null>(null);

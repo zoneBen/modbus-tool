@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import type { WritableComputedRef } from "vue";
 import { isDevToolId, isNetworkToolId } from "@/lib/tool-catalog";
 import type { DevToolId, NetworkToolId } from "@/lib/tool-catalog";
 
@@ -9,13 +10,19 @@ export interface ToolboxConfig {
   version: 1;
   networkTool: NetworkToolId;
   devTool: DevToolId;
+  prefs?: Record<string, unknown>;
 }
 
 const DEFAULT_CONFIG: ToolboxConfig = {
   version: 1,
   networkTool: "ping",
   devTool: "formatter",
+  prefs: {},
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function loadConfig(): ToolboxConfig {
   if (typeof localStorage === "undefined") return { ...DEFAULT_CONFIG };
@@ -30,6 +37,7 @@ function loadConfig(): ToolboxConfig {
         ? parsed.networkTool
         : DEFAULT_CONFIG.networkTool,
       devTool: isDevToolId(parsed.devTool) ? parsed.devTool : DEFAULT_CONFIG.devTool,
+      prefs: isRecord(parsed.prefs) ? { ...parsed.prefs } : {},
     };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -56,8 +64,23 @@ export const useToolboxStore = defineStore("toolbox", () => {
     config.value = { ...config.value, devTool: tool };
   }
 
+  function toolPref<T>(key: string, fallback: T): WritableComputedRef<T> {
+    return computed<T>({
+      get: () => {
+        const prefs = config.value.prefs ?? {};
+        return key in prefs ? (prefs[key] as T) : fallback;
+      },
+      set: (value) => {
+        config.value = {
+          ...config.value,
+          prefs: { ...(config.value.prefs ?? {}), [key]: value },
+        };
+      },
+    });
+  }
+
   function exportConfig(): ToolboxConfig {
-    return { ...config.value };
+    return { ...config.value, prefs: { ...(config.value.prefs ?? {}) } };
   }
 
   function replaceConfig(value: unknown): void {
@@ -69,6 +92,7 @@ export const useToolboxStore = defineStore("toolbox", () => {
         ? record.networkTool
         : DEFAULT_CONFIG.networkTool,
       devTool: isDevToolId(record.devTool) ? record.devTool : DEFAULT_CONFIG.devTool,
+      prefs: isRecord(record.prefs) ? { ...record.prefs } : {},
     };
   }
 
@@ -76,6 +100,7 @@ export const useToolboxStore = defineStore("toolbox", () => {
     config,
     setNetworkTool,
     setDevTool,
+    toolPref,
     exportConfig,
     replaceConfig,
   };

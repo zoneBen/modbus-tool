@@ -9,13 +9,15 @@ import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToolboxStore } from "@/stores/toolbox";
 import { describeEpoch, parseDateText, parseEpoch } from "@/lib/converters";
 import type { EpochUnit } from "@/lib/converters";
 
 const { t } = useI18n();
+const toolbox = useToolboxStore();
 const now = useNow();
 const epochInput = ref(String(Math.floor(Date.now() / 1000)));
-const epochUnit = ref<EpochUnit>("auto");
+const epochUnit = toolbox.toolPref<EpochUnit>("dev.timestamp.unit", "auto");
 const dateInput = ref(new Date().toISOString());
 
 const unitOptions: Array<{ label: string; value: EpochUnit }> = [

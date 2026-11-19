@@ -7,12 +7,14 @@ import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToolboxStore } from "@/stores/toolbox";
 import { describeBase, parseInteger } from "@/lib/converters";
 import type { BaseRadix } from "@/lib/converters";
 
 const { t } = useI18n();
+const toolbox = useToolboxStore();
 const input = ref("FF");
-const radix = ref<BaseRadix>(16);
+const radix = toolbox.toolPref<BaseRadix>("dev.base.radix", 16);
 
 const radixOptions: Array<{ label: string; value: BaseRadix }> = [
   { label: "十六进制 (16)", value: 16 },

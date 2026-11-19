@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ipc } from "@/lib/ipc";
+import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
 import type { HashResult } from "@/types/tools";
 
 const { t } = useI18n();
+const toolbox = useToolboxStore();
 const filePath = ref("");
-const algorithms = ref<string[]>(["sha256"]);
+const algorithms = toolbox.toolPref<string[]>("dev.hash.algorithms", ["sha256"]);
 const running = ref(false);
 const taskId = ref<string | null>(null);
 const progress = ref({ done: 0, total: 0 });

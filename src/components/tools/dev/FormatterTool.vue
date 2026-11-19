@@ -7,13 +7,15 @@ import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useToolboxStore } from "@/stores/toolbox";
 import { formatText } from "@/lib/tool-formatter";
 import type { FormatLanguage } from "@/lib/tool-formatter";
 
 const { t } = useI18n();
+const toolbox = useToolboxStore();
 const MAX_INPUT_BYTES = 2 * 1024 * 1024;
-const language = ref<FormatLanguage>("json");
-const indent = ref<"2" | "4">("2");
+const language = toolbox.toolPref<FormatLanguage>("dev.formatter.language", "json");
+const indent = toolbox.toolPref<"2" | "4">("dev.formatter.indent", "2");
 const input = ref("");
 const output = ref("");
 const busy = ref(false);

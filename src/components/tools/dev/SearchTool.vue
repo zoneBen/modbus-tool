@@ -10,20 +10,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ipc } from "@/lib/ipc";
+import { useToolboxStore } from "@/stores/toolbox";
 import { toolErrorText } from "@/lib/tool-error";
 import type { SearchHit } from "@/types/tools";
 
 const { t } = useI18n();
+const toolbox = useToolboxStore();
 const folder = ref("");
 const query = ref("");
-const mode = ref<"literal" | "regex">("literal");
-const caseSensitive = ref(false);
-const include = ref("*.ts, *.vue, *.md, *.json");
-const exclude = ref("");
-const encoding = ref<"auto" | "utf-8" | "utf-16le" | "utf-16be" | "gb18030">("auto");
-const maxFileSizeMb = ref("10");
-const maxResults = ref("1000");
-const skipHidden = ref(true);
+const mode = toolbox.toolPref<"literal" | "regex">("dev.search.mode", "literal");
+const caseSensitive = toolbox.toolPref("dev.search.caseSensitive", false);
+const include = toolbox.toolPref("dev.search.include", "*.ts, *.vue, *.md, *.json");
+const exclude = toolbox.toolPref("dev.search.exclude", "");
+const encoding = toolbox.toolPref<"auto" | "utf-8" | "utf-16le" | "utf-16be" | "gb18030">(
+  "dev.search.encoding",
+  "auto",
+);
+const maxFileSizeMb = toolbox.toolPref("dev.search.maxFileSize", "10");
+const maxResults = toolbox.toolPref("dev.search.maxResults", "1000");
+const skipHidden = toolbox.toolPref("dev.search.skipHidden", true);
 const running = ref(false);
 const taskId = ref<string | null>(null);
 const hits = ref<SearchHit[]>([]);
