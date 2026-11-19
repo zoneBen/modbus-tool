@@ -356,7 +356,7 @@ mod tests {
             query: "hello".to_owned(),
             mode: "literal".to_owned(),
             case_sensitive: false,
-            include: "*.txt".to_owned(),
+            include: String::new(),
             exclude: String::new(),
             encoding: "auto".to_owned(),
             max_file_size: 1024 * 1024,
