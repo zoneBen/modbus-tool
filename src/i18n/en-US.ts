@@ -1195,6 +1195,7 @@ export default {
       hosts: "addresses",
       conflicts: "{count} conflicts",
       noConflicts: "No conflicts",
+      conflictCheckOff: "Conflict detection not enabled",
       enhancedUsed: "Npcap enhancement enabled",
       interfaceLabel: "Interface",
       source: "Source",

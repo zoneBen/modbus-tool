@@ -1166,6 +1166,7 @@ export default {
       hosts: "个地址",
       conflicts: "{count} 个冲突",
       noConflicts: "未发现冲突",
+      conflictCheckOff: "未启用冲突检测",
       enhancedUsed: "已启用 Npcap 增强检测",
       interfaceLabel: "网卡",
       source: "来源",
