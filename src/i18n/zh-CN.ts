@@ -88,6 +88,8 @@ export default {
     scan: "设备扫描",
     settings: "设置",
     about: "关于作者与定制服务",
+    networkTools: "网络工具",
+    devTools: "开发工具",
     importConfig: "导入全部配置",
     exportConfig: "导出全部配置",
     switchToLight: "切换到浅色主题",
@@ -939,6 +941,76 @@ export default {
     refreshing: "正在读取本机串口列表…",
     currentMissing: "{port} · 当前配置（未检测到）",
     missing: "请选择或输入串口端口",
+  },
+  tools: {
+    comingSoon: "即将推出",
+    localHint: "本地工具 · 数据不离开本机",
+    placeholderTitle: "工具正在接入",
+    placeholderHint: "页面骨架已加入，具体功能会在当前批次实现并验证。",
+  },
+  networkTools: {
+    title: "网络工具",
+    subtitle: "诊断、探测与协议调试",
+    tools: {
+      arp: {
+        title: "ARP 扫描",
+        description: "发现局域网 IP/MAC，检测疑似 IP 冲突",
+      },
+      ping: {
+        title: "批量 Ping",
+        description: "批量主机连通性、丢包与延时统计",
+      },
+      traceroute: {
+        title: "路由跟踪",
+        description: "ICMP TTL 逐跳探测网络路径",
+      },
+      dns: {
+        title: "DNS 查询",
+        description: "A/AAAA/MX/TXT 等记录与自定义 DNS",
+      },
+      telnet: {
+        title: "Telnet 连通测试",
+        description: "TCP 建链、Banner 与端口探测",
+      },
+      http: {
+        title: "HTTP 客户端",
+        description: "发送 GET/POST 等请求并查看响应",
+      },
+      fileserver: {
+        title: "Web 文件服务",
+        description: "局域网 HTTP 上传下载（第二批）",
+      },
+      mqtt: {
+        title: "MQTT 客户端",
+        description: "多 Broker 发布订阅（第二批）",
+      },
+    },
+  },
+  devTools: {
+    title: "开发工具",
+    subtitle: "格式化、转换与文件辅助",
+    tools: {
+      formatter: {
+        title: "代码美化",
+        description: "JSON / JS / TS / HTML / CSS / XML",
+      },
+      timestamp: {
+        title: "时间戳转换",
+        description: "本地时间、UTC、ISO 与 epoch 互转",
+      },
+      base: {
+        title: "进制转换",
+        description: "2/8/10/16 进制与整数、浮点解释",
+      },
+      hash: {
+        title: "文件 Hash",
+        description: "MD5 / SHA-1 / SHA-256 / SHA-512 / CRC32",
+      },
+      search: {
+        title: "文件夹搜索",
+        description: "递归搜索目录内的文本或正则",
+      },
+    },
   },
   dialog: {
     newSessionTitle: "新建会话",

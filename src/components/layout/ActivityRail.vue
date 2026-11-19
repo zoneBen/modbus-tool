@@ -6,10 +6,12 @@ import {
   LayoutDashboard,
   Moon,
   Network,
+  Radar,
   ScanLine,
   Settings2,
   Sun,
   Upload,
+  Wrench,
 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -18,7 +20,8 @@ import { useNetworkStore } from "@/stores/network";
 import { useScansStore } from "@/stores/scans";
 import { useSettingsStore } from "@/stores/settings";
 
-type RailView = "workspace" | "network" | "scan" | "alerts" | "settings" | "about";
+type RailView =
+  "workspace" | "network" | "scan" | "alerts" | "networkTools" | "devTools" | "settings" | "about";
 
 withDefaults(
   defineProps<{
@@ -33,6 +36,8 @@ const emit = defineEmits<{
   (event: "open-network"): void;
   (event: "open-scan"): void;
   (event: "open-alerts"): void;
+  (event: "open-network-tools"): void;
+  (event: "open-dev-tools"): void;
   (event: "open-about"): void;
   (event: "import-config"): void;
   (event: "export-config"): void;
@@ -50,7 +55,7 @@ const { t } = useI18n();
     <aside
       class="relative flex h-full w-[60px] shrink-0 flex-col items-center border-r border-hairline bg-well py-3"
     >
-      <div class="relative mb-5 flex size-11 items-center justify-center">
+      <div class="relative mb-5 flex size-11 shrink-0 items-center justify-center">
         <div class="absolute inset-0 rounded-2xl bg-signal/15 blur-xl" aria-hidden="true" />
         <img
           src="/logo.svg"
@@ -59,7 +64,9 @@ const { t } = useI18n();
         />
       </div>
 
-      <nav class="flex flex-col items-center gap-1.5">
+      <nav
+        class="flex min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto overflow-x-hidden scrollbar-thin"
+      >
         <Tooltip>
           <TooltipTrigger as-child>
             <button
@@ -169,9 +176,55 @@ const { t } = useI18n();
           </TooltipTrigger>
           <TooltipContent side="right">{{ t("alerts.title") }}</TooltipContent>
         </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="relative flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
+              :class="
+                activeView === 'networkTools'
+                  ? 'bg-rx/10 text-rx'
+                  : 'text-muted-foreground hover:text-foreground'
+              "
+              :aria-label="t('nav.networkTools')"
+              @click="emit('open-network-tools')"
+            >
+              <span
+                v-if="activeView === 'networkTools'"
+                class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-rx"
+              />
+              <Radar class="size-[18px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{{ t("nav.networkTools") }}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="relative flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
+              :class="
+                activeView === 'devTools'
+                  ? 'bg-sim/10 text-sim'
+                  : 'text-muted-foreground hover:text-foreground'
+              "
+              :aria-label="t('nav.devTools')"
+              @click="emit('open-dev-tools')"
+            >
+              <span
+                v-if="activeView === 'devTools'"
+                class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-sim"
+              />
+              <Wrench class="size-[18px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{{ t("nav.devTools") }}</TooltipContent>
+        </Tooltip>
       </nav>
 
-      <div class="mt-auto flex flex-col items-center gap-1.5">
+      <div class="mt-2 flex shrink-0 flex-col items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger as-child>
             <button

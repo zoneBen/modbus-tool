@@ -91,6 +91,8 @@ export default {
     scan: "Device scan",
     settings: "Settings",
     about: "About the author and custom services",
+    networkTools: "Network tools",
+    devTools: "Developer tools",
     importConfig: "Import all configuration",
     exportConfig: "Export all configuration",
     switchToLight: "Switch to light theme",
@@ -966,6 +968,77 @@ export default {
     refreshing: "Reading local serial ports…",
     currentMissing: "{port} · current setting (not detected)",
     missing: "Select or enter a serial port",
+  },
+  tools: {
+    comingSoon: "Coming soon",
+    localHint: "Local tools · data stays on this machine",
+    placeholderTitle: "Tool in progress",
+    placeholderHint:
+      "The workspace shell is in place. This tool will be implemented and verified in the current phase.",
+  },
+  networkTools: {
+    title: "Network tools",
+    subtitle: "Diagnostics, discovery and protocol debugging",
+    tools: {
+      arp: {
+        title: "ARP scan",
+        description: "Discover LAN IP/MAC pairs and suspected IP conflicts",
+      },
+      ping: {
+        title: "Batch ping",
+        description: "Reachability, loss and latency statistics for many hosts",
+      },
+      traceroute: {
+        title: "Traceroute",
+        description: "Hop-by-hop path discovery with ICMP TTL probes",
+      },
+      dns: {
+        title: "DNS query",
+        description: "A/AAAA/MX/TXT records and custom resolvers",
+      },
+      telnet: {
+        title: "Telnet test",
+        description: "TCP connect, banner and port checks",
+      },
+      http: {
+        title: "HTTP client",
+        description: "Send GET/POST requests and inspect responses",
+      },
+      fileserver: {
+        title: "Web file service",
+        description: "LAN HTTP upload and download (phase 2)",
+      },
+      mqtt: {
+        title: "MQTT client",
+        description: "Multi-broker publish and subscribe (phase 2)",
+      },
+    },
+  },
+  devTools: {
+    title: "Developer tools",
+    subtitle: "Formatting, conversion and file helpers",
+    tools: {
+      formatter: {
+        title: "Code formatter",
+        description: "JSON / JS / TS / HTML / CSS / XML",
+      },
+      timestamp: {
+        title: "Timestamp converter",
+        description: "Local, UTC, ISO and epoch conversions",
+      },
+      base: {
+        title: "Base converter",
+        description: "Binary, octal, decimal, hex and integer/float views",
+      },
+      hash: {
+        title: "File hash",
+        description: "MD5 / SHA-1 / SHA-256 / SHA-512 / CRC32",
+      },
+      search: {
+        title: "Folder search",
+        description: "Recursive text or regex search in a folder",
+      },
+    },
   },
   dialog: {
     newSessionTitle: "New session",

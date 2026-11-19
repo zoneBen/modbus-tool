@@ -5,6 +5,8 @@ import { toast } from "vue-sonner";
 import AboutOverlay from "@/components/about/AboutOverlay.vue";
 import AlertsWorkspace from "@/components/alerts/AlertsWorkspace.vue";
 import TrendOverlay from "@/components/chart/TrendOverlay.vue";
+import DevToolsWorkspace from "@/components/tools/DevToolsWorkspace.vue";
+import NetworkToolsWorkspace from "@/components/tools/NetworkToolsWorkspace.vue";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -48,12 +50,19 @@ const sessions = useSessionsStore();
 const network = useNetworkStore();
 const alerts = useAlertsStore();
 const { t } = useI18n();
-const initialDialog = new URLSearchParams(window.location.search).get("dialog");
-type PageView = "workspace" | "network" | "scan" | "alerts";
+const initialParams = new URLSearchParams(window.location.search);
+const initialDialog = initialParams.get("dialog");
+const initialPageParam = initialParams.get("page");
+const initialTool = initialParams.get("tool");
+type PageView = "workspace" | "network" | "scan" | "alerts" | "networkTools" | "devTools";
 const initialPage: PageView =
-  initialDialog === "network" || initialDialog === "scan" || initialDialog === "alerts"
-    ? initialDialog
-    : "workspace";
+  initialPageParam === "net-tools"
+    ? "networkTools"
+    : initialPageParam === "dev-tools"
+      ? "devTools"
+      : initialDialog === "network" || initialDialog === "scan" || initialDialog === "alerts"
+        ? initialDialog
+        : "workspace";
 const page = ref<PageView>(initialPage);
 const newSessionOpen = ref(initialDialog === "session");
 const settingsOpen = ref(initialDialog === "settings");
@@ -66,13 +75,13 @@ const aboutOpen = ref(false);
 const configImportOpen = ref(false);
 const importingConfig = ref(false);
 const pendingConfig = ref<AppConfigFile | null>(null);
-const railView = computed<"workspace" | "network" | "scan" | "alerts" | "settings" | "about">(
-  () => {
-    if (settingsOpen.value) return "settings";
-    if (aboutOpen.value) return "about";
-    return page.value;
-  },
-);
+const railView = computed<
+  "workspace" | "network" | "scan" | "alerts" | "networkTools" | "devTools" | "settings" | "about"
+>(() => {
+  if (settingsOpen.value) return "settings";
+  if (aboutOpen.value) return "about";
+  return page.value;
+});
 
 const monitorStyle = computed(() => ({
   height: settings.monitorCollapsed ? "38px" : `${settings.monitorHeight}px`,
@@ -261,6 +270,8 @@ function startResize(event: PointerEvent): void {
         @open-network="page = 'network'"
         @open-scan="page = 'scan'"
         @open-alerts="page = 'alerts'"
+        @open-network-tools="page = 'networkTools'"
+        @open-dev-tools="page = 'devTools'"
         @open-about="aboutOpen = true"
         @import-config="importConfig"
         @export-config="exportConfig"
@@ -312,6 +323,8 @@ function startResize(event: PointerEvent): void {
       <NetworkWorkspace v-else-if="page === 'network'" />
       <ScanWorkspace v-else-if="page === 'scan'" />
       <AlertsWorkspace v-else-if="page === 'alerts'" />
+      <NetworkToolsWorkspace v-else-if="page === 'networkTools'" :initial-tool="initialTool" />
+      <DevToolsWorkspace v-else-if="page === 'devTools'" :initial-tool="initialTool" />
     </div>
 
     <NewSessionDialog v-model:open="newSessionOpen" />
