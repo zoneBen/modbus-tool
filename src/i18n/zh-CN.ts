@@ -1142,6 +1142,13 @@ export default {
       hostname: "主机名",
       rtts: "RTT",
       statusLabel: "状态",
+      statuses: {
+        ttlExpired: "TTL 过期",
+        unreachable: "不可达",
+        timeout: "超时",
+        error: "错误",
+        ok: "响应",
+      },
       hint: "使用 ICMP 递增 TTL 跟踪到目标的路径；防火墙可能隐藏部分跳点。",
     },
     arp: {
@@ -1162,6 +1169,7 @@ export default {
       enhancedUsed: "已启用 Npcap 增强检测",
       interfaceLabel: "网卡",
       source: "来源",
+      sources: { native: "原生", npcap: "Npcap" },
       statusLabel: "状态",
       conflict: "冲突",
       normal: "正常",

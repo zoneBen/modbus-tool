@@ -78,6 +78,11 @@ async function cancel(): Promise<void> {
   if (current) await ipc.toolTaskCancel(current);
 }
 
+function hopStatus(hop: TracerouteHop): string {
+  if (hop.reached) return t("networkTools.traceroute.reached");
+  return t(`networkTools.traceroute.statuses.${hop.status}`);
+}
+
 function rtts(hop: TracerouteHop): string {
   return hop.rttsMs
     .map((value) => (value === null || value === undefined ? "*" : `${value.toFixed(1)} ms`))
@@ -242,7 +247,7 @@ async function copyHops(): Promise<void> {
                           : 'border-hairline bg-overlay-1 text-muted-foreground'
                     "
                   >
-                    {{ hop.reached ? t("networkTools.traceroute.reached") : hop.status }}
+                    {{ hopStatus(hop) }}
                   </span>
                 </td>
               </tr>

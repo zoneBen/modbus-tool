@@ -1170,6 +1170,13 @@ export default {
       hostname: "Hostname",
       rtts: "RTTs",
       statusLabel: "Status",
+      statuses: {
+        ttlExpired: "TTL expired",
+        unreachable: "Unreachable",
+        timeout: "Timeout",
+        error: "Error",
+        ok: "Reply",
+      },
       hint: "Trace the path to a target with increasing ICMP TTLs; firewalls may hide some hops.",
     },
     arp: {
@@ -1191,6 +1198,7 @@ export default {
       enhancedUsed: "Npcap enhancement enabled",
       interfaceLabel: "Interface",
       source: "Source",
+      sources: { native: "Native", npcap: "Npcap" },
       statusLabel: "Status",
       conflict: "Conflict",
       normal: "Normal",

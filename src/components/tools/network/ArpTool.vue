@@ -83,6 +83,10 @@ watch(
   },
 );
 
+function sourceLabel(source: string): string {
+  return t(`networkTools.arp.sources.${source}`);
+}
+
 async function run(): Promise<void> {
   if (busy.value) return;
   if (!adapterName.value) {
@@ -241,7 +245,7 @@ async function run(): Promise<void> {
                 <td class="numeric px-3 py-1.5 text-foreground">{{ entry.ip }}</td>
                 <td class="numeric px-2 py-1.5 text-muted-foreground">{{ entry.mac }}</td>
                 <td class="px-2 py-1.5 text-muted-foreground">{{ entry.interface }}</td>
-                <td class="px-2 py-1.5 text-muted-foreground">{{ entry.source }}</td>
+                <td class="px-2 py-1.5 text-muted-foreground">{{ sourceLabel(entry.source) }}</td>
                 <td class="px-3 py-1.5">
                   <span
                     class="rounded border px-1 py-0.5 text-[10px]"
