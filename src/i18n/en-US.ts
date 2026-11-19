@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "Industrial bus console",
-    version: "v0.6.0",
+    version: "v0.6.1",
     preview: "Preview",
   },
   about: {
@@ -1013,6 +1013,8 @@ export default {
       noTargets: "Enter at least one target host",
       cancelled: "Task cancelled",
       npcapUnavailable: "Npcap/wpcap.dll was not found; enhanced ARP is unavailable",
+      npcapPacketMismatch:
+        "Npcap's Packet.dll does not match wpcap.dll. Reinstall Npcap and remove legacy WinPcap/Windows10Pcap.",
       npcapPermission: "Enhanced ARP requires administrator privileges",
       npcapInterface: "No matching Npcap interface; select one manually",
       npcapOpenFailed: "Could not open the Npcap interface",
@@ -1236,6 +1238,13 @@ export default {
       enhancedHint:
         "Enhanced mode sends ARP requests and listens for replies to detect multiple MACs for one IP.",
       npcapMissing: "Npcap/wpcap.dll not found; native scanning only.",
+      reasons: {
+        npcapUnavailable: "No usable Npcap installation found; native scanning only.",
+        npcapPacketMismatch:
+          "Npcap's Packet.dll does not match wpcap.dll. Reinstall Npcap and remove legacy WinPcap/Windows10Pcap.",
+        unsupportedPlatform: "Enhanced Npcap detection is Windows-only.",
+        npcapError: "Npcap initialization failed; check the Npcap installation.",
+      },
       adminRequired: "Enhanced mode requires administrator privileges.",
       noAdapter: "Select a local adapter",
       hosts: "addresses",

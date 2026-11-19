@@ -15,7 +15,7 @@ const MAX_ARP_HOSTS: usize = 1024;
 
 pub fn capabilities() -> ArpCapabilitiesDto {
     let mut adapters = native::adapters();
-    let (npcap_available, elevated, reason, interfaces) = npcap::capabilities();
+    let (npcap_available, elevated, reason, reason_code, interfaces) = npcap::capabilities();
     for adapter in &mut adapters {
         let guid = adapter
             .name
@@ -30,6 +30,7 @@ pub fn capabilities() -> ArpCapabilitiesDto {
         npcap_available,
         elevated,
         reason,
+        reason_code,
         adapters,
         npcap_interfaces: interfaces,
     }

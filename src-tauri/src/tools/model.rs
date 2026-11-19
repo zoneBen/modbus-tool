@@ -295,6 +295,7 @@ pub struct ArpCapabilitiesDto {
     pub npcap_available: bool,
     pub elevated: bool,
     pub reason: Option<String>,
+    pub reason_code: Option<String>,
     pub adapters: Vec<ArpAdapterDto>,
     pub npcap_interfaces: Vec<ArpInterfaceDto>,
 }

@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "工业总线调试台",
-    version: "v0.6.0",
+    version: "v0.6.1",
     preview: "预览",
   },
   about: {
@@ -985,6 +985,8 @@ export default {
       noTargets: "请至少输入一个目标主机",
       cancelled: "任务已取消",
       npcapUnavailable: "未检测到 Npcap/wpcap.dll，无法进行增强 ARP 检测",
+      npcapPacketMismatch:
+        "Npcap 的 Packet.dll 与 wpcap.dll 版本不匹配，请重新安装 Npcap，并移除旧的 WinPcap/Windows10Pcap",
       npcapPermission: "增强 ARP 需要以管理员身份运行",
       npcapInterface: "未匹配到 Npcap 网卡，请手动选择",
       npcapOpenFailed: "打开 Npcap 网卡失败",
@@ -1206,6 +1208,13 @@ export default {
       enhanced: "增强冲突检测",
       enhancedHint: "增强模式会发送 ARP 请求并监听回复，可检测同一 IP 的多个 MAC。",
       npcapMissing: "未安装 Npcap 或缺少 wpcap.dll，仅可使用原生扫描。",
+      reasons: {
+        npcapUnavailable: "未找到可用的 Npcap，仅可使用原生扫描。",
+        npcapPacketMismatch:
+          "Npcap 的 Packet.dll 与 wpcap.dll 版本不匹配，请重新安装 Npcap，并移除旧的 WinPcap/Windows10Pcap。",
+        unsupportedPlatform: "Npcap 增强检测仅支持 Windows。",
+        npcapError: "Npcap 初始化失败，请检查 Npcap 安装。",
+      },
       adminRequired: "增强模式需要管理员权限。",
       noAdapter: "请选择本机网卡",
       hosts: "个地址",

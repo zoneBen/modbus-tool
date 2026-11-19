@@ -79,7 +79,7 @@ loop {
 | 批量 Ping | Windows `IcmpSendEcho`，IPv4，主机/CIDR 展开，最多 256 主机；按主机汇总丢包与 min/avg/max；前端默认显示存活 Tab，可切换全部结果 |
 | 持续 Ping | 单目标按间隔持续 ICMP 探测，逐采样推送 `latencySample`，前端用 uPlot 绘制延迟曲线并以红色竖线标记丢包 |
 | 路由跟踪 | 同一 ICMP 封装递增 TTL，逐跳发射 `tracerouteHop`，可选反向解析 |
-| ARP | 原生使用 ipconfig 枚举网卡 + `SendARP`；增强模式通过 `libloading` 运行时加载 Npcap `wpcap.dll`，发送/捕获 ARP 请求并按 IP 聚合多个 MAC 检测冲突；需要管理员权限 |
+| ARP | 原生使用 ipconfig 枚举网卡 + `SendARP`；增强模式通过 `libloading` 运行时加载 Npcap `wpcap.dll`，先从同目录预加载匹配的 `Packet.dll` 并校验 `PacketGetInfo`，避免 System32 旧 WinPcap/Windows10Pcap 干扰；发送/捕获 ARP 请求并按 IP 聚合多个 MAC 检测冲突；需要管理员权限 |
 | DNS | `hickory-resolver` 0.24，系统或自定义 UDP/TCP 服务器，支持 A/AAAA/CNAME/MX/TXT/NS/SOA/SRV/PTR/CAA，缓存关闭 |
 | Telnet | TCP 建链 + Banner/可选 ASCII/HEX 发送；不做 IAC 协商 |
 | HTTP | `reqwest` + native-tls，方法/请求头/超时/重定向/CA；支持 JSON、x-www-form-urlencoded、multipart 文件上传（≤32MB），响应体限制 2MB；不提供跳过证书校验 |

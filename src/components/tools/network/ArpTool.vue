@@ -52,6 +52,12 @@ const enhancedAvailable = computed(() =>
 const enhancedHint = computed(() => {
   if (capabilities.value?.npcapAvailable && capabilities.value?.elevated) return "";
   if (!capabilities.value?.npcapAvailable) {
+    const code = capabilities.value?.reasonCode;
+    if (code) {
+      const key = `networkTools.arp.reasons.${code}`;
+      const translated = t(key);
+      if (translated !== key) return translated;
+    }
     return capabilities.value?.reason || t("networkTools.arp.npcapMissing");
   }
   return t("networkTools.arp.adminRequired");

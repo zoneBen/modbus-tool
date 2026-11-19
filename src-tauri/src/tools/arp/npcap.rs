@@ -4,10 +4,15 @@ use std::net::Ipv4Addr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
+use std::path::{Path, PathBuf};
+
 use crate::tools::model::{ArpInterfaceDto, ToolErrorDto, ToolResult};
 
 #[cfg(windows)]
 use super::native::format_mac;
+#[cfg(windows)]
+use libloading::os::windows::{LOAD_WITH_ALTERED_SEARCH_PATH, Library as WinLibrary};
 
 #[cfg(windows)]
 mod ffi {
@@ -45,7 +50,9 @@ mod ffi {
 
 #[cfg(windows)]
 pub struct NpcapApi {
-    _library: libloading::Library,
+    // Unload wpcap before its Packet.dll dependency.
+    _wpcap: WinLibrary,
+    _packet: WinLibrary,
     find_all_devs: ffi::FindAllDevs,
     free_all_devs: ffi::FreeAllDevs,
     open_live: ffi::OpenLive,
@@ -59,74 +66,108 @@ pub struct NpcapApi {
 impl NpcapApi {
     pub fn load() -> ToolResult<Self> {
         let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_owned());
-        let candidates = [
-            format!("{system_root}\\System32\\Npcap\\wpcap.dll"),
-            format!("{system_root}\\System32\\wpcap.dll"),
-        ];
+        let system32 = PathBuf::from(system_root).join("System32");
+        let directories = [system32.join("Npcap"), system32.clone()];
         let mut last_error = None;
-        for candidate in &candidates {
-            // SAFETY: loading a system capture library by name. The handle is retained for the
-            // lifetime of NpcapApi and all resolved symbols are used only while it is alive.
-            let library = unsafe { libloading::Library::new(candidate) };
-            match library {
-                Ok(library) => {
-                    // SAFETY: every symbol is resolved before the library is stored, and the
-                    // signatures match the public wpcap C API.
-                    let api =
-                        unsafe {
-                            let find_all_devs = *library
-                                .get::<ffi::FindAllDevs>(b"pcap_findalldevs\0")
-                                .map_err(|error| {
-                                    ToolErrorDto::new("npcapUnavailable", error.to_string())
-                                })?;
-                            let free_all_devs = *library
-                                .get::<ffi::FreeAllDevs>(b"pcap_freealldevs\0")
-                                .map_err(|error| {
-                                    ToolErrorDto::new("npcapUnavailable", error.to_string())
-                                })?;
-                            let open_live = *library
-                                .get::<ffi::OpenLive>(b"pcap_open_live\0")
-                                .map_err(|error| {
-                                    ToolErrorDto::new("npcapUnavailable", error.to_string())
-                                })?;
-                            let close =
-                                *library
-                                    .get::<ffi::Close>(b"pcap_close\0")
-                                    .map_err(|error| {
-                                        ToolErrorDto::new("npcapUnavailable", error.to_string())
-                                    })?;
-                            let send_packet = *library
-                                .get::<ffi::SendPacket>(b"pcap_sendpacket\0")
-                                .map_err(|error| {
-                                    ToolErrorDto::new("npcapUnavailable", error.to_string())
-                                })?;
-                            let next_ex = *library.get::<ffi::NextEx>(b"pcap_next_ex\0").map_err(
-                                |error| ToolErrorDto::new("npcapUnavailable", error.to_string()),
-                            )?;
-                            let get_err =
-                                *library
-                                    .get::<ffi::GetErr>(b"pcap_geterr\0")
-                                    .map_err(|error| {
-                                        ToolErrorDto::new("npcapUnavailable", error.to_string())
-                                    })?;
-                            NpcapApi {
-                                _library: library,
-                                find_all_devs,
-                                free_all_devs,
-                                open_live,
-                                close,
-                                send_packet,
-                                next_ex,
-                                get_err,
-                            }
-                        };
-                    return Ok(api);
-                }
-                Err(error) => last_error = Some(error.to_string()),
+        let mut packet_mismatch = false;
+        for directory in &directories {
+            let wpcap_path = directory.join("wpcap.dll");
+            if !wpcap_path.is_file() {
+                last_error = Some(format!(
+                    "wpcap.dll was not found in {}",
+                    directory.display()
+                ));
+                continue;
             }
+            let packet_path = preferred_packet_path(directory, &system32);
+            let Some(packet_path) = packet_path else {
+                last_error = Some(format!(
+                    "Packet.dll was not found next to {}",
+                    wpcap_path.display()
+                ));
+                continue;
+            };
+            // SAFETY: both paths are absolute and point at Npcap installations. The handles are
+            // retained for the lifetime of NpcapApi. The error mode is suppressed by libloading.
+            let packet = match unsafe {
+                WinLibrary::load_with_flags(&packet_path, LOAD_WITH_ALTERED_SEARCH_PATH)
+            } {
+                Ok(packet) => packet,
+                Err(error) => {
+                    last_error = Some(error.to_string());
+                    continue;
+                }
+            };
+            // SAFETY: the symbol lookup is valid for this loaded Packet.dll. Its presence guarantees
+            // that the sibling wpcap.dll can resolve its PacketGetInfo import.
+            let packet_ok = unsafe {
+                packet
+                    .get::<unsafe extern "C" fn()>(b"PacketGetInfo\0")
+                    .is_ok()
+            };
+            if !packet_ok {
+                packet_mismatch = true;
+                last_error = Some(format!(
+                    "{} does not export PacketGetInfo",
+                    packet_path.display()
+                ));
+                continue;
+            }
+            // SAFETY: preloading the matching Packet.dll above prevents Windows from silently
+            // binding Npcap's wpcap.dll to an older WinPcap/Windows10Pcap Packet.dll in System32.
+            let library = match unsafe {
+                WinLibrary::load_with_flags(&wpcap_path, LOAD_WITH_ALTERED_SEARCH_PATH)
+            } {
+                Ok(library) => library,
+                Err(error) => {
+                    last_error = Some(error.to_string());
+                    continue;
+                }
+            };
+            // SAFETY: every symbol is resolved before the library is stored, and the
+            // signatures match the public wpcap C API.
+            let api = unsafe {
+                let find_all_devs = *library
+                    .get::<ffi::FindAllDevs>(b"pcap_findalldevs\0")
+                    .map_err(|error| ToolErrorDto::new("npcapUnavailable", error.to_string()))?;
+                let free_all_devs = *library
+                    .get::<ffi::FreeAllDevs>(b"pcap_freealldevs\0")
+                    .map_err(|error| ToolErrorDto::new("npcapUnavailable", error.to_string()))?;
+                let open_live = *library
+                    .get::<ffi::OpenLive>(b"pcap_open_live\0")
+                    .map_err(|error| ToolErrorDto::new("npcapUnavailable", error.to_string()))?;
+                let close = *library
+                    .get::<ffi::Close>(b"pcap_close\0")
+                    .map_err(|error| ToolErrorDto::new("npcapUnavailable", error.to_string()))?;
+                let send_packet = *library
+                    .get::<ffi::SendPacket>(b"pcap_sendpacket\0")
+                    .map_err(|error| ToolErrorDto::new("npcapUnavailable", error.to_string()))?;
+                let next_ex = *library
+                    .get::<ffi::NextEx>(b"pcap_next_ex\0")
+                    .map_err(|error| ToolErrorDto::new("npcapUnavailable", error.to_string()))?;
+                let get_err = *library
+                    .get::<ffi::GetErr>(b"pcap_geterr\0")
+                    .map_err(|error| ToolErrorDto::new("npcapUnavailable", error.to_string()))?;
+                NpcapApi {
+                    _wpcap: library,
+                    _packet: packet,
+                    find_all_devs,
+                    free_all_devs,
+                    open_live,
+                    close,
+                    send_packet,
+                    next_ex,
+                    get_err,
+                }
+            };
+            return Ok(api);
         }
         Err(ToolErrorDto::new(
-            "npcapUnavailable",
+            if packet_mismatch {
+                "npcapPacketMismatch"
+            } else {
+                "npcapUnavailable"
+            },
             last_error.unwrap_or_else(|| "wpcap.dll was not found".to_owned()),
         ))
     }
@@ -252,6 +293,16 @@ impl NpcapApi {
 }
 
 #[cfg(windows)]
+fn preferred_packet_path(directory: &Path, system32: &Path) -> Option<PathBuf> {
+    let local = directory.join("Packet.dll");
+    if local.is_file() {
+        return Some(local);
+    }
+    let system = system32.join("Packet.dll");
+    system.is_file().then_some(system)
+}
+
+#[cfg(windows)]
 struct PcapGuard {
     handle: ffi::PcapHandle,
     close: ffi::Close,
@@ -347,23 +398,48 @@ pub fn is_elevated() -> bool {
 }
 
 #[cfg(windows)]
-pub fn capabilities() -> (bool, bool, Option<String>, Vec<ArpInterfaceDto>) {
+pub fn capabilities() -> (
+    bool,
+    bool,
+    Option<String>,
+    Option<String>,
+    Vec<ArpInterfaceDto>,
+) {
     let elevated = is_elevated();
     match NpcapApi::load() {
         Ok(api) => match api.interfaces() {
-            Ok(interfaces) => (true, elevated, None, interfaces),
-            Err(error) => (false, elevated, Some(error.detail), Vec::new()),
+            Ok(interfaces) => (true, elevated, None, None, interfaces),
+            Err(error) => (
+                false,
+                elevated,
+                Some(error.detail),
+                Some(error.code),
+                Vec::new(),
+            ),
         },
-        Err(error) => (false, elevated, Some(error.detail), Vec::new()),
+        Err(error) => (
+            false,
+            elevated,
+            Some(error.detail),
+            Some(error.code),
+            Vec::new(),
+        ),
     }
 }
 
 #[cfg(not(windows))]
-pub fn capabilities() -> (bool, bool, Option<String>, Vec<ArpInterfaceDto>) {
+pub fn capabilities() -> (
+    bool,
+    bool,
+    Option<String>,
+    Option<String>,
+    Vec<ArpInterfaceDto>,
+) {
     (
         false,
         false,
         Some("Npcap is only supported on Windows".to_owned()),
+        Some("unsupportedPlatform".to_owned()),
         Vec::new(),
     )
 }
@@ -410,5 +486,42 @@ mod tests {
     #[test]
     fn ignores_non_arp_packets() {
         assert!(parse_arp_reply(&[0u8; 42]).is_none());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn prefers_packet_dll_next_to_wpcap() {
+        let local = tempfile::tempdir().expect("local dir");
+        let system = tempfile::tempdir().expect("system dir");
+        std::fs::write(local.path().join("Packet.dll"), b"").expect("local packet");
+        std::fs::write(system.path().join("Packet.dll"), b"").expect("system packet");
+        assert_eq!(
+            preferred_packet_path(local.path(), system.path()),
+            Some(local.path().join("Packet.dll"))
+        );
+        std::fs::remove_file(local.path().join("Packet.dll")).expect("remove local");
+        assert_eq!(
+            preferred_packet_path(local.path(), system.path()),
+            Some(system.path().join("Packet.dll"))
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn npcap_load_returns_error_instead_of_aborting() {
+        match NpcapApi::load() {
+            Ok(api) => {
+                let count = api.interfaces().map(|interfaces| interfaces.len());
+                println!("Npcap loaded; interfaces={count:?}");
+            }
+            Err(error) => {
+                println!("Npcap unavailable: {} · {}", error.code, error.detail);
+                assert!(
+                    error.code == "npcapUnavailable" || error.code == "npcapPacketMismatch",
+                    "unexpected load error code: {}",
+                    error.code
+                );
+            }
+        }
     }
 }

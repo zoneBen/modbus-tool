@@ -37,6 +37,7 @@
 - **串口**：已接入本机串口枚举（含 USB-Serial / CH340 等），不同厂商驱动的兼容性按现场设备验证
 - **English**：界面文本（含关于页面、工具箱与全部弹窗）已完整双语；协议核心/设备返回的错误详情与浏览器演示示例数据暂保留中文
 - **网络工具平台限制**：Ping、持续 Ping、路由跟踪与 ARP 原生扫描当前仅支持 Windows IPv4；ARP 冲突检测增强模式需要安装 Npcap（WinPcap 兼容模式）并以管理员运行
+- **Npcap 加载**：增强 ARP 会从 Npcap 的 `wpcap.dll` 同目录预加载匹配的 `Packet.dll`，避免 System32 中旧的 WinPcap/Windows10Pcap `Packet.dll` 造成 `PacketGetInfo` 入口错误；若仍提示版本不匹配，请重装 Npcap 并移除旧 WinPcap/Windows10Pcap
 - **Web 文件服务**：无访问密码，端口 80 可能被系统或其他服务占用；建议仅在可信局域网内使用。当前只列出共享根目录一层的文件，不支持子目录浏览、删除与断点续传
 - **MQTT**：密码与消息内容不持久化、不导出；MQTT 5 单包默认上限 1 MB；TLS 使用 Windows SChannel，客户端证书暂不支持
 - **工具箱后续批次**：CAN 调试（SLCAN 串口适配器）在下一批实现

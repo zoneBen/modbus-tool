@@ -261,7 +261,8 @@ export interface ArpCapabilities {
   native: boolean;
   npcapAvailable: boolean;
   elevated: boolean;
-  reason?: string;
+  reason?: string | null;
+  reasonCode?: string | null;
   adapters: ArpAdapter[];
   npcapInterfaces: ArpInterface[];
 }
