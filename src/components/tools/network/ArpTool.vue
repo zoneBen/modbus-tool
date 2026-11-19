@@ -210,10 +210,13 @@ async function run(): Promise<void> {
             {{ t("networkTools.arp.conflicts", { count: result.conflicts }) }}
           </span>
           <span
-            v-else
+            v-else-if="result.enhanced"
             class="rounded border border-signal/25 bg-signal/10 px-1.5 py-0.5 text-signal"
           >
             {{ t("networkTools.arp.noConflicts") }}
+          </span>
+          <span v-else class="text-muted-foreground">
+            {{ t("networkTools.arp.conflictCheckOff") }}
           </span>
           <span v-if="result.enhanced" class="text-muted-foreground">
             {{ t("networkTools.arp.enhancedUsed") }}
