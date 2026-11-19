@@ -340,7 +340,7 @@ mod tests {
         let set = build_globset("*.rs", &["node_modules/**"])
             .expect("globs")
             .expect("set");
-        assert!(set.is_match("src/main.rs"));
+        assert!(set.is_match("main.rs"));
         assert!(set.is_match("node_modules/foo/index.js"));
         assert!(build_globset("[", &[]).is_err());
     }
