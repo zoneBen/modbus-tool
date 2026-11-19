@@ -2,6 +2,11 @@
 import { Binary, Braces, Clock, Hash, Search } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import BaseTool from "@/components/tools/dev/BaseTool.vue";
+import FormatterTool from "@/components/tools/dev/FormatterTool.vue";
+import HashTool from "@/components/tools/dev/HashTool.vue";
+import SearchTool from "@/components/tools/dev/SearchTool.vue";
+import TimestampTool from "@/components/tools/dev/TimestampTool.vue";
 import ToolPlaceholder from "@/components/tools/ToolPlaceholder.vue";
 import ToolboxWorkspace from "@/components/tools/ToolboxWorkspace.vue";
 import type { ToolboxItem } from "@/components/tools/ToolboxWorkspace.vue";
@@ -59,7 +64,13 @@ const activeItem = computed(() => items.value.find((item) => item.id === active.
     :items="items"
     accent="sim"
   >
+    <FormatterTool v-if="active === 'formatter'" />
+    <TimestampTool v-else-if="active === 'timestamp'" />
+    <BaseTool v-else-if="active === 'base'" />
+    <HashTool v-else-if="active === 'hash'" />
+    <SearchTool v-else-if="active === 'search'" />
     <ToolPlaceholder
+      v-else
       :title="activeItem?.title ?? t('devTools.title')"
       :description="activeItem?.description ?? ''"
     />

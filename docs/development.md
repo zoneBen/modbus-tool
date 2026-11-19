@@ -61,6 +61,9 @@ docs/architecture.md   协议矩阵、Actor 与事件流
 - 不包含硬编码密钥
 - 设备报文、扫描输入、定义参数在 Rust 边界校验长度、功能码、地址与数量范围
 - 会话配置在工作区/全局配置导入时校验字段与版本，恢复后默认保持断开
+- 工具箱：Ping/路由跟踪/ARP 使用 Windows iphlpapi；ARP 增强模式运行时加载 Npcap `wpcap.dll` 并需要管理员权限；非 Windows 返回明确错误
+- HTTP/MQTT TLS 使用 native-tls（Windows SChannel），不引入 OpenSSL/AWS-LC 构建链
+- 美化器使用 Prettier standalone + xml-formatter 动态加载，避免进入首屏 bundle
 
 ## 相关文档
 

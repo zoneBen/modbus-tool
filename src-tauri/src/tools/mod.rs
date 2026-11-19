@@ -2,10 +2,12 @@ mod arp;
 pub mod commands;
 mod dns;
 pub mod event;
+mod hash;
 mod http_client;
 mod icmp;
 pub mod model;
 mod ping;
+mod search;
 mod tasks;
 mod telnet;
 mod traceroute;
@@ -15,7 +17,8 @@ use uuid::Uuid;
 use crate::event::EventBus;
 
 use self::model::{
-    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, PingInput, ToolResult, TracerouteInput,
+    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, HashInput, PingInput, SearchInput,
+    ToolResult, TracerouteInput,
 };
 use self::tasks::ToolTasks;
 
@@ -53,6 +56,46 @@ impl ToolsManager {
 
     pub async fn arp_scan(&self, input: ArpScanInput) -> ToolResult<ArpScanResultDto> {
         arp::scan(input).await
+    }
+
+    pub fn start_hash(&self, input: HashInput) -> ToolResult<String> {
+        if input.path.trim().is_empty() {
+            return Err(model::ToolErrorDto::new(
+                "invalidPath",
+                "Select a file to hash",
+            ));
+        }
+        let task_id = Uuid::new_v4().to_string();
+        let cancel = self.tasks.register(&task_id);
+        let bus = self.bus.clone();
+        let tasks = self.tasks.clone();
+        let run_id = task_id.clone();
+        tauri::async_runtime::spawn(async move {
+            let run_id_for_task = run_id.clone();
+            hash::run(run_id, input, cancel, tasks.clone(), bus).await;
+            tasks.finish(&run_id_for_task);
+        });
+        Ok(task_id)
+    }
+
+    pub fn start_search(&self, input: SearchInput) -> ToolResult<String> {
+        if input.folder.trim().is_empty() {
+            return Err(model::ToolErrorDto::new(
+                "invalidFolder",
+                "Select an existing folder",
+            ));
+        }
+        let task_id = Uuid::new_v4().to_string();
+        let cancel = self.tasks.register(&task_id);
+        let bus = self.bus.clone();
+        let tasks = self.tasks.clone();
+        let run_id = task_id.clone();
+        tauri::async_runtime::spawn(async move {
+            let run_id_for_task = run_id.clone();
+            search::run(run_id, input, cancel, tasks.clone(), bus).await;
+            tasks.finish(&run_id_for_task);
+        });
+        Ok(task_id)
     }
 
     pub fn start_traceroute(&self, input: TracerouteInput) -> ToolResult<String> {

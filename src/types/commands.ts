@@ -33,8 +33,10 @@ import type {
   DnsQueryInput,
   DnsResult,
   HttpRequestInput,
+  HashInput,
   HttpResponse,
   PingInput,
+  SearchInput,
   TelnetResult,
   TelnetTestInput,
   ToolEvent,
@@ -127,6 +129,8 @@ export interface IpcApi {
   toolTaskCancel(taskId: string): Promise<boolean>;
   toolArpCapabilities(): Promise<ArpCapabilities>;
   toolArpScan(input: ArpScanInput): Promise<ArpScanResult>;
+  toolHashStart(input: HashInput): Promise<string>;
+  toolSearchStart(input: SearchInput): Promise<string>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

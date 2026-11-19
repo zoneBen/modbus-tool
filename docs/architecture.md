@@ -7,10 +7,10 @@
 ## 分层
 
 ```
-Vue 3 (UI / 图表 / 扫描 / 工作区视图)
+Vue 3 (UI / 图表 / 扫描 / 工作区 / 工具箱)
    │  Tauri commands + events（帧带单调 seq）
    ▼
-src-tauri (会话 Actor / 轮询 / 扫描 / 网络助手 / 定义与写入)
+src-tauri (会话 Actor / 轮询 / 扫描 / 网络助手 / 工具箱 / 定义与写入)
    │  纯 Rust API
    ▼
 crates/modbus-core (PDU / 帧 / 值解析 / 模拟引擎，无 I/O 依赖)
@@ -33,7 +33,7 @@ crates/modbus-core (PDU / 帧 / 值解析 / 模拟引擎，无 I/O 依赖)
 - MBAP：事务 ID/协议 ID/长度校验，长度包含 unit id + PDU；TCP/UDP 事务按 TID 过滤陈旧响应
 - 写操作默认不自动重试；读支持重试；广播 ID 0 只写、不等待响应
 - 串口使用专用阻塞 IO 线程 + tokio oneshot 桥接，读超时 15ms 循环并受整体 deadline 约束
-- 局域网扫描使用 CIDR + 有界并发，可选发送 FC03 验证 Modbus
+- 局域网扫描使用 CIDR × 端口列表 + 有界并发，单次最多 65,536 次探测；仅 502 端口可选发送 FC03 验证 Modbus；可被动读取 Banner 并标注常见服务
 
 ## 会话 Actor
 
@@ -70,11 +70,29 @@ loop {
 
 状态与收发分别通过 `network:state`、`network:data` 推送，载荷带 `sessionId`，前端按会话归档日志并支持 CSV 导出。新建网络会话按模式只展示必要字段：客户端只有目标地址/端口，服务端只有监听地址/端口，中继同时需要本地监听与上游参数。
 
+## 工具箱
+
+`src-tauri/src/tools/` 是与 Modbus 会话、网络助手并列的本地工具后端。`ToolsManager` 负责有状态任务（Ping、路由跟踪、Hash、搜索）的任务 ID、取消标志与事件；DNS、Telnet、HTTP、ARP 使用按请求返回的命令。
+
+| 工具 | 实现要点 |
+|---|---|
+| 批量 Ping | Windows `IcmpSendEcho`，IPv4，主机/CIDR 展开，最多 256 主机；按主机汇总丢包与 min/avg/max |
+| 路由跟踪 | 同一 ICMP 封装递增 TTL，逐跳发射 `tracerouteHop`，可选反向解析 |
+| ARP | 原生使用 ipconfig 枚举网卡 + `SendARP`；增强模式通过 `libloading` 运行时加载 Npcap `wpcap.dll`，发送/捕获 ARP 请求并按 IP 聚合多个 MAC 检测冲突；需要管理员权限 |
+| DNS | `hickory-resolver` 0.24，系统或自定义 UDP/TCP 服务器，支持 A/AAAA/CNAME/MX/TXT/NS/SOA/SRV/PTR/CAA，缓存关闭 |
+| Telnet | TCP 建链 + Banner/可选 ASCII/HEX 发送；不做 IAC 协商 |
+| HTTP | `reqwest` + native-tls，方法/请求头/Body/超时/重定向/CA，响应体限制 2MB；不提供跳过证书校验 |
+| Hash | 单次分块读取同时计算 MD5/SHA-1/SHA-256/SHA-512/CRC32，可取消 |
+| 文件夹搜索 | walkdir + globset + regex + encoding_rs，跳过二进制、隐藏目录与常见构建目录；结果上限与批量事件 |
+| 美化/转换 | 纯前端；Prettier standalone 按需加载，XML 使用 xml-formatter |
+
+事件统一为 `tool:event`，载荷用 `event` 字段区分 `pingProgress`、`pingResult`、`pingDone`、`tracerouteHop`、`tracerouteDone`、`hashProgress`、`hashDone`、`searchProgress`、`searchHits`、`searchDone`；高频结果在 Rust 侧批量推送。ARP/Ping/路由跟踪为 Windows IPv4 实现，非 Windows 返回明确错误。
+
 ## 配置持久化
 
 Tauri 进程内的会话/定义存储仍由 Rust 持有；前端在非演示模式把可恢复配置（会话参数、定义、点位、别名、告警规则、模拟器发生器）写入 WebView localStorage，并在后端工作区为空时逐个重建。重建时固定 `autoConnect: false`，因此应用重启后所有会话默认断开，由用户手动连接。网络助手参数使用独立的 localStorage 键；界面主题、语言、表格偏好由 settings store 保存。告警历史与收发日志属于运行时数据，不持久化。
 
-全局配置导入/导出把 settings、工作区会话与网络助手会话封装为 `kind: "modbus-tool-config"`、`version: 1` 的 JSON。导入文件先校验 kind/version/shape，再经确认对话框执行：替换工作区会话（重建后保持断开）、替换网络会话（停止现有链路）、应用界面偏好并清空当前告警记录；扫描任务属于临时运行态，不随配置导入导出。
+全局配置导入/导出把 settings、工作区会话、网络助手会话与工具箱选择封装为 `kind: "modbus-tool-config"`、`version: 1` 的 JSON。导入文件先校验 kind/version/shape，再经确认对话框执行：替换工作区会话（重建后保持断开）、替换网络会话（停止现有链路）、应用界面偏好与工具箱选择并清空当前告警记录；扫描任务、工具运行结果/日志属于临时运行态，不随配置导入导出。
 
 ## 扫描
 
@@ -83,7 +101,7 @@ Tauri 进程内的会话/定义存储仍由 Rust 持有；前端在非演示模�
 | 从站 ID | FC01–04 顺序探测 0–255（ID 0 跳过），异常响应视为设备存在 |
 | 寄存器地址 | 分块读取，记录可读块、非零数量与首个非零地址 |
 | 波特率 | 串口逐波特率重开端口探测，报告响应与延时 |
-| 局域网 | IPv4 CIDR（≤ /16）、并发 TCP 连接、可选 Modbus 探测 |
+| 局域网 / 端口 | IPv4 CIDR（≤ /16）× 端口列表（≤ 256），总探测 ≤ 65,536；并发 TCP、被动 Banner、服务名；502 可选 Modbus 探测 |
 
 事件：`scan:progress`（done/total/found/phase/finished）、`scan:result`（逐条）、`scan:done`（汇总/错误）。取消通过 `AtomicBool` 在探测间检查。`ScanManager` 以 scanId 为键可同时运行多个扫描任务；前端也按 scanId 将进度和结论路由到各自的扫描会话，局域网扫描自身还使用有界并发。
 
@@ -95,6 +113,8 @@ Tauri 进程内的会话/定义存储仍由 Rust 持有；前端在非演示模�
 - `stores/alerts.ts`：告警触发/恢复记录、活动计数与未读状态
 - `stores/network.ts`：多网络会话、参数持久化、按会话归档收发日志
 - `stores/scans.ts`：多扫描任务、按后端 scanId 路由进度与结论
+- `stores/toolbox.ts`：工具箱当前选择与全局配置导出/恢复
+- `components/tools/`：网络/开发工具分组、二级工具导航与具体工具面板
 - `components/chart/`：uPlot 实时曲线（分类色板经 dataviz 校验）、跨线提示、图例、数据表
 - `components/scan/`：扫描工作台，左侧任务会话、右侧进度与结论
 - `components/network/`：网络工作台，多 TCP/UDP/中继会话，原始收发与日志导出
@@ -115,8 +135,9 @@ Tauri 进程内的会话/定义存储仍由 Rust 持有；前端在非演示模�
 | `scan:progress` | 扫描类型、进度、发现数、阶段、错误 |
 | `scan:result` | 单条扫描结果 |
 | `scan:done` | 扫描汇总与错误 |
+| `tool:event` | 网络/开发工具进度、结果、完成或错误（按 event/taskId 区分） |
 
-命令包含会话创建/轮询、定义 CRUD、单次读、写寄存器、原始调试、网络助手、四类扫描与取消、串口枚举、定义导入/导出文件读写。
+命令包含会话创建/轮询、定义 CRUD、单次读、写寄存器、原始调试、网络助手、四类扫描与取消、串口枚举、定义导入/导出文件读写，以及工具箱的 DNS/Telnet/HTTP/Ping/路由跟踪/ARP/Hash/搜索命令。
 
 ## 里程碑状态
 
@@ -131,6 +152,7 @@ Tauri 进程内的会话/定义存储仍由 Rust 持有；前端在非演示模�
 - P9 uPlot 曲线 + Windows 发布 — 曲线完成；Windows 安装包 artifact 已验证
 - P10 网络助手 — 多会话工作台、TCP/UDP 客户端/服务端、TCP 中继、按模式动态参数、日志与参数持久化完成
 - P11 页面化工作台 — 网络助手、设备扫描、告警记录由模态框迁移为左侧会话 + 右侧内容的全页面
+- P12 工具箱 — 网络工具、开发工具、二级导航、全局配置选择、Demo 与中英文完成；Web 文件服务/MQTT（第二批）与 CAN（第三批）待实现
 
 ## 后续优化
 

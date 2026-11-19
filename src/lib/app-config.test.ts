@@ -42,7 +42,16 @@ const networkSession = {
 
 describe("app config", () => {
   it("round-trips settings, sessions and network sessions", () => {
-    const config = buildAppConfig({ locale: "en-US", addressBase: 1 }, [session], [networkSession]);
+    const config = buildAppConfig(
+      { locale: "en-US", addressBase: 1 },
+      [session],
+      [networkSession],
+      {
+        version: 1,
+        networkTool: "arp",
+        devTool: "hash",
+      },
+    );
     const parsed = parseAppConfig(JSON.stringify(config));
     expect(parsed.kind).toBe(APP_CONFIG_KIND);
     expect(parsed.version).toBe(APP_CONFIG_VERSION);
@@ -50,6 +59,8 @@ describe("app config", () => {
     expect(parsed.sessions).toHaveLength(1);
     expect(parsed.sessions[0]?.definitions[0]?.aliases).toEqual({ 0: "Temperature" });
     expect(parsed.networkSessions[0]?.mode).toBe("tcp-client");
+    expect(parsed.tools?.networkTool).toBe("arp");
+    expect(parsed.tools?.devTool).toBe("hash");
   });
 
   it("rejects malformed files with stable error codes", () => {
@@ -74,5 +85,6 @@ describe("app config", () => {
     );
     expect(parsed.sessions).toHaveLength(1);
     expect(parsed.networkSessions).toHaveLength(1);
+    expect(parsed.tools).toBeUndefined();
   });
 });

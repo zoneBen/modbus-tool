@@ -5,9 +5,9 @@ use crate::state::AppState;
 use super::dns;
 use super::http_client;
 use super::model::{
-    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, DnsQueryInput, DnsResultDto,
-    HttpRequestInput, HttpResponseDto, PingInput, TelnetResultDto, TelnetTestInput, ToolResult,
-    TracerouteInput,
+    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, DnsQueryInput, DnsResultDto, HashInput,
+    HttpRequestInput, HttpResponseDto, PingInput, SearchInput, TelnetResultDto, TelnetTestInput,
+    ToolResult, TracerouteInput,
 };
 use super::telnet;
 
@@ -55,4 +55,14 @@ pub async fn tool_arp_scan(
     input: ArpScanInput,
 ) -> ToolResult<ArpScanResultDto> {
     state.tools.arp_scan(input).await
+}
+
+#[tauri::command]
+pub fn tool_hash_start(state: State<'_, AppState>, input: HashInput) -> ToolResult<String> {
+    state.tools.start_hash(input)
+}
+
+#[tauri::command]
+pub fn tool_search_start(state: State<'_, AppState>, input: SearchInput) -> ToolResult<String> {
+    state.tools.start_search(input)
 }

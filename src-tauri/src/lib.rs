@@ -165,6 +165,8 @@ pub fn run() {
             tools::commands::tool_task_cancel,
             tools::commands::tool_arp_capabilities,
             tools::commands::tool_arp_scan,
+            tools::commands::tool_hash_start,
+            tools::commands::tool_search_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

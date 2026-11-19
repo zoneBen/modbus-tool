@@ -323,3 +323,100 @@ pub struct ArpScanResultDto {
     pub entries: Vec<ArpEntryDto>,
     pub conflicts: u32,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HashInput {
+    pub path: String,
+    #[serde(default = "default_hash_algorithms")]
+    pub algorithms: Vec<String>,
+}
+
+fn default_hash_algorithms() -> Vec<String> {
+    vec!["sha256".to_owned()]
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HashValueDto {
+    pub algorithm: String,
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HashResultDto {
+    pub path: String,
+    pub size: u64,
+    pub elapsed_ms: f64,
+    pub values: Vec<HashValueDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HashDoneDto {
+    pub task_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<HashResultDto>,
+    pub error: Option<ToolErrorDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchInput {
+    pub folder: String,
+    pub query: String,
+    #[serde(default = "default_search_mode")]
+    pub mode: String,
+    #[serde(default)]
+    pub case_sensitive: bool,
+    #[serde(default)]
+    pub include: String,
+    #[serde(default)]
+    pub exclude: String,
+    #[serde(default = "default_search_encoding")]
+    pub encoding: String,
+    #[serde(default = "default_max_file_size")]
+    pub max_file_size: u64,
+    #[serde(default = "default_max_results")]
+    pub max_results: usize,
+    #[serde(default = "default_true")]
+    pub skip_hidden: bool,
+}
+
+fn default_search_mode() -> String {
+    "literal".to_owned()
+}
+
+fn default_search_encoding() -> String {
+    "auto".to_owned()
+}
+
+fn default_max_file_size() -> u64 {
+    10 * 1024 * 1024
+}
+
+fn default_max_results() -> usize {
+    1000
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHitDto {
+    pub path: String,
+    pub line: u32,
+    pub column: u32,
+    pub preview: String,
+    pub matched: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchDoneDto {
+    pub task_id: String,
+    pub files: u64,
+    pub matches: u64,
+    pub skipped: u64,
+    pub truncated: bool,
+    pub error: Option<ToolErrorDto>,
+}

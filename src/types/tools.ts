@@ -179,7 +179,20 @@ export type ToolEvent =
       error?: ToolErrorPayload;
     }
   | { event: "tracerouteHop"; taskId: string; hop: TracerouteHop }
-  | { event: "tracerouteDone"; taskId: string; reached: boolean; error?: ToolErrorPayload };
+  | { event: "tracerouteDone"; taskId: string; reached: boolean; error?: ToolErrorPayload }
+  | { event: "hashProgress"; taskId: string; done: number; total: number }
+  | { event: "hashDone"; taskId: string; result?: HashResult; error?: ToolErrorPayload }
+  | { event: "searchProgress"; taskId: string; files: number; matches: number }
+  | { event: "searchHits"; taskId: string; hits: SearchHit[] }
+  | {
+      event: "searchDone";
+      taskId: string;
+      files: number;
+      matches: number;
+      skipped: number;
+      truncated: boolean;
+      error?: ToolErrorPayload;
+    };
 
 export interface ArpAdapter {
   name: string;
@@ -228,4 +241,57 @@ export interface ArpScanResult {
   enhanced: boolean;
   entries: ArpEntry[];
   conflicts: number;
+}
+
+export interface HashInput {
+  path: string;
+  algorithms: string[];
+}
+
+export interface HashValue {
+  algorithm: string;
+  digest: string;
+}
+
+export interface HashResult {
+  path: string;
+  size: number;
+  elapsedMs: number;
+  values: HashValue[];
+}
+
+export interface HashDone {
+  taskId: string;
+  result?: HashResult;
+  error?: ToolErrorPayload;
+}
+
+export interface SearchInput {
+  folder: string;
+  query: string;
+  mode: "literal" | "regex";
+  caseSensitive: boolean;
+  include: string;
+  exclude: string;
+  encoding: "auto" | "utf-8" | "utf-16le" | "utf-16be" | "gb18030";
+  maxFileSize: number;
+  maxResults: number;
+  skipHidden: boolean;
+}
+
+export interface SearchHit {
+  path: string;
+  line: number;
+  column: number;
+  preview: string;
+  matched: string;
+}
+
+export interface SearchDone {
+  taskId: string;
+  files: number;
+  matches: number;
+  skipped: number;
+  truncated: boolean;
+  error?: ToolErrorPayload;
 }

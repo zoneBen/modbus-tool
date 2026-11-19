@@ -46,6 +46,8 @@ import type {
   ArpScanInput,
   ArpScanResult,
   DnsQueryInput,
+  HashInput,
+  SearchInput,
   DnsResult,
   HttpRequestInput,
   HttpResponse,
@@ -1300,6 +1302,113 @@ export function createDemoBridge(): IpcApi {
     };
   }
 
+  async function toolHashStart(input: HashInput): Promise<string> {
+    await demoWait(120);
+    if (!input.path.trim()) {
+      throw { code: "invalidPath", detail: "Select a file to hash" };
+    }
+    toolTaskSequence += 1;
+    const taskId = `demo-tool-${toolTaskSequence}`;
+    toolKinds.set(taskId, "hash");
+    let done = 0;
+    const total = 8 * 1024 * 1024;
+    toolTimers.set(
+      taskId,
+      setInterval(() => {
+        done = Math.min(total, done + 2 * 1024 * 1024);
+        emit("tool:event", { event: "hashProgress", taskId, done, total });
+        if (done >= total) {
+          clearInterval(toolTimers.get(taskId));
+          toolTimers.delete(taskId);
+          toolKinds.delete(taskId);
+          const algorithms = input.algorithms.length ? input.algorithms : ["sha256"];
+          emit("tool:event", {
+            event: "hashDone",
+            taskId,
+            result: {
+              path: input.path,
+              size: total,
+              elapsedMs: 186.3,
+              values: algorithms.map((algorithm, index) => ({
+                algorithm: algorithm.toUpperCase(),
+                digest: `${algorithm}-demo-${String(index + 1).repeat(48)}`.slice(0, 64),
+              })),
+            },
+            error: undefined,
+          });
+        }
+      }, 260),
+    );
+    return taskId;
+  }
+
+  async function toolSearchStart(input: SearchInput): Promise<string> {
+    await demoWait(120);
+    if (!input.folder.trim()) {
+      throw { code: "invalidFolder", detail: "Select an existing folder" };
+    }
+    if (!input.query.trim()) {
+      throw { code: "noQuery", detail: "Enter search text" };
+    }
+    toolTaskSequence += 1;
+    const taskId = `demo-tool-${toolTaskSequence}`;
+    toolKinds.set(taskId, "search");
+    let step = 0;
+    const totalFiles = 4;
+    const hits = [
+      {
+        path: `${input.folder}\\src\\main.ts`,
+        line: 12,
+        column: 8,
+        preview: `…const ${input.query} = "demo"…`,
+        matched: input.query,
+      },
+      {
+        path: `${input.folder}\\README.md`,
+        line: 4,
+        column: 1,
+        preview: `…${input.query} usage…`,
+        matched: input.query,
+      },
+      {
+        path: `${input.folder}\\src\\utils.ts`,
+        line: 29,
+        column: 14,
+        preview: `…return ${input.query}…`,
+        matched: input.query,
+      },
+    ];
+    toolTimers.set(
+      taskId,
+      setInterval(() => {
+        step += 1;
+        if (step === 2) {
+          emit("tool:event", { event: "searchHits", taskId, hits });
+        }
+        emit("tool:event", {
+          event: "searchProgress",
+          taskId,
+          files: step,
+          matches: step >= 2 ? hits.length : 0,
+        });
+        if (step >= totalFiles) {
+          clearInterval(toolTimers.get(taskId));
+          toolTimers.delete(taskId);
+          toolKinds.delete(taskId);
+          emit("tool:event", {
+            event: "searchDone",
+            taskId,
+            files: totalFiles,
+            matches: hits.length,
+            skipped: 1,
+            truncated: false,
+          });
+        }
+      }, 260),
+    );
+    return taskId;
+  }
+
   async function pickFile(): Promise<string | null> {
     await demoWait(80);
     return "C:\\demo\\modbus-tool-demo.json";
@@ -1312,7 +1421,7 @@ export function createDemoBridge(): IpcApi {
 
   let toolTaskSequence = 0;
   const toolTimers = new Map<string, ReturnType<typeof setInterval>>();
-  const toolKinds = new Map<string, "ping" | "traceroute">();
+  const toolKinds = new Map<string, "ping" | "traceroute" | "hash" | "search">();
 
   async function toolPingStart(input: PingInput): Promise<string> {
     await demoWait(120);
@@ -1420,6 +1529,22 @@ export function createDemoBridge(): IpcApi {
         event: "tracerouteDone",
         taskId,
         reached: false,
+        error: { code: "cancelled", detail: "Task cancelled" },
+      });
+    } else if (kind === "hash") {
+      emit("tool:event", {
+        event: "hashDone",
+        taskId,
+        error: { code: "cancelled", detail: "Task cancelled" },
+      });
+    } else if (kind === "search") {
+      emit("tool:event", {
+        event: "searchDone",
+        taskId,
+        files: 0,
+        matches: 0,
+        skipped: 0,
+        truncated: false,
         error: { code: "cancelled", detail: "Task cancelled" },
       });
     } else {
@@ -1906,6 +2031,8 @@ export function createDemoBridge(): IpcApi {
     toolTaskCancel,
     toolArpCapabilities,
     toolArpScan,
+    toolHashStart,
+    toolSearchStart,
     pickFile,
     pickDirectory,
     writeRegister,

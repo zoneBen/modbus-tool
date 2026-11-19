@@ -41,6 +41,7 @@ import { useAlertsStore } from "@/stores/alerts";
 import { useNetworkStore } from "@/stores/network";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
+import { useToolboxStore } from "@/stores/toolbox";
 import type { WriteTarget } from "@/types/ui";
 
 useRealtimeEvents();
@@ -49,6 +50,7 @@ const settings = useSettingsStore();
 const sessions = useSessionsStore();
 const network = useNetworkStore();
 const alerts = useAlertsStore();
+const toolbox = useToolboxStore();
 const { t } = useI18n();
 const initialParams = new URLSearchParams(window.location.search);
 const initialDialog = initialParams.get("dialog");
@@ -149,6 +151,7 @@ async function exportConfig(): Promise<void> {
     settings.snapshot(),
     sessions.persistedSessions(),
     network.exportSessions(),
+    toolbox.exportConfig(),
   );
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   try {
@@ -200,6 +203,7 @@ async function confirmConfigImport(): Promise<void> {
     settings.applySnapshot(config.settings);
     const errors = await sessions.replaceWorkspace(config.sessions);
     await network.replaceSessions(config.networkSessions);
+    toolbox.replaceConfig(config.tools);
     alerts.clear();
     configImportOpen.value = false;
     pendingConfig.value = null;
