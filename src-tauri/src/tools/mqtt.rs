@@ -19,7 +19,6 @@ use super::model::{
 };
 
 const MAX_PACKET_BYTES: usize = 1024 * 1024;
-const MAX_LOG_PAYLOAD: usize = 16 * 1024;
 const MAX_CA_BYTES: u64 = 1024 * 1024;
 
 pub struct MqttManager {
@@ -475,25 +474,18 @@ fn emit_message(
 ) {
     let topic = String::from_utf8_lossy(topic.as_ref()).into_owned();
     let payload = payload.as_ref();
-    let truncated = payload.len() > MAX_LOG_PAYLOAD;
-    let visible = if truncated {
-        &payload[..MAX_LOG_PAYLOAD]
-    } else {
-        payload
-    };
     emit(
         bus,
         AppEvent::MqttMessage(MqttMessageDto {
             broker_id: broker_id.to_owned(),
             topic,
-            payload_text: String::from_utf8_lossy(visible).into_owned(),
-            payload_hex: visible
+            payload_text: String::from_utf8_lossy(payload).into_owned(),
+            payload_hex: payload
                 .iter()
                 .map(|byte| format!("{byte:02X}"))
                 .collect::<Vec<_>>()
                 .join(" "),
             payload_bytes: payload.len(),
-            payload_truncated: truncated,
             qos,
             retain,
             timestamp_ms: now_ms(),
@@ -525,5 +517,21 @@ mod tests {
         assert!(qos(0).is_ok());
         assert!(qos(2).is_ok());
         assert!(qos(3).is_err());
+    }
+
+    #[test]
+    fn emits_full_payload_without_truncation() {
+        let bus = crate::event::event_bus();
+        let mut receiver = bus.subscribe();
+        let payload = vec![b'a'; 32 * 1024];
+        emit_message(&bus, "broker", "demo/large", &payload, 1, false);
+        match receiver.try_recv().expect("mqtt message") {
+            crate::event::AppEvent::MqttMessage(message) => {
+                assert_eq!(message.payload_bytes, payload.len());
+                assert_eq!(message.payload_text.len(), payload.len());
+                assert_eq!(message.payload_hex.split(' ').count(), payload.len());
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 }

@@ -13,7 +13,6 @@ import type { FormatLanguage } from "@/lib/tool-formatter";
 
 const { t } = useI18n();
 const toolbox = useToolboxStore();
-const MAX_INPUT_BYTES = 2 * 1024 * 1024;
 const language = toolbox.toolPref<FormatLanguage>("dev.formatter.language", "json");
 const indent = toolbox.toolPref<"2" | "4">("dev.formatter.indent", "2");
 const input = ref("");
@@ -41,10 +40,6 @@ async function format(): Promise<void> {
   if (busy.value) return;
   if (!input.value.trim()) {
     error.value = t("devTools.formatter.empty");
-    return;
-  }
-  if (inputBytes.value > MAX_INPUT_BYTES) {
-    error.value = t("devTools.formatter.tooLarge", { max: 2 });
     return;
   }
   busy.value = true;
@@ -108,7 +103,7 @@ async function copy(): Promise<void> {
             <FormSelect v-model="indent" :options="indentOptions" />
           </div>
         </div>
-        <span class="numeric text-[10.5px] text-muted-foreground"> {{ inputBytes }} B / 2 MB </span>
+        <span class="numeric text-[10.5px] text-muted-foreground">{{ inputBytes }} B</span>
         <div class="ml-auto flex items-center gap-2">
           <Button size="sm" class="h-8 gap-1.5 text-[12px]" :disabled="busy" @click="format">
             <Play class="size-3.5" />

@@ -47,6 +47,7 @@ import type {
   ArpScanResult,
   ContinuousPingInput,
   DnsQueryInput,
+  FileServerEntry,
   FileServerStartInput,
   FileServerStatus,
   HashInput,
@@ -2071,6 +2072,57 @@ export function createDemoBridge(): IpcApi {
     emit("session:data", next);
   }
 
+  const demoFileTree: Record<string, FileServerEntry[]> = {
+    "": [
+      {
+        name: "firmware",
+        path: "firmware",
+        isDir: true,
+        size: 0,
+        modifiedMs: Date.now() - 7_200_000,
+      },
+      {
+        name: "logs",
+        path: "logs",
+        isDir: true,
+        size: 0,
+        modifiedMs: Date.now() - 3_600_000,
+      },
+      {
+        name: "notes.txt",
+        path: "notes.txt",
+        isDir: false,
+        size: 1_824,
+        modifiedMs: Date.now() - 900_000,
+      },
+    ],
+    firmware: [
+      {
+        name: "firmware.bin",
+        path: "firmware/firmware.bin",
+        isDir: false,
+        size: 2_457_600,
+        modifiedMs: Date.now() - 3_600_000,
+      },
+      {
+        name: "release.txt",
+        path: "firmware/release.txt",
+        isDir: false,
+        size: 512,
+        modifiedMs: Date.now() - 5_400_000,
+      },
+    ],
+    logs: [
+      {
+        name: "session.log",
+        path: "logs/session.log",
+        isDir: false,
+        size: 28_672,
+        modifiedMs: Date.now() - 120_000,
+      },
+    ],
+  };
+
   let demoFileServer: FileServerStatus = {
     running: false,
     root: null,
@@ -2078,9 +2130,11 @@ export function createDemoBridge(): IpcApi {
     port: null,
     urls: [],
     startedAt: null,
+    path: "",
+    parent: null,
     uploads: 0,
     downloads: 0,
-    files: [],
+    entries: [],
     requests: [],
   };
 
@@ -2102,18 +2156,17 @@ export function createDemoBridge(): IpcApi {
       port,
       urls,
       startedAt: Date.now(),
+      path: "",
+      parent: null,
       uploads: 2,
       downloads: 5,
-      files: [
-        { name: "firmware.bin", size: 2_457_600, modifiedMs: Date.now() - 3_600_000 },
-        { name: "notes.txt", size: 1_824, modifiedMs: Date.now() - 900_000 },
-      ],
+      entries: clone(demoFileTree[""] ?? []),
       requests: [
         {
           timestampMs: Date.now() - 42_000,
           remote: "192.168.1.24",
           method: "GET",
-          path: "/download/firmware.bin",
+          path: "/download/firmware/firmware.bin",
           status: 200,
           bytes: 2_457_600,
         },
@@ -2136,13 +2189,28 @@ export function createDemoBridge(): IpcApi {
       ...demoFileServer,
       running: false,
       urls: [],
+      path: "",
+      parent: null,
+      entries: [],
     };
     return clone(demoFileServer);
   }
 
-  async function toolFileserverStatus(): Promise<FileServerStatus> {
+  async function toolFileserverStatus(path = ""): Promise<FileServerStatus> {
     await demoWait(60);
-    return clone(demoFileServer);
+    if (!demoFileServer.running) return clone(demoFileServer);
+    const normalized = path.replace(/^\/+|\/+$/g, "");
+    const entries = demoFileTree[normalized];
+    if (!entries) {
+      throw { code: "invalidPath", detail: "Folder does not exist" };
+    }
+    const segments = normalized ? normalized.split("/") : [];
+    return {
+      ...clone(demoFileServer),
+      path: normalized,
+      parent: normalized ? segments.slice(0, -1).join("/") : null,
+      entries: clone(entries),
+    };
   }
 
   const mqttTimers = new Map<string, ReturnType<typeof setInterval>>();
@@ -2185,7 +2253,6 @@ export function createDemoBridge(): IpcApi {
             .map((byte) => byte.toString(16).padStart(2, "0").toUpperCase())
             .join(" "),
           payloadBytes: new TextEncoder().encode(payload).length,
-          payloadTruncated: false,
           qos: 0,
           retain: false,
           timestampMs: Date.now(),

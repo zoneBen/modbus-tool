@@ -352,8 +352,10 @@ export interface FileServerStartInput {
   port: number;
 }
 
-export interface FileServerFile {
+export interface FileServerEntry {
   name: string;
+  path: string;
+  isDir: boolean;
   size: number;
   modifiedMs: number;
 }
@@ -374,9 +376,11 @@ export interface FileServerStatus {
   port: number | null;
   urls: string[];
   startedAt: number | null;
+  path: string;
+  parent: string | null;
   uploads: number;
   downloads: number;
-  files: FileServerFile[];
+  entries: FileServerEntry[];
   requests: FileServerRequest[];
 }
 
@@ -411,7 +415,6 @@ export interface MqttMessage {
   payloadText: string;
   payloadHex: string;
   payloadBytes: number;
-  payloadTruncated: boolean;
   qos: number;
   retain: boolean;
   timestampMs: number;

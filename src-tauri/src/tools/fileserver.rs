@@ -4,25 +4,38 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use axum::Form;
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path as AxumPath, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path as AxumPath, Query, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use axum::routing::{get, post};
+use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_util::io::ReaderStream;
 
 use super::model::{
-    FileServerFileDto, FileServerRequestDto, FileServerStartInput, FileServerStatusDto,
+    FileServerEntryDto, FileServerRequestDto, FileServerStartInput, FileServerStatusDto,
     ToolErrorDto, ToolResult,
 };
 
 const MAX_UPLOAD_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_LISTED_FILES: usize = 500;
+const MAX_LISTED_ENTRIES: usize = 500;
 const MAX_REQUESTS: usize = 200;
+
+#[derive(Debug, Default, Deserialize)]
+struct BrowseQuery {
+    #[serde(default)]
+    path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MkdirForm {
+    name: String,
+}
 
 struct RequestLog {
     timestamp_ms: u64,
@@ -43,6 +56,7 @@ struct LogState {
 struct ServerContext {
     root: PathBuf,
     logs: Arc<Mutex<LogState>>,
+    base_url: String,
 }
 
 struct RunningServer {
@@ -105,15 +119,24 @@ impl FileServerManager {
             .map_err(|error| ToolErrorDto::new("bindFailed", error.to_string()))?
             .port();
         let logs = Arc::new(Mutex::new(LogState::default()));
+        let urls = build_urls(&host, port);
+        let base_url = urls
+            .iter()
+            .find(|url| !url.contains("127.0.0.1") && !url.contains("localhost"))
+            .cloned()
+            .or_else(|| urls.first().cloned())
+            .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
         let context = Arc::new(ServerContext {
             root: root.clone(),
             logs: logs.clone(),
+            base_url,
         });
         let app = Router::new()
             .route("/", get(index))
             .route("/api/files", get(api_files))
-            .route("/download/{name}", get(download))
+            .route("/download/{*path}", get(download))
             .route("/upload", post(upload))
+            .route("/mkdir", post(mkdir))
             .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES as usize))
             .with_state(context);
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -133,7 +156,7 @@ impl FileServerManager {
             root: root.clone(),
             host: host.clone(),
             port,
-            urls: build_urls(&host, port),
+            urls,
             started_at: now_ms(),
             logs,
             shutdown: Some(shutdown_tx),
@@ -156,10 +179,10 @@ impl FileServerManager {
             }
             *guard = Some(running);
         }
-        Ok(self.snapshot().await)
+        self.snapshot("").await
     }
 
-    pub async fn stop(&self) -> FileServerStatusDto {
+    pub async fn stop(&self) -> ToolResult<FileServerStatusDto> {
         let running = { self.lock().take() };
         if let Some(mut running) = running {
             if let Some(sender) = running.shutdown.take() {
@@ -175,10 +198,10 @@ impl FileServerManager {
                 }
             }
         }
-        self.snapshot().await
+        self.snapshot("").await
     }
 
-    pub async fn snapshot(&self) -> FileServerStatusDto {
+    pub async fn snapshot(&self, path: &str) -> ToolResult<FileServerStatusDto> {
         let state = {
             let guard = self.lock();
             guard.as_ref().map(|running| {
@@ -193,20 +216,25 @@ impl FileServerManager {
             })
         };
         let Some((root, host, port, urls, started_at, logs)) = state else {
-            return FileServerStatusDto {
+            return Ok(FileServerStatusDto {
                 running: false,
                 root: None,
                 host: None,
                 port: None,
                 urls: Vec::new(),
                 started_at: None,
+                path: String::new(),
+                parent: None,
                 uploads: 0,
                 downloads: 0,
-                files: Vec::new(),
+                entries: Vec::new(),
                 requests: Vec::new(),
-            };
+            });
         };
-        let files = list_files(&root).await;
+        let normalized = normalize_relative(path)
+            .ok_or_else(|| ToolErrorDto::new("invalidPath", "Invalid folder path"))?;
+        let directory = resolve_directory(&root, &normalized).await?;
+        let entries = list_entries(&directory, &normalized).await;
         let (uploads, downloads, requests) = {
             let guard = logs.lock().unwrap_or_else(|poison| poison.into_inner());
             (
@@ -226,18 +254,20 @@ impl FileServerManager {
                     .collect(),
             )
         };
-        FileServerStatusDto {
+        Ok(FileServerStatusDto {
             running: true,
             root: Some(root.to_string_lossy().into_owned()),
             host: Some(host),
             port: Some(port),
             urls,
             started_at: Some(started_at),
+            path: normalized.clone(),
+            parent: parent_path(&normalized),
             uploads,
             downloads,
-            files,
+            entries,
             requests,
-        }
+        })
     }
 
     pub async fn shutdown(&self) {
@@ -291,19 +321,20 @@ fn detected_ipv4() -> Option<Ipv4Addr> {
     }
 }
 
-async fn list_files(root: &Path) -> Vec<FileServerFileDto> {
-    let mut files = Vec::new();
-    let Ok(mut entries) = tokio::fs::read_dir(root).await else {
-        return files;
+async fn list_entries(directory: &Path, relative: &str) -> Vec<FileServerEntryDto> {
+    let mut entries = Vec::new();
+    let Ok(mut read_dir) = tokio::fs::read_dir(directory).await else {
+        return entries;
     };
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        if files.len() >= MAX_LISTED_FILES {
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
+        if entries.len() >= MAX_LISTED_ENTRIES {
             break;
         }
         let Ok(file_type) = entry.file_type().await else {
             continue;
         };
-        if !file_type.is_file() {
+        // Skip symlinks so a link cannot escape the shared root.
+        if file_type.is_symlink() || (!file_type.is_dir() && !file_type.is_file()) {
             continue;
         }
         let Ok(metadata) = entry.metadata().await else {
@@ -315,34 +346,194 @@ async fn list_files(root: &Path) -> Vec<FileServerFileDto> {
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .map(|duration| duration.as_millis() as u64)
             .unwrap_or(0);
-        files.push(FileServerFileDto {
-            name: entry.file_name().to_string_lossy().into_owned(),
-            size: metadata.len(),
+        let name = entry.file_name().to_string_lossy().into_owned();
+        entries.push(FileServerEntryDto {
+            path: join_relative(relative, &name),
+            name,
+            is_dir: file_type.is_dir(),
+            size: if file_type.is_dir() {
+                0
+            } else {
+                metadata.len()
+            },
             modified_ms,
         });
     }
-    files.sort_by_key(|file| file.name.to_lowercase());
-    files
+    entries.sort_by(|left, right| {
+        right
+            .is_dir
+            .cmp(&left.is_dir)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    entries
+}
+
+fn normalize_relative(value: &str) -> Option<String> {
+    let value = value.replace('\\', "/");
+    let mut segments = Vec::new();
+    for segment in value.split('/') {
+        if segment.is_empty() || segment == "." {
+            continue;
+        }
+        if segment == ".." || segment.contains('\0') || segment.contains(':') {
+            return None;
+        }
+        segments.push(segment);
+    }
+    Some(segments.join("/"))
+}
+
+fn join_relative(base: &str, name: &str) -> String {
+    if base.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{base}/{name}")
+    }
+}
+
+fn parent_path(value: &str) -> Option<String> {
+    if value.is_empty() {
+        return None;
+    }
+    let mut segments: Vec<&str> = value.split('/').collect();
+    segments.pop();
+    Some(segments.join("/"))
+}
+
+async fn resolve_directory(root: &Path, relative: &str) -> ToolResult<PathBuf> {
+    if relative.is_empty() {
+        return Ok(root.to_path_buf());
+    }
+    let candidate = root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+    let resolved = tokio::fs::canonicalize(&candidate)
+        .await
+        .map_err(|_| ToolErrorDto::new("invalidPath", "Folder does not exist"))?;
+    if !resolved.starts_with(root) {
+        return Err(ToolErrorDto::new(
+            "invalidPath",
+            "Folder is outside the shared root",
+        ));
+    }
+    let metadata = tokio::fs::metadata(&resolved)
+        .await
+        .map_err(|_| ToolErrorDto::new("invalidPath", "Folder does not exist"))?;
+    if !metadata.is_dir() {
+        return Err(ToolErrorDto::new(
+            "notADirectory",
+            "The selected path is not a folder",
+        ));
+    }
+    Ok(resolved)
+}
+
+async fn resolve_file(root: &Path, relative: &str) -> ToolResult<PathBuf> {
+    if relative.is_empty() {
+        return Err(ToolErrorDto::new("invalidPath", "Invalid file path"));
+    }
+    let candidate = root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+    let resolved = tokio::fs::canonicalize(&candidate)
+        .await
+        .map_err(|_| ToolErrorDto::new("notFound", "File does not exist"))?;
+    if !resolved.starts_with(root) {
+        return Err(ToolErrorDto::new(
+            "invalidPath",
+            "File is outside the shared root",
+        ));
+    }
+    let metadata = tokio::fs::metadata(&resolved)
+        .await
+        .map_err(|_| ToolErrorDto::new("notFound", "File does not exist"))?;
+    if !metadata.is_file() {
+        return Err(ToolErrorDto::new(
+            "notAFile",
+            "The selected path is not a file",
+        ));
+    }
+    Ok(resolved)
 }
 
 async fn index(
     State(context): State<Arc<ServerContext>>,
     ConnectInfo(remote): ConnectInfo<SocketAddr>,
+    Query(query): Query<BrowseQuery>,
 ) -> Response {
-    let files = list_files(&context.root).await;
-    let total_bytes: u64 = files.iter().map(|file| file.size).sum();
+    let Some(relative) = normalize_relative(query.path.as_deref().unwrap_or("")) else {
+        record(&context, &remote, "GET", "/", 400, 0);
+        return error_response(StatusCode::BAD_REQUEST, "目录路径无效");
+    };
+    let directory = match resolve_directory(&context.root, &relative).await {
+        Ok(directory) => directory,
+        Err(error) => {
+            record(&context, &remote, "GET", "/", 404, 0);
+            return error_response(StatusCode::NOT_FOUND, &error.detail);
+        }
+    };
+    let entries = list_entries(&directory, &relative).await;
+    let file_count = entries.iter().filter(|entry| !entry.is_dir).count();
+    let dir_count = entries.len() - file_count;
+    let total_bytes: u64 = entries.iter().map(|entry| entry.size).sum();
+    let query_path = urlencoding::encode(&relative);
+    let upload_action = if relative.is_empty() {
+        "/upload".to_owned()
+    } else {
+        format!("/upload?path={query_path}")
+    };
+    let mkdir_action = if relative.is_empty() {
+        "/mkdir".to_owned()
+    } else {
+        format!("/mkdir?path={query_path}")
+    };
     let mut rows = String::new();
-    for file in &files {
-        let encoded = urlencoding::encode(&file.name);
-        rows.push_str(&format!(
-            r#"<tr><td class="name"><a href="/download/{encoded}">{}</a></td><td class="size">{}</td></tr>"#,
-            escape_html(&file.name),
-            format_size(file.size)
-        ));
+    for entry in &entries {
+        let encoded_path = encode_relative(&entry.path);
+        if entry.is_dir {
+            let browse = format!("/?path={}", urlencoding::encode(&entry.path));
+            rows.push_str(&format!(
+                r#"<tr><td class="name"><a class="folder" href="{}">{}</a></td><td class="meta">—</td><td class="meta"><span class="localtime" data-ts="{}">—</span></td><td class="actions"></td></tr>"#,
+                escape_html(&browse),
+                escape_html(&entry.name),
+                entry.modified_ms
+            ));
+        } else {
+            let download = format!("/download/{encoded_path}");
+            rows.push_str(&format!(
+                r#"<tr><td class="name"><a href="{}">{}</a></td><td class="meta">{}</td><td class="meta"><span class="localtime" data-ts="{}">—</span></td><td class="actions"><button type="button" class="copy" data-path="{}">复制链接</button></td></tr>"#,
+                escape_html(&download),
+                escape_html(&entry.name),
+                format_size(entry.size),
+                entry.modified_ms,
+                escape_html(&encoded_path)
+            ));
+        }
     }
     if rows.is_empty() {
-        rows.push_str(r#"<tr><td colspan="2" class="empty">暂无文件，使用上方表单上传</td></tr>"#);
+        rows.push_str(
+            r#"<tr><td colspan="4" class="empty">当前文件夹为空，使用上方表单上传文件</td></tr>"#,
+        );
     }
+    let mut crumbs = r#"<a href="/">根目录</a>"#.to_owned();
+    let mut cumulative = String::new();
+    for segment in relative.split('/').filter(|segment| !segment.is_empty()) {
+        cumulative = join_relative(&cumulative, segment);
+        crumbs.push_str(&format!(
+            r#"<span class="sep">/</span><a href="/?path={}">{}</a>"#,
+            urlencoding::encode(&cumulative),
+            escape_html(segment)
+        ));
+    }
+    let parent_link = parent_path(&relative)
+        .map(|parent| {
+            let href = if parent.is_empty() {
+                "/".to_owned()
+            } else {
+                format!("/?path={}", urlencoding::encode(&parent))
+            };
+            format!(
+                r#"<a class="up" href="{}">↑ 上一级</a>"#,
+                escape_html(&href)
+            )
+        })
+        .unwrap_or_default();
     let html = format!(
         r#"<!doctype html>
 <html lang="zh-CN">
@@ -352,80 +543,116 @@ async fn index(
 <title>Modbus Tool · 文件交换</title>
 <style>{style}</style>
 </head>
-<body>
+<body data-base="{base}">
 <main class="shell">
   <header class="head">
     <div>
       <p class="eyebrow">MODBUS TOOL · LAN EXCHANGE</p>
       <h1>局域网文件交换</h1>
-      <p class="sub">同一网络内的设备可通过本页上传与下载共享文件夹中的文件。</p>
+      <p class="sub">浏览共享文件夹，上传或下载文件，并把文件链接发送给同一网络中的其他设备。</p>
     </div>
     <div class="badge">HTTP · 无访问密码</div>
   </header>
-  <section class="warn">注意：本服务未设置访问密码，同一局域网内任何能访问此地址的人都可以上传或下载文件。</section>
+  <section class="warn">注意：本服务未设置访问密码，同一局域网内任何能访问此地址的人都可以浏览、上传或下载文件。</section>
+  <nav class="crumbs">{crumbs}</nav>
   <section class="card">
     <div class="card-head">
-      <h2>上传文件</h2>
-      <span>{count} 个文件 · {total}</span>
+      <h2>上传到当前文件夹</h2>
+      <span>{dir_count} 个文件夹 · {file_count} 个文件 · {total}</span>
     </div>
-    <form action="/upload" method="post" enctype="multipart/form-data">
+    <form action="{upload_action}" method="post" enctype="multipart/form-data">
       <label class="drop">
         <input type="file" name="file" multiple required>
         <span>选择文件后点击上传</span>
       </label>
       <button type="submit">上传</button>
     </form>
+    <form class="mkdir" action="{mkdir_action}" method="post">
+      <input type="text" name="name" maxlength="180" placeholder="新建文件夹名称" required>
+      <button type="submit">新建文件夹</button>
+    </form>
   </section>
   <section class="card">
     <div class="card-head">
-      <h2>共享文件</h2>
-      <span>{count} 个文件</span>
+      <h2>当前文件夹</h2>
+      <span>{parent_link}</span>
     </div>
-    <table>
-      <thead><tr><th>文件名</th><th>大小</th></tr></thead>
-      <tbody>{rows}</tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>名称</th><th>大小</th><th>修改时间</th><th>操作</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>
   </section>
   <footer>Modbus Tool · 局域网文件交换</footer>
 </main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script>{script}</script>
 </body>
 </html>"#,
         style = PAGE_STYLE,
-        count = files.len(),
+        script = PAGE_SCRIPT,
+        base = escape_html(&context.base_url),
+        crumbs = crumbs,
+        dir_count = dir_count,
+        file_count = file_count,
         total = format_size(total_bytes),
+        upload_action = escape_html(&upload_action),
+        mkdir_action = escape_html(&mkdir_action),
+        parent_link = parent_link,
         rows = rows,
     );
-    record(&context, &remote, "GET", "/", 200, html.len() as u64);
+    let log_path = if relative.is_empty() {
+        "/".to_owned()
+    } else {
+        format!("/?path={query_path}")
+    };
+    record(&context, &remote, "GET", &log_path, 200, html.len() as u64);
     Html(html).into_response()
 }
 
 async fn api_files(
     State(context): State<Arc<ServerContext>>,
     ConnectInfo(remote): ConnectInfo<SocketAddr>,
+    Query(query): Query<BrowseQuery>,
 ) -> Response {
-    let files = list_files(&context.root).await;
+    let Some(relative) = normalize_relative(query.path.as_deref().unwrap_or("")) else {
+        record(&context, &remote, "GET", "/api/files", 400, 0);
+        return error_response(StatusCode::BAD_REQUEST, "目录路径无效");
+    };
+    let directory = match resolve_directory(&context.root, &relative).await {
+        Ok(directory) => directory,
+        Err(error) => {
+            record(&context, &remote, "GET", "/api/files", 404, 0);
+            return error_response(StatusCode::NOT_FOUND, &error.detail);
+        }
+    };
+    let entries = list_entries(&directory, &relative).await;
     record(&context, &remote, "GET", "/api/files", 200, 0);
-    Json(files).into_response()
+    Json(entries).into_response()
 }
 
 async fn download(
     State(context): State<Arc<ServerContext>>,
     ConnectInfo(remote): ConnectInfo<SocketAddr>,
-    AxumPath(name): AxumPath<String>,
+    AxumPath(raw_path): AxumPath<String>,
 ) -> Response {
-    let Some(name) = sanitize_request_name(&name) else {
+    let Some(relative) = normalize_relative(&raw_path) else {
         record(&context, &remote, "GET", "/download", 400, 0);
-        return error_response(StatusCode::BAD_REQUEST, "无效的文件名");
+        return error_response(StatusCode::BAD_REQUEST, "无效的文件路径");
     };
-    let path = context.root.join(&name);
-    let path = match tokio::fs::canonicalize(&path).await {
-        Ok(path) if path.starts_with(&context.root) => path,
-        _ => {
+    if relative.is_empty() {
+        record(&context, &remote, "GET", "/download", 400, 0);
+        return error_response(StatusCode::BAD_REQUEST, "无效的文件路径");
+    }
+    let path = match resolve_file(&context.root, &relative).await {
+        Ok(path) => path,
+        Err(_) => {
             record(
                 &context,
                 &remote,
                 "GET",
-                &format!("/download/{name}"),
+                &format!("/download/{relative}"),
                 404,
                 0,
             );
@@ -439,7 +666,7 @@ async fn download(
                 &context,
                 &remote,
                 "GET",
-                &format!("/download/{name}"),
+                &format!("/download/{relative}"),
                 404,
                 0,
             );
@@ -453,7 +680,7 @@ async fn download(
                 &context,
                 &remote,
                 "GET",
-                &format!("/download/{name}"),
+                &format!("/download/{relative}"),
                 500,
                 0,
             );
@@ -461,8 +688,14 @@ async fn download(
         }
     };
     let size = metadata.len();
-    let encoded = urlencoding::encode(&name);
-    let disposition = format!("attachment; filename*=UTF-8''{encoded}");
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_owned());
+    let disposition = format!(
+        "attachment; filename*=UTF-8''{}",
+        urlencoding::encode(&file_name)
+    );
     let body = Body::from_stream(ReaderStream::new(file));
     let response = Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
@@ -477,7 +710,7 @@ async fn download(
         &context,
         &remote,
         "GET",
-        &format!("/download/{name}"),
+        &format!("/download/{relative}"),
         200,
         size,
     );
@@ -490,8 +723,20 @@ async fn download(
 async fn upload(
     State(context): State<Arc<ServerContext>>,
     ConnectInfo(remote): ConnectInfo<SocketAddr>,
+    Query(query): Query<BrowseQuery>,
     mut multipart: Multipart,
 ) -> Response {
+    let Some(relative) = normalize_relative(query.path.as_deref().unwrap_or("")) else {
+        record(&context, &remote, "POST", "/upload", 400, 0);
+        return error_response(StatusCode::BAD_REQUEST, "目标文件夹无效");
+    };
+    let target = match resolve_directory(&context.root, &relative).await {
+        Ok(target) => target,
+        Err(error) => {
+            record(&context, &remote, "POST", "/upload", 400, 0);
+            return error_response(StatusCode::BAD_REQUEST, &error.detail);
+        }
+    };
     let mut uploaded = 0u32;
     let mut total_bytes = 0u64;
     loop {
@@ -510,7 +755,7 @@ async fn upload(
         let Some(name) = sanitize_upload_name(&file_name) else {
             continue;
         };
-        let (path, mut file) = match create_unique(&context.root, &name).await {
+        let (path, mut file) = match create_unique(&target, &name).await {
             Ok(value) => value,
             Err(error) => {
                 tracing::warn!(%error, "failed to create uploaded file");
@@ -554,7 +799,55 @@ async fn upload(
         return error_response(StatusCode::BAD_REQUEST, "没有选择文件");
     }
     record(&context, &remote, "POST", "/upload", 303, total_bytes);
-    Redirect::to("/").into_response()
+    Redirect::to(&browse_url(&relative)).into_response()
+}
+
+async fn mkdir(
+    State(context): State<Arc<ServerContext>>,
+    ConnectInfo(remote): ConnectInfo<SocketAddr>,
+    Query(query): Query<BrowseQuery>,
+    Form(form): Form<MkdirForm>,
+) -> Response {
+    let Some(relative) = normalize_relative(query.path.as_deref().unwrap_or("")) else {
+        record(&context, &remote, "POST", "/mkdir", 400, 0);
+        return error_response(StatusCode::BAD_REQUEST, "目标文件夹无效");
+    };
+    let target = match resolve_directory(&context.root, &relative).await {
+        Ok(target) => target,
+        Err(error) => {
+            record(&context, &remote, "POST", "/mkdir", 400, 0);
+            return error_response(StatusCode::BAD_REQUEST, &error.detail);
+        }
+    };
+    let Some(name) = sanitize_upload_name(&form.name) else {
+        record(&context, &remote, "POST", "/mkdir", 400, 0);
+        return error_response(StatusCode::BAD_REQUEST, "文件夹名称无效");
+    };
+    if let Err(error) = tokio::fs::create_dir(target.join(&name)).await
+        && error.kind() != std::io::ErrorKind::AlreadyExists
+    {
+        tracing::warn!(%error, "failed to create folder");
+        record(&context, &remote, "POST", "/mkdir", 500, 0);
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "创建文件夹失败");
+    }
+    record(&context, &remote, "POST", "/mkdir", 303, 0);
+    Redirect::to(&browse_url(&relative)).into_response()
+}
+
+fn browse_url(relative: &str) -> String {
+    if relative.is_empty() {
+        "/".to_owned()
+    } else {
+        format!("/?path={}", urlencoding::encode(relative))
+    }
+}
+
+fn encode_relative(value: &str) -> String {
+    value
+        .split('/')
+        .map(urlencoding::encode)
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn record(
@@ -586,14 +879,6 @@ fn record(
     while logs.entries.len() > MAX_REQUESTS {
         logs.entries.pop_back();
     }
-}
-
-fn sanitize_request_name(raw: &str) -> Option<String> {
-    let base = raw.rsplit(['/', '\\']).next()?.trim();
-    if base.is_empty() || base == "." || base == ".." || base.contains('\0') {
-        return None;
-    }
-    Some(base.to_owned())
 }
 
 fn sanitize_upload_name(raw: &str) -> Option<String> {
@@ -724,25 +1009,101 @@ h1 { margin: 0; font-size: 30px; letter-spacing: -.02em; }
 .sub { margin: 8px 0 0; color: #5b6674; font-size: 13px; }
 .badge { padding: 6px 10px; border-radius: 999px; background: #e5edff; color: #2456c7; font-size: 11px; font-weight: 600; }
 .warn { margin: 22px 0 16px; padding: 12px 14px; border: 1px solid #f1d3a6; background: #fff8ea; color: #8a5a12; border-radius: 12px; font-size: 12px; line-height: 1.6; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 18px 0 2px; color: #6b7785; font-size: 12px; }
+.crumbs a { color: #2456c7; text-decoration: none; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs .sep { color: #a7b1bd; }
 .card { background: #fff; border: 1px solid #e1e6ed; border-radius: 16px; padding: 18px; margin-top: 16px; box-shadow: 0 10px 30px rgba(21, 37, 58, .05); }
 .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; }
 h2 { margin: 0; font-size: 15px; }
 .card-head span { color: #6b7785; font-size: 11px; font-family: ui-monospace, monospace; }
+.card-head .up { color: #2456c7; text-decoration: none; }
+.card-head .up:hover { text-decoration: underline; }
 form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.mkdir { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e1e6ed; }
+.mkdir input { flex: 1; min-width: 180px; padding: 9px 12px; border: 1px solid #c3ccd8; border-radius: 10px; background: #fff; font-size: 12px; color: #1c2530; }
 .drop { flex: 1; min-width: 240px; display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px dashed #c3ccd8; border-radius: 12px; background: #fafbfc; font-size: 12px; color: #5b6674; }
 .drop input { max-width: 100%; }
 button { border: 0; border-radius: 10px; padding: 11px 20px; background: #2456c7; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
 button:hover { background: #1c45a4; }
+.table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th { text-align: left; padding: 8px 10px; color: #6b7785; font-weight: 600; border-bottom: 1px solid #e1e6ed; }
+th { text-align: left; padding: 8px 10px; color: #6b7785; font-weight: 600; border-bottom: 1px solid #e1e6ed; white-space: nowrap; }
 td { padding: 10px; border-bottom: 1px solid #eef1f5; }
 tr:last-child td { border-bottom: 0; }
 .name a { color: #1c2530; text-decoration: none; word-break: break-all; }
 .name a:hover { color: #2456c7; text-decoration: underline; }
-.size { color: #6b7785; white-space: nowrap; font-family: ui-monospace, monospace; }
+.name a.folder { font-weight: 600; }
+.name a.folder::before { content: "📁"; margin-right: 6px; }
+.meta { color: #6b7785; white-space: nowrap; font-family: ui-monospace, monospace; }
+.actions { text-align: right; white-space: nowrap; }
+.copy { padding: 6px 10px; border: 1px solid #d6e2ff; border-radius: 8px; background: #eef3ff; color: #2456c7; font-size: 11px; }
+.copy:hover { background: #dfeaff; }
+.copy.copied { border-color: #bfe8d1; background: #e6f7ee; color: #1a7f4b; }
 .empty { text-align: center; color: #8b96a4; padding: 26px 10px; }
 footer { margin-top: 22px; color: #8b96a4; font-size: 10.5px; font-family: ui-monospace, monospace; word-break: break-all; }
-@media (max-width: 540px) { .shell { padding: 24px 14px 40px; } h1 { font-size: 24px; } }
+.toast { position: fixed; left: 50%; bottom: 32px; z-index: 20; max-width: calc(100vw - 32px); padding: 12px 20px; border-radius: 999px; background: #1c2530; color: #fff; font-size: 13px; font-weight: 600; opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(16px); transition: opacity .18s ease, transform .18s ease; box-shadow: 0 12px 30px rgba(0,0,0,.22); }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.ok { background: #1a7f4b; }
+.toast.err { background: #b42318; }
+@media (max-width: 540px) { .shell { padding: 24px 14px 40px; } h1 { font-size: 24px; } td, th { padding: 8px 6px; } }
+"#;
+
+const PAGE_SCRIPT: &str = r#"
+(function () {
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }).catch(function () { return fallbackCopy(text); });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+  function fallbackCopy(text) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (error) { ok = false; }
+    area.remove();
+    return ok;
+  }
+  function showToast(message, ok) {
+    var toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = 'toast show ' + (ok ? 'ok' : 'err');
+    clearTimeout(window.__modbusToolToast);
+    window.__modbusToolToast = setTimeout(function () { toast.className = 'toast'; }, 2200);
+  }
+  document.querySelectorAll('.localtime').forEach(function (node) {
+    var timestamp = Number(node.getAttribute('data-ts'));
+    if (!timestamp) return;
+    var date = new Date(timestamp);
+    node.textContent = date.toLocaleString();
+  });
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest('.copy');
+    if (!button) return;
+    var path = button.getAttribute('data-path') || '';
+    var base = document.body.getAttribute('data-base') || window.location.origin;
+    var url = new URL('/download/' + path, base).href;
+    copyText(url).then(function (ok) {
+      if (ok) {
+        button.classList.add('copied');
+        button.textContent = '已复制';
+        setTimeout(function () {
+          button.classList.remove('copied');
+          button.textContent = '复制链接';
+        }, 1600);
+        showToast('文件链接已复制', true);
+      } else {
+        showToast('复制失败，请长按文件链接手动复制', false);
+      }
+    });
+  });
+})();
 "#;
 
 #[cfg(test)]
@@ -764,20 +1125,13 @@ mod tests {
     }
 
     #[test]
-    fn strips_directories_from_download_names() {
-        assert_eq!(
-            sanitize_request_name("..\\secret").as_deref(),
-            Some("secret")
-        );
-        assert_eq!(
-            sanitize_request_name("../../etc/passwd").as_deref(),
-            Some("passwd")
-        );
-        assert!(sanitize_request_name("..").is_none());
-        assert_eq!(
-            sanitize_request_name("file.txt").as_deref(),
-            Some("file.txt")
-        );
+    fn normalizes_relative_paths() {
+        assert_eq!(normalize_relative("a\\b/./c").as_deref(), Some("a/b/c"));
+        assert_eq!(normalize_relative("folder").as_deref(), Some("folder"));
+        assert!(normalize_relative("../secret").is_none());
+        assert!(normalize_relative("a/../../b").is_none());
+        assert!(normalize_relative("a\0b").is_none());
+        assert!(normalize_relative("C:/Windows").is_none());
     }
 
     #[test]
@@ -792,11 +1146,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn serves_lists_and_accepts_uploads() {
+    async fn serves_folders_lists_and_accepts_uploads() {
         let directory = tempfile::tempdir().expect("temp dir");
         tokio::fs::write(directory.path().join("hello.txt"), b"hello")
             .await
             .expect("seed file");
+        tokio::fs::create_dir(directory.path().join("sub"))
+            .await
+            .expect("seed folder");
+        tokio::fs::write(directory.path().join("sub").join("nested.txt"), b"nested")
+            .await
+            .expect("nested file");
         let port = {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("free port");
             listener.local_addr().expect("local addr").port()
@@ -811,13 +1171,25 @@ mod tests {
             .await
             .expect("start server");
         assert!(status.running);
-        assert_eq!(status.files.len(), 1);
+        assert_eq!(status.entries.len(), 2);
+        assert!(status.entries.iter().any(|entry| entry.is_dir));
 
         let client = reqwest::Client::builder()
             .no_proxy()
             .build()
             .expect("http client");
         let base = format!("http://127.0.0.1:{port}");
+        let page = client
+            .get(format!("{base}/"))
+            .send()
+            .await
+            .expect("index")
+            .text()
+            .await
+            .expect("html");
+        assert!(page.contains("data-path=\"hello.txt\""));
+        assert!(page.contains("复制链接"));
+
         let download = client
             .get(format!("{base}/download/hello.txt"))
             .send()
@@ -826,34 +1198,69 @@ mod tests {
         assert_eq!(download.status(), 200);
         assert_eq!(download.text().await.expect("body"), "hello");
 
+        let nested = client
+            .get(format!("{base}/download/sub/nested.txt"))
+            .send()
+            .await
+            .expect("nested download");
+        assert_eq!(nested.status(), 200);
+        assert_eq!(nested.text().await.expect("nested body"), "nested");
+
+        let folder_entries = client
+            .get(format!("{base}/api/files?path=sub"))
+            .send()
+            .await
+            .expect("folder list")
+            .json::<Vec<FileServerEntryDto>>()
+            .await
+            .expect("folder json");
+        assert_eq!(folder_entries.len(), 1);
+        assert_eq!(folder_entries[0].path, "sub/nested.txt");
+
         let form = reqwest::multipart::Form::new().part(
             "file",
             reqwest::multipart::Part::bytes(b"world".to_vec()).file_name("upload.txt"),
         );
         let upload = client
-            .post(format!("{base}/upload"))
+            .post(format!("{base}/upload?path=sub"))
             .multipart(form)
             .send()
             .await
             .expect("upload");
         assert!(upload.status().is_success());
-        let files = client
-            .get(format!("{base}/api/files"))
-            .send()
-            .await
-            .expect("list")
-            .json::<Vec<FileServerFileDto>>()
-            .await
-            .expect("json");
-        assert!(files.iter().any(|file| file.name == "upload.txt"));
         assert!(
-            tokio::fs::metadata(directory.path().join("upload.txt"))
+            tokio::fs::metadata(directory.path().join("sub").join("upload.txt"))
                 .await
                 .expect("uploaded file")
                 .is_file()
         );
 
-        let stopped = manager.stop().await;
+        let created = client
+            .post(format!("{base}/mkdir?path=sub"))
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body("name=new-folder")
+            .send()
+            .await
+            .expect("mkdir");
+        assert!(created.status().is_success());
+        assert!(
+            tokio::fs::metadata(directory.path().join("sub").join("new-folder"))
+                .await
+                .expect("folder")
+                .is_dir()
+        );
+
+        let traversal = client
+            .get(format!("{base}/download/../package.json"))
+            .send()
+            .await
+            .expect("traversal response");
+        assert_ne!(traversal.status(), 200);
+
+        let stopped = manager.stop().await.expect("stop");
         assert!(!stopped.running);
     }
 }

@@ -86,12 +86,15 @@ pub async fn tool_fileserver_start(
 
 #[tauri::command]
 pub async fn tool_fileserver_stop(state: State<'_, AppState>) -> ToolResult<FileServerStatusDto> {
-    Ok(state.fileserver.stop().await)
+    state.fileserver.stop().await
 }
 
 #[tauri::command]
-pub async fn tool_fileserver_status(state: State<'_, AppState>) -> ToolResult<FileServerStatusDto> {
-    Ok(state.fileserver.snapshot().await)
+pub async fn tool_fileserver_status(
+    state: State<'_, AppState>,
+    path: Option<String>,
+) -> ToolResult<FileServerStatusDto> {
+    state.fileserver.snapshot(&path.unwrap_or_default()).await
 }
 
 #[tauri::command]

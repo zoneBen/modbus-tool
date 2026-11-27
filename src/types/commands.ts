@@ -147,7 +147,7 @@ export interface IpcApi {
   toolSearchStart(input: SearchInput): Promise<string>;
   toolFileserverStart(input: FileServerStartInput): Promise<FileServerStatus>;
   toolFileserverStop(): Promise<FileServerStatus>;
-  toolFileserverStatus(): Promise<FileServerStatus>;
+  toolFileserverStatus(path?: string): Promise<FileServerStatus>;
   toolMqttStart(input: MqttBrokerInput): Promise<void>;
   toolMqttStop(brokerId: string): Promise<boolean>;
   toolMqttPublish(input: MqttPublishInput): Promise<void>;

@@ -37,9 +37,9 @@ cargo test --workspace
 仓库坚持 CI-first，本地不要求安装 Rust：
 
 1. 推送代码 / 提交 PR → **CI** 自动运行前端与 Rust 检查。
-2. **Actions → Release Windows → Run workflow** → 产出 NSIS + MSI 安装包，作为 artifact 下载（保留 14 天）。
-3. 推送 `v*` 标签 → 自动创建 draft release 并附带安装包。
-4. 目标机器无法联网或缺少 WebView2 时，运行同上工作流并勾选 **offline_webview**，产出内置离线 WebView2 的安装包。
+2. **Actions → Release Windows → Run workflow** → 同时产出在线 WebView2 小体积 NSIS/MSI、内置离线 WebView2 的 NSIS/MSI、以及绿色便携 zip，作为 artifact 下载（保留 14 天）。
+3. 推送 `v*` 标签 → 自动创建 draft release 并附带以上全部产物。
+4. 目标机器无法联网或缺少 WebView2 时，使用 `*-offline-webview` 安装包；绿色版依赖系统 WebView2 Runtime。
 
 安装包未签名，Windows SmartScreen 会提示；后续阶段再加入签名与自动更新。
 
@@ -63,7 +63,7 @@ docs/architecture.md   协议矩阵、Actor 与事件流
 - 会话配置在工作区/全局配置导入时校验字段与版本，恢复后默认保持断开
 - 工具箱：Ping/持续 Ping/路由跟踪/ARP 使用 Windows iphlpapi；ARP 增强模式运行时加载 Npcap `wpcap.dll` 并需要管理员权限；加载前从同一目录预加载匹配的 `Packet.dll` 并校验 `PacketGetInfo`，避免 System32 中旧 WinPcap/Windows10Pcap 干扰；非 Windows 返回明确错误
 - HTTP/MQTT TLS 使用 native-tls（Windows SChannel），不引入 OpenSSL/AWS-LC 构建链；MQTT 密码不持久化
-- Web 文件服务默认只监听回环地址，界面在切换 0.0.0.0 时持续提示无访问密码风险；上传文件名消毒、路径穿越防护、重名自动后缀、请求体上限 512MB；共享根目录 canonicalize 后校验为目录
+- Web 文件服务默认只监听回环地址，界面在切换 0.0.0.0 时持续提示无访问密码风险；子目录路径拒绝 `..`，解析后 canonicalize 并校验仍在共享根目录内；上传文件名消毒、路径穿越防护、重名自动后缀、请求体上限 512MB；共享根目录 canonicalize 后校验为目录
 - 美化器使用 Prettier standalone + xml-formatter 动态加载，避免进入首屏 bundle；YAML 校验使用 `yaml` 包在前端解析，不上传文件内容
 - 工具长任务使用前端事件缓冲与后端 taskId 关联，避免任务在 invoke 返回前完成导致 UI 停在 0%
 

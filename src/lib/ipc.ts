@@ -143,7 +143,8 @@ function createTauriBridge(): IpcApi {
     toolFileserverStart: (input: FileServerStartInput) =>
       invoke<FileServerStatus>("tool_fileserver_start", { input }),
     toolFileserverStop: () => invoke<FileServerStatus>("tool_fileserver_stop"),
-    toolFileserverStatus: () => invoke<FileServerStatus>("tool_fileserver_status"),
+    toolFileserverStatus: (path?: string) =>
+      invoke<FileServerStatus>("tool_fileserver_status", { path: path || null }),
     toolMqttStart: (input: MqttBrokerInput) => invoke<void>("tool_mqtt_start", { input }),
     toolMqttStop: (brokerId: string) => invoke<boolean>("tool_mqtt_stop", { brokerId }),
     toolMqttPublish: (input: MqttPublishInput) => invoke<void>("tool_mqtt_publish", { input }),

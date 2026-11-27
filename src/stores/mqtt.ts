@@ -4,7 +4,6 @@ import { ipc } from "@/lib/ipc";
 import type { MqttMessage, MqttProtocol, MqttState, MqttStatus } from "@/types/tools";
 
 const STORAGE_KEY = "mt.mqtt.v1";
-const MAX_MESSAGES = 2000;
 
 export interface MqttBrokerConfig {
   id: string;
@@ -32,7 +31,6 @@ export interface MqttLogEntry {
   payloadText: string;
   payloadHex: string;
   payloadBytes: number;
-  payloadTruncated: boolean;
   qos: number;
   retain: boolean;
   timestampMs: number;
@@ -171,8 +169,8 @@ export const useMqttStore = defineStore("mqtt", () => {
 
   function appendMessage(brokerId: string, entry: MqttLogEntry): void {
     const list = messages[brokerId] ?? [];
-    list.push(entry);
-    messages[brokerId] = list.length > MAX_MESSAGES ? list.slice(list.length - MAX_MESSAGES) : list;
+    list.unshift(entry);
+    messages[brokerId] = list;
   }
 
   function applyState(state: MqttState): void {
@@ -200,7 +198,6 @@ export const useMqttStore = defineStore("mqtt", () => {
       payloadText: message.payloadText,
       payloadHex: message.payloadHex,
       payloadBytes: message.payloadBytes,
-      payloadTruncated: message.payloadTruncated,
       qos: message.qos,
       retain: message.retain,
       timestampMs: message.timestampMs,
@@ -295,7 +292,7 @@ export const useMqttStore = defineStore("mqtt", () => {
       id: `out-${Date.now()}-${sequence}`,
       direction: "out",
       topic,
-      payloadText: payloadMode === "hex" ? payload : payload,
+      payloadText: payload,
       payloadHex:
         payloadMode === "hex"
           ? payload
@@ -304,7 +301,6 @@ export const useMqttStore = defineStore("mqtt", () => {
               .join(" "),
       payloadBytes:
         payloadMode === "hex" ? Math.floor(payload.replace(/\s+/g, "").length / 2) : bytes.length,
-      payloadTruncated: false,
       qos,
       retain,
       timestampMs: Date.now(),

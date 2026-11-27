@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { Copy, FolderOpen, Play, RefreshCw, Server, Square } from "@lucide/vue";
+import {
+  ArrowUp,
+  Copy,
+  File,
+  Folder,
+  FolderOpen,
+  Play,
+  RefreshCw,
+  Server,
+  Square,
+} from "@lucide/vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -8,10 +18,11 @@ import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { copyText } from "@/lib/clipboard";
 import { ipc } from "@/lib/ipc";
 import { toolErrorText } from "@/lib/tool-error";
 import { useToolboxStore } from "@/stores/toolbox";
-import type { FileServerStatus } from "@/types/tools";
+import type { FileServerEntry, FileServerStatus } from "@/types/tools";
 
 const { t } = useI18n();
 const toolbox = useToolboxStore();
@@ -19,9 +30,12 @@ const root = toolbox.toolPref("network.fileserver.root", "");
 const host = toolbox.toolPref("network.fileserver.host", "127.0.0.1");
 const port = toolbox.toolPref("network.fileserver.port", "80");
 const status = ref<FileServerStatus | null>(null);
+const currentPath = ref("");
+const copiedPath = ref<string | null>(null);
 const busy = ref(false);
 const error = ref<string | null>(null);
 let poller: ReturnType<typeof setInterval> | null = null;
+let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
 const hostOptions = computed(() => [
   { label: t("networkTools.fileserver.hosts.loopback"), value: "127.0.0.1" },
@@ -30,10 +44,33 @@ const hostOptions = computed(() => [
 
 const running = computed(() => Boolean(status.value?.running));
 const lanExposed = computed(() => host.value === "0.0.0.0" || status.value?.host === "0.0.0.0");
+const entries = computed(() => status.value?.entries ?? []);
+const directoryCount = computed(() => entries.value.filter((entry) => entry.isDir).length);
+const fileCount = computed(() => entries.value.length - directoryCount.value);
+const shareBase = computed(() => {
+  const urls = status.value?.urls ?? [];
+  return (
+    urls.find((url) => !url.includes("127.0.0.1") && !url.includes("localhost")) ?? urls[0] ?? ""
+  );
+});
+const breadcrumbs = computed(() => {
+  const path = status.value?.path ?? "";
+  const items: Array<{ label: string; path: string }> = [
+    { label: t("networkTools.fileserver.rootLabel"), path: "" },
+  ];
+  const segments = path.split("/").filter(Boolean);
+  let cumulative = "";
+  for (const segment of segments) {
+    cumulative = cumulative ? `${cumulative}/${segment}` : segment;
+    items.push({ label: segment, path: cumulative });
+  }
+  return items;
+});
 
 onMounted(async () => {
   try {
-    status.value = await ipc.toolFileserverStatus();
+    status.value = await ipc.toolFileserverStatus(currentPath.value);
+    if (status.value.running) currentPath.value = status.value.path;
     if (status.value.root) root.value = status.value.root;
     if (status.value.host) host.value = status.value.host;
     if (status.value.port) port.value = String(status.value.port);
@@ -48,14 +85,31 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (poller) clearInterval(poller);
   poller = null;
+  if (copiedTimer) clearTimeout(copiedTimer);
+  copiedTimer = null;
 });
 
 async function refresh(): Promise<void> {
   try {
-    status.value = await ipc.toolFileserverStatus();
-  } catch {
-    // Polling failures are transient; keep the last snapshot.
+    status.value = await ipc.toolFileserverStatus(currentPath.value);
+  } catch (cause: unknown) {
+    if (currentPath.value) {
+      currentPath.value = "";
+      try {
+        status.value = await ipc.toolFileserverStatus();
+      } catch {
+        // Keep the last snapshot when the service is stopping.
+      }
+    } else {
+      error.value = toolErrorText(t, cause);
+    }
   }
+}
+
+async function navigate(path: string): Promise<void> {
+  currentPath.value = path;
+  error.value = null;
+  await refresh();
 }
 
 async function browse(): Promise<void> {
@@ -71,12 +125,14 @@ async function start(): Promise<void> {
   }
   busy.value = true;
   error.value = null;
+  currentPath.value = "";
   try {
     status.value = await ipc.toolFileserverStart({
       root: root.value.trim(),
       host: host.value,
       port: Math.min(65_535, Math.max(1, Number(port.value) || 80)),
     });
+    currentPath.value = status.value.path;
   } catch (cause: unknown) {
     error.value = toolErrorText(t, cause);
     status.value = null;
@@ -91,6 +147,7 @@ async function stop(): Promise<void> {
   error.value = null;
   try {
     status.value = await ipc.toolFileserverStop();
+    currentPath.value = "";
   } catch (cause: unknown) {
     error.value = toolErrorText(t, cause);
   } finally {
@@ -99,12 +156,41 @@ async function stop(): Promise<void> {
 }
 
 async function copy(value: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(value);
+  if (await copyText(value)) {
     toast.success(t("common.copied"));
-  } catch {
+  } else {
     toast.error(t("tools.copyFailed"));
   }
+}
+
+function encodePath(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function fileLink(entry: FileServerEntry): string {
+  return shareBase.value ? `${shareBase.value}/download/${encodePath(entry.path)}` : "";
+}
+
+async function copyFileLink(entry: FileServerEntry): Promise<void> {
+  const url = fileLink(entry);
+  if (!url) {
+    toast.error(t("networkTools.fileserver.linkUnavailable"));
+    return;
+  }
+  if (!(await copyText(url))) {
+    toast.error(t("networkTools.fileserver.linkCopyFailed"));
+    return;
+  }
+  copiedPath.value = entry.path;
+  toast.success(t("networkTools.fileserver.linkCopied"), { description: url });
+  if (copiedTimer) clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => {
+    copiedPath.value = null;
+    copiedTimer = null;
+  }, 1600);
 }
 
 function formatSize(bytes: number): string {
@@ -230,7 +316,8 @@ function formatTime(timestampMs: number): string {
               {{ t("networkTools.fileserver.running") }}
             </span>
             <span class="numeric text-muted-foreground">
-              {{ status.host }}:{{ status.port }} · {{ status.files.length }}
+              {{ status.host }}:{{ status.port }} · {{ directoryCount }}
+              {{ t("networkTools.fileserver.folderCount") }} · {{ fileCount }}
               {{ t("networkTools.fileserver.fileCount") }} · ↑{{ status.uploads }} ↓{{
                 status.downloads
               }}
@@ -259,6 +346,36 @@ function formatTime(timestampMs: number): string {
           </div>
         </div>
 
+        <div
+          class="flex flex-wrap items-center gap-1.5 rounded-xl border border-hairline bg-well-soft px-3 py-2 text-[11px]"
+        >
+          <template v-for="(crumb, index) in breadcrumbs" :key="`${crumb.path}-${index}`">
+            <span v-if="index > 0" class="text-muted-foreground/50" aria-hidden="true">/</span>
+            <button
+              type="button"
+              class="rounded px-1.5 py-0.5 transition-colors"
+              :class="
+                index === breadcrumbs.length - 1
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:bg-overlay-2 hover:text-foreground'
+              "
+              @click="navigate(crumb.path)"
+            >
+              {{ crumb.label }}
+            </button>
+          </template>
+          <Button
+            v-if="status.parent !== null"
+            variant="ghost"
+            size="sm"
+            class="ml-auto h-6 gap-1 px-1.5 text-[10.5px] text-muted-foreground"
+            @click="navigate(status.parent ?? '')"
+          >
+            <ArrowUp class="size-3" />
+            {{ t("networkTools.fileserver.up") }}
+          </Button>
+        </div>
+
         <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div class="rounded-xl border border-hairline">
             <div class="border-b border-hairline px-3 py-2 text-[11px] font-medium">
@@ -277,26 +394,61 @@ function formatTime(timestampMs: number): string {
                     <th class="px-3 py-1.5 text-right font-medium text-muted-foreground">
                       {{ t("networkTools.fileserver.modified") }}
                     </th>
+                    <th class="px-3 py-1.5 text-right font-medium text-muted-foreground">
+                      {{ t("networkTools.fileserver.actions") }}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr
-                    v-for="file in status.files"
-                    :key="file.name"
+                    v-for="entry in entries"
+                    :key="entry.path"
                     class="border-b border-hairline last:border-0"
                   >
-                    <td class="numeric break-all px-3 py-1.5 text-foreground">{{ file.name }}</td>
+                    <td class="px-3 py-1.5 text-foreground">
+                      <button
+                        v-if="entry.isDir"
+                        type="button"
+                        class="flex min-w-0 max-w-full items-center gap-1.5 text-left transition-colors hover:text-rx"
+                        @click="navigate(entry.path)"
+                      >
+                        <Folder class="size-3.5 shrink-0 text-sim" />
+                        <span class="numeric break-all">{{ entry.name }}</span>
+                      </button>
+                      <span v-else class="flex min-w-0 max-w-full items-center gap-1.5">
+                        <File class="size-3.5 shrink-0 text-muted-foreground" />
+                        <span class="numeric break-all">{{ entry.name }}</span>
+                      </span>
+                    </td>
                     <td class="numeric px-2 py-1.5 text-right text-muted-foreground">
-                      {{ formatSize(file.size) }}
+                      {{ entry.isDir ? "—" : formatSize(entry.size) }}
                     </td>
                     <td class="numeric px-3 py-1.5 text-right text-muted-foreground">
-                      {{ formatTime(file.modifiedMs) }}
+                      {{ formatTime(entry.modifiedMs) }}
+                    </td>
+                    <td class="px-3 py-1.5 text-right">
+                      <Button
+                        v-if="!entry.isDir"
+                        variant="ghost"
+                        size="sm"
+                        class="h-6 gap-1 px-1.5 text-[10.5px]"
+                        :class="copiedPath === entry.path ? 'text-signal' : 'text-muted-foreground'"
+                        :title="fileLink(entry)"
+                        @click="copyFileLink(entry)"
+                      >
+                        <Copy class="size-3" />
+                        {{
+                          copiedPath === entry.path
+                            ? t("networkTools.fileserver.copied")
+                            : t("networkTools.fileserver.copyLink")
+                        }}
+                      </Button>
                     </td>
                   </tr>
                 </tbody>
               </table>
               <p
-                v-if="!status.files.length"
+                v-if="!entries.length"
                 class="px-3 py-8 text-center text-[11px] text-muted-foreground"
               >
                 {{ t("networkTools.fileserver.empty") }}

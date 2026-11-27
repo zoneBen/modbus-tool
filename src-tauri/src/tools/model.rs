@@ -502,8 +502,10 @@ fn default_fileserver_port() -> u16 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FileServerFileDto {
+pub struct FileServerEntryDto {
     pub name: String,
+    pub path: String,
+    pub is_dir: bool,
     pub size: u64,
     pub modified_ms: u64,
 }
@@ -528,9 +530,11 @@ pub struct FileServerStatusDto {
     pub port: Option<u16>,
     pub urls: Vec<String>,
     pub started_at: Option<u64>,
+    pub path: String,
+    pub parent: Option<String>,
     pub uploads: u64,
     pub downloads: u64,
-    pub files: Vec<FileServerFileDto>,
+    pub entries: Vec<FileServerEntryDto>,
     pub requests: Vec<FileServerRequestDto>,
 }
 
@@ -588,7 +592,6 @@ pub struct MqttMessageDto {
     pub payload_text: String,
     pub payload_hex: String,
     pub payload_bytes: usize,
-    pub payload_truncated: bool,
     pub qos: u8,
     pub retain: bool,
     pub timestamp_ms: u64,

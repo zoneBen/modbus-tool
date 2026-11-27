@@ -4,12 +4,6 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      offline_webview:
-        description: "使用离线 WebView2 运行时打包（适合无外网 / LTSC 机器）"
-        required: false
-        type: boolean
-        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -20,8 +14,9 @@ permissions:
 
 jobs:
   build-windows:
-    name: Windows installer
+    name: Windows installers and portable
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,57 +41,104 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Compute bundle arguments
-        id: bundle
+      # Small installers: rely on the system WebView2 runtime.
+      - name: Build online WebView2 installers
+        run: pnpm tauri build --bundles nsis,msi
+
+      - name: Stage online WebView2 installers
         shell: bash
         run: |
-          if [ "${{ inputs.offline_webview }}" = "true" ]; then
-            echo "args=--bundles nsis,msi --config src-tauri/tauri.offline-webview.conf.json" >> "$GITHUB_OUTPUT"
-          else
-            echo "args=--bundles nsis,msi" >> "$GITHUB_OUTPUT"
-          fi
+          set -euo pipefail
+          mkdir -p release-assets
+          shopt -s nullglob
+          for file in target/release/bundle/nsis/*.exe; do
+            base="$(basename "$file" .exe)"
+            cp "$file" "release-assets/${base}-online-webview.exe"
+          done
+          for file in target/release/bundle/msi/*.msi; do
+            base="$(basename "$file" .msi)"
+            cp "$file" "release-assets/${base}-online-webview.msi"
+          done
+          rm -rf target/release/bundle
 
-      # Tag push: build and attach installers to a draft release.
-      - name: Build and publish draft release
-        if: github.ref_type == 'tag'
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Modbus Tool ${{ github.ref_name }}
-          releaseBody: "Windows 安装包。若目标机器缺少 WebView2，请重新运行本工作流并勾选离线 WebView2 选项。"
-          releaseDraft: true
-          prerelease: false
-          tauriScript: pnpm tauri
-          args: ${{ steps.bundle.outputs.args }}
+      # Offline installers: include the WebView2 offline runtime for LTSC / air-gapped PCs.
+      - name: Build offline WebView2 installers
+        run: pnpm tauri build --bundles nsis,msi --config src-tauri/tauri.offline-webview.conf.json
 
-      # Manual dispatch: build only; artifacts are uploaded below.
-      - name: Build bundles (manual)
-        if: github.event_name == 'workflow_dispatch'
-        uses: tauri-apps/tauri-action@v0
-        with:
-          tauriScript: pnpm tauri
-          args: ${{ steps.bundle.outputs.args }}
-
-      - name: List bundle files
+      - name: Stage offline WebView2 installers
         shell: bash
         run: |
-          echo "NSIS/MSI bundles:"
-          find . -type f \( -path "*/bundle/nsis/*.exe" -o -path "*/bundle/msi/*.msi" \) | sort
+          set -euo pipefail
+          mkdir -p release-assets
+          shopt -s nullglob
+          for file in target/release/bundle/nsis/*.exe; do
+            base="$(basename "$file" .exe)"
+            cp "$file" "release-assets/${base}-offline-webview.exe"
+          done
+          for file in target/release/bundle/msi/*.msi; do
+            base="$(basename "$file" .msi)"
+            cp "$file" "release-assets/${base}-offline-webview.msi"
+          done
 
-      - name: Upload installers
+      # Portable package: unzip and run. Uses the system WebView2 runtime.
+      - name: Build portable package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path portable | Out-Null
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          Copy-Item "target/release/modbus-tool.exe" "portable/modbus-tool.exe"
+          Get-ChildItem "target/release" -Filter "*.dll" -File -ErrorAction SilentlyContinue |
+            Copy-Item -Destination "portable"
+          $readme = @"
+          Modbus Tool ${{ github.ref_name }} 便携版
+          =========================================
+
+          1. 解压整个文件夹到任意目录。
+          2. 双击 modbus-tool.exe 运行，无需安装。
+          3. 便携版依赖系统 WebView2 Runtime。Windows 10/11 通常已自带；
+             如无法启动，请安装微软 WebView2 Runtime，或改用 offline-webview 安装包。
+
+          配置仍保存在当前 Windows 用户的应用数据目录中；删除程序即可卸载。
+          "@
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Get-Location) "portable/README-portable.txt"),
+            $readme,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+          Compress-Archive -Path "portable/*" -DestinationPath "release-assets/Modbus-Tool-${{ github.ref_name }}-portable-x64.zip" -Force
+
+      - name: List release assets
+        shell: bash
+        run: |
+          echo "Release assets:"
+          ls -lh release-assets
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: modbus-tool-windows
-          # Cargo workspace builds put bundles under the workspace root target/.
-          path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
+          name: modbus-tool-windows-all
+          path: release-assets/*
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish draft release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Modbus Tool ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          body: |
+            Windows 构建产物：
+
+            - `*-online-webview.exe` / `*-online-webview.msi`：小体积安装包，使用系统 WebView2 Runtime（Windows 10/11 通常已自带）。
+            - `*-offline-webview.exe` / `*-offline-webview.msi`：内置离线 WebView2 Runtime，适合无外网、LTSC 或工控机。
+            - `Modbus-Tool-${{ github.ref_name }}-portable-x64.zip`：绿色便携版，解压后运行 `modbus-tool.exe`，需要系统 WebView2 Runtime。
+
+            便携版不写注册表、不创建服务；配置文件仍保存在当前 Windows 用户的应用数据目录中。
+          files: release-assets/*
 
       # Later, when macOS/Linux are ready, add a matrix:
       # - macos-latest (aarch64-apple-darwin, x86_64-apple-darwin)

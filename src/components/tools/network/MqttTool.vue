@@ -45,7 +45,7 @@ const status = computed<MqttStatus>(() =>
 const detail = computed(() => (active.value ? (mqtt.details[active.value.id] ?? null) : null));
 const running = computed(() => (active.value ? mqtt.isRunning(active.value.id) : false));
 const entries = computed(() => (active.value ? mqtt.logEntries(active.value.id) : []));
-const visibleEntries = computed(() => entries.value.slice(-200).reverse());
+const visibleEntries = computed(() => entries.value);
 const brokerSubscriptions = computed(() =>
   active.value ? (mqtt.subscriptions[active.value.id] ?? []) : [],
 );
@@ -532,7 +532,7 @@ function entryPayload(entry: { payloadText: string; payloadHex: string }): strin
           <div class="flex flex-wrap items-center gap-2 border-b border-hairline px-3 py-2">
             <span class="text-[11px] font-medium">{{ t("networkTools.mqtt.messages") }}</span>
             <span class="numeric text-[10px] text-muted-foreground">
-              {{ entries.length }} / 2000
+              {{ entries.length }}
             </span>
             <div class="ml-auto flex items-center gap-1">
               <button
@@ -608,7 +608,6 @@ function entryPayload(entry: { payloadText: string; payloadHex: string }): strin
                 >{{ entryPayload(entry) || "—" }}</pre>
               <div class="mt-0.5 flex items-center gap-2 text-[9px] text-muted-foreground">
                 <span>{{ entry.payloadBytes }} B</span>
-                <span v-if="entry.payloadTruncated">{{ t("networkTools.mqtt.truncated") }}</span>
               </div>
             </div>
             <p

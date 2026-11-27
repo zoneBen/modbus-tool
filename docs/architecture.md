@@ -83,8 +83,8 @@ loop {
 | DNS | `hickory-resolver` 0.24，系统或自定义 UDP/TCP 服务器，支持 A/AAAA/CNAME/MX/TXT/NS/SOA/SRV/PTR/CAA，缓存关闭 |
 | Telnet | TCP 建链 + Banner/可选 ASCII/HEX 发送；不做 IAC 协商 |
 | HTTP | `reqwest` + native-tls，方法/请求头/超时/重定向/CA；支持 JSON、x-www-form-urlencoded、multipart 文件上传（≤32MB），响应体限制 2MB；不提供跳过证书校验 |
-| Web 文件服务 | `axum` 内置 HTTP 服务，共享根目录、监听地址与端口（默认 80）；文件列表、下载流式响应、多文件流式上传、重名自动后缀、文件名消毒与路径穿越防护；请求日志内存保存最近 200 条 |
-| MQTT | `rumqttc` + native-tls；多 Broker 并行，支持 MQTT 3.1.1/5、用户名密码、可选 CA；每 Broker 独立事件循环与重连；消息日志在 UI 侧按 Broker 保存最近 2000 条 |
+| Web 文件服务 | `axum` 内置 HTTP 服务，共享根目录、监听地址与端口（默认 80）；支持子目录浏览、上传到当前文件夹、新建文件夹、下载流式响应、重名自动后缀、文件名消毒与路径穿越防护；网页和桌面端每个文件均可复制局域网下载链接；请求日志内存保存最近 200 条 |
+| MQTT | `rumqttc` + native-tls；多 Broker 并行，支持 MQTT 3.1.1/5、用户名密码、可选 CA；每 Broker 独立事件循环与重连；消息日志在 UI 侧完整保留，不截断载荷或历史 |
 | Hash | 单次分块读取同时计算 MD5/SHA-1/SHA-256/SHA-512/CRC32，可取消；前端在任务 ID 返回前缓冲工具事件，避免小文件瞬间完成导致进度停在 0% |
 | 文件夹搜索 | walkdir + globset + regex + encoding_rs，跳过二进制、隐藏目录与常见构建目录；结果上限与批量事件 |
 | 美化/校验/转换 | 纯前端；Prettier standalone 按需加载，XML 使用 xml-formatter，YAML 使用 `yaml` 解析并输出错误行列 |
