@@ -69,12 +69,20 @@ import type {
   PublicIpInfo,
   RenameInput,
   RenameResult,
+  McpToolDescriptor,
   SnmpInput,
   SnmpResult,
   SpeedTestInput,
   SpeedTestResult,
+  SshConnectInput,
+  SshDownloadInput,
+  SshFileEntry,
   SshInput,
+  SshListResult,
+  SshReadResult,
   SshResult,
+  SshSessionState,
+  SshTransferInput,
   SslCertInput,
   SslCertResult,
   TelnetResult,
@@ -428,6 +436,16 @@ function generateValue(
 export function createDemoBridge(): IpcApi {
   const sessions = createDemoSessions();
   const listeners = new Map<AppEventName, Set<AnyHandler>>();
+  const demoSshSessions = new Map<
+    string,
+    {
+      state: SshSessionState;
+      cwd: string;
+      pending: string;
+      cursor: number;
+      output: string;
+    }
+  >();
   const latestSnapshots = new Map<string, DefinitionSnapshot>();
   const lastRun = new Map<string, number>();
   const transactions = new Map<string, number>();
@@ -2536,6 +2554,322 @@ connected
     return { entries, truncated: false };
   }
 
+  function demoBase64(text: string): string {
+    const bytes = new TextEncoder().encode(text);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  function demoSshEmitOutput(sessionId: string, text: string): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    session.output += text;
+    session.cursor += new TextEncoder().encode(text).length;
+    emit("ssh:data", { sessionId, data: demoBase64(text), timestampMs: Date.now() });
+  }
+
+  function demoSshPrompt(sessionId: string): string {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return "$ ";
+    return `\x1b[32m${session.state.username}@${session.state.host}\x1b[0m:\x1b[34m${session.cwd}\x1b[0m$ `;
+  }
+
+  function demoSshEmitCwd(sessionId: string): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    emit("ssh:cwd", { sessionId, path: session.cwd, timestampMs: Date.now() });
+  }
+
+  function demoSshState(
+    sessionId: string,
+    status: SshSessionState["status"],
+    detail?: string,
+  ): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    session.state = { ...session.state, status, detail, cwd: session.cwd };
+    emit("ssh:state", session.state);
+  }
+
+  function demoResolvePath(base: string, target: string): string {
+    if (!target) return base;
+    const absolute = target.startsWith("/") ? target : `${base}/${target}`;
+    const stack: string[] = [];
+    for (const part of absolute.split("/")) {
+      if (!part || part === ".") continue;
+      if (part === "..") stack.pop();
+      else stack.push(part);
+    }
+    return `/${stack.join("/")}`;
+  }
+
+  function demoDemoFiles(path: string): SshFileEntry[] {
+    const now = Date.now();
+    const file = (name: string, size: number): SshFileEntry => ({
+      name,
+      path: path === "/" ? `/${name}` : `${path}/${name}`,
+      isDir: false,
+      size,
+      modifiedMs: now - size * 1000,
+      permissions: "-rw-r--r--",
+      isSymlink: false,
+    });
+    const dir = (name: string): SshFileEntry => ({
+      name,
+      path: path === "/" ? `/${name}` : `${path}/${name}`,
+      isDir: true,
+      size: 0,
+      modifiedMs: now - 3_600_000,
+      permissions: "drwxr-xr-x",
+      isSymlink: false,
+    });
+    if (path === "/" || path === "")
+      return [dir("bin"), dir("etc"), dir("home"), dir("tmp"), dir("var")];
+    if (path === "/home") return [dir("user")];
+    if (/^\/home\/[^/]+$/.test(path)) {
+      return [
+        dir("docs"),
+        dir("downloads"),
+        file("notes.txt", 1280),
+        file("deploy.sh", 640),
+        file("server.log", 5240),
+      ];
+    }
+    if (/^\/home\/[^/]+\/docs$/.test(path))
+      return [file("README.md", 2048), file("config.yaml", 512)];
+    if (/^\/home\/[^/]+\/downloads$/.test(path))
+      return [file("firmware.bin", 4096), file("driver.zip", 20480)];
+    return [dir("empty")];
+  }
+
+  function demoSshRunCommand(sessionId: string, command: string): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    const trimmed = command.trim();
+    const [name, ...rest] = trimmed.split(/\s+/);
+    demoSshEmitOutput(sessionId, "\r\n");
+    if (!trimmed) {
+      demoSshEmitOutput(sessionId, demoSshPrompt(sessionId));
+      return;
+    }
+    if (name === "pwd") {
+      demoSshEmitOutput(sessionId, `${session.cwd}\r\n`);
+    } else if (name === "cd") {
+      session.cwd = demoResolvePath(session.cwd, rest[0] ?? `/home/${session.state.username}`);
+      demoSshEmitCwd(sessionId);
+    } else if (name === "ls") {
+      demoSshEmitOutput(
+        sessionId,
+        `${demoDemoFiles(session.cwd)
+          .map((entry) => entry.name)
+          .join("  ")}\r\n`,
+      );
+    } else if (name === "whoami") {
+      demoSshEmitOutput(sessionId, `${session.state.username}\r\n`);
+    } else if (name === "hostname") {
+      demoSshEmitOutput(sessionId, `${session.state.host}\r\n`);
+    } else if (name === "uname") {
+      demoSshEmitOutput(sessionId, "Linux demo 6.8.0 x86_64 GNU/Linux\r\n");
+    } else if (name === "echo") {
+      demoSshEmitOutput(sessionId, `${rest.join(" ")}\r\n`);
+    } else if (name === "help") {
+      demoSshEmitOutput(
+        sessionId,
+        "demo commands: pwd, cd, ls, whoami, hostname, uname, echo, clear, exit\r\n",
+      );
+    } else if (name === "clear") {
+      demoSshEmitOutput(sessionId, "\x1b[2J\x1b[H");
+    } else if (name === "exit") {
+      demoSshEmitOutput(sessionId, "logout\r\n");
+      demoSshState(sessionId, "disconnected", "demo session closed");
+      return;
+    } else {
+      demoSshEmitOutput(sessionId, `bash: ${name}: command not found\r\n`);
+    }
+    demoSshEmitOutput(sessionId, demoSshPrompt(sessionId));
+  }
+
+  async function toolSshConnect(input: SshConnectInput): Promise<SshSessionState> {
+    await demoWait(420);
+    if (!input.host.trim() || !input.username.trim()) {
+      throw { code: "invalidHost", detail: "Host and username are required" };
+    }
+    const sessionId = `ssh-demo-${Date.now().toString(36)}`;
+    const state: SshSessionState = {
+      sessionId,
+      name: input.name,
+      host: input.host.trim(),
+      port: input.port,
+      username: input.username.trim(),
+      status: "connected",
+      cols: input.cols,
+      rows: input.rows,
+      connectedAtMs: Date.now(),
+      cwd: `/home/${input.username.trim()}`,
+    };
+    demoSshSessions.set(sessionId, {
+      state,
+      cwd: `/home/${state.username}`,
+      pending: "",
+      cursor: 0,
+      output: "",
+    });
+    emit("ssh:state", state);
+    emit("ssh:cwd", { sessionId, path: `/home/${state.username}`, timestampMs: Date.now() });
+    demoSshEmitOutput(
+      sessionId,
+      `Welcome to Modbus Tool demo SSH\r\n${state.username}@${state.host}\r\n`,
+    );
+    demoSshEmitOutput(sessionId, demoSshPrompt(sessionId));
+    return state;
+  }
+
+  async function toolSshList(): Promise<SshSessionState[]> {
+    return Array.from(demoSshSessions.values(), (session) => session.state);
+  }
+
+  async function toolSshWrite(sessionId: string, data: string): Promise<void> {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) throw { code: "sshSessionMissing", detail: "SSH session is not connected" };
+    if (data.includes("\r") || data.includes("\n")) {
+      const [before] = data.split(/[\r\n]/, 1);
+      const command = session.pending + before;
+      session.pending = "";
+      demoSshEmitOutput(sessionId, before);
+      demoSshRunCommand(sessionId, command);
+      return;
+    }
+    session.pending += data;
+    demoSshEmitOutput(sessionId, data);
+  }
+
+  async function toolSshResize(sessionId: string, cols: number, rows: number): Promise<void> {
+    const session = demoSshSessions.get(sessionId);
+    if (session) session.state = { ...session.state, cols, rows };
+  }
+
+  async function toolSshDisconnect(sessionId: string): Promise<boolean> {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return false;
+    demoSshState(sessionId, "disconnected", "disconnected by user");
+    demoSshSessions.delete(sessionId);
+    return true;
+  }
+
+  async function toolSshSftpList(sessionId: string, path?: string): Promise<SshListResult> {
+    await demoWait(120);
+    const session = demoSshSessions.get(sessionId);
+    if (!session) throw { code: "sshSessionMissing", detail: "SSH session is not connected" };
+    const resolved = path && path.trim() ? demoResolvePath(session.cwd, path) : session.cwd;
+    return { path: resolved, entries: demoDemoFiles(resolved) };
+  }
+
+  async function toolSshSftpMkdir(_sessionId: string, _path: string): Promise<void> {
+    await demoWait(100);
+  }
+
+  async function toolSshSftpRemove(
+    _sessionId: string,
+    _path: string,
+    _isDir: boolean,
+  ): Promise<void> {
+    await demoWait(100);
+  }
+
+  async function toolSshSftpRename(_sessionId: string, _from: string, _to: string): Promise<void> {
+    await demoWait(100);
+  }
+
+  async function toolSshTransfer(
+    sessionId: string,
+    direction: "upload" | "download",
+    path: string,
+  ): Promise<void> {
+    const total = 2_400_000;
+    emit("ssh:transfer", {
+      sessionId,
+      direction,
+      path,
+      transferred: 0,
+      total,
+      status: "start",
+      timestampMs: Date.now(),
+    });
+    for (const ratio of [0.25, 0.6, 1]) {
+      await demoWait(320);
+      emit("ssh:transfer", {
+        sessionId,
+        direction,
+        path,
+        transferred: Math.round(total * ratio),
+        total,
+        status: ratio === 1 ? "done" : "progress",
+        timestampMs: Date.now(),
+      });
+    }
+  }
+
+  async function toolSshUpload(input: SshTransferInput): Promise<void> {
+    await toolSshTransfer(input.sessionId, "upload", input.localPath);
+  }
+
+  async function toolSshDownload(input: SshDownloadInput): Promise<void> {
+    await toolSshTransfer(input.sessionId, "download", input.remotePath);
+  }
+
+  async function toolSshSetCwdTracking(sessionId: string, enabled: boolean): Promise<void> {
+    if (enabled) demoSshEmitCwd(sessionId);
+  }
+
+  async function toolSshReadOutput(sessionId: string, cursor?: number): Promise<SshReadResult> {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) throw { code: "sshSessionMissing", detail: "SSH session is not connected" };
+    const start = cursor ?? 0;
+    return {
+      sessionId,
+      data: start === 0 ? session.output : "",
+      cursor: session.cursor,
+      truncated: false,
+    };
+  }
+
+  async function toolSshMcpTools(): Promise<McpToolDescriptor[]> {
+    return [
+      {
+        name: "ssh_list",
+        description: "List live SSH sessions.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "ssh_send",
+        description: "Send input to an SSH session.",
+        inputSchema: {
+          type: "object",
+          properties: { sessionId: { type: "string" }, data: { type: "string" } },
+          required: ["sessionId", "data"],
+        },
+      },
+    ];
+  }
+
+  async function toolSshMcpCall(name: string, args: Record<string, unknown>): Promise<unknown> {
+    let result: unknown;
+    if (name === "ssh_list") result = await toolSshList();
+    else if (name === "ssh_send") {
+      await toolSshWrite(String(args.sessionId ?? ""), String(args.data ?? ""));
+      result = { sent: String(args.data ?? "").length };
+    } else throw { code: "mcpUnknownTool", detail: `Unknown SSH MCP tool: ${name}` };
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }],
+      isError: false,
+    };
+  }
+
+  async function pickSavePath(suggestedName: string): Promise<string | null> {
+    return `demo-${suggestedName}`;
+  }
+
   async function on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,
@@ -2600,6 +2934,22 @@ connected
     toolFsList,
     toolFsRename,
     toolPortList,
+    toolSshConnect,
+    toolSshList,
+    toolSshWrite,
+    toolSshResize,
+    toolSshDisconnect,
+    toolSshSftpList,
+    toolSshSftpMkdir,
+    toolSshSftpRemove,
+    toolSshSftpRename,
+    toolSshUpload,
+    toolSshDownload,
+    toolSshSetCwdTracking,
+    toolSshReadOutput,
+    toolSshMcpTools,
+    toolSshMcpCall,
+    pickSavePath,
     pickFile,
     pickDirectory,
     readTextFile,

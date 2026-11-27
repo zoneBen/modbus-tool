@@ -8,14 +8,16 @@ use super::http_client;
 use super::model::{
     ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, ContinuousPingInput, DiscoveryInput,
     DiscoveryResultDto, DnsQueryInput, DnsResultDto, FileServerStartInput, FileServerStatusDto,
-    FsListInput, FsListResultDto, HashInput, HttpRequestInput, HttpResponseDto, MqttBrokerInput,
-    MqttPublishInput, MqttSubscribeInput, PingInput, PortListInput, PortListResultDto, PublicIpDto,
-    RenameInput, RenameResultDto, SearchInput, SnmpInput, SnmpResultDto, SpeedTestInput,
-    SpeedTestResultDto, SshInput, SshResultDto, SslCertInput, SslCertResultDto, TelnetResultDto,
-    TelnetTestInput, TextConvertInput, TextConvertResultDto, ToolResult, TracerouteInput,
+    FsListInput, FsListResultDto, HashInput, HttpRequestInput, HttpResponseDto, McpCallInput,
+    MqttBrokerInput, MqttPublishInput, MqttSubscribeInput, PingInput, PortListInput,
+    PortListResultDto, PublicIpDto, RenameInput, RenameResultDto, SearchInput, SnmpInput,
+    SnmpResultDto, SpeedTestInput, SpeedTestResultDto, SshConnectInput, SshDownloadInput, SshInput,
+    SshListResultDto, SshReadResultDto, SshResultDto, SshSessionStateDto, SshTransferInput,
+    SslCertInput, SslCertResultDto, TelnetResultDto, TelnetTestInput, TextConvertInput,
+    TextConvertResultDto, ToolErrorDto, ToolResult, TracerouteInput,
 };
 use super::telnet;
-use super::{discovery, ports, public_ip, snmp, speedtest, ssh, ssl_cert, text_codec};
+use super::{discovery, ports, public_ip, snmp, speedtest, ssh, ssh_mcp, ssl_cert, text_codec};
 
 #[tauri::command]
 pub async fn tool_dns_query(input: DnsQueryInput) -> ToolResult<DnsResultDto> {
@@ -185,4 +187,142 @@ pub fn tool_fs_rename(input: RenameInput) -> ToolResult<RenameResultDto> {
 #[tauri::command]
 pub fn tool_port_list(input: PortListInput) -> ToolResult<PortListResultDto> {
     ports::list(input)
+}
+
+#[tauri::command]
+pub async fn tool_ssh_connect(
+    state: State<'_, AppState>,
+    input: SshConnectInput,
+) -> ToolResult<SshSessionStateDto> {
+    state.ssh.connect(input).await
+}
+
+#[tauri::command]
+pub fn tool_ssh_list(state: State<'_, AppState>) -> Vec<SshSessionStateDto> {
+    state.ssh.list()
+}
+
+#[tauri::command]
+pub async fn tool_ssh_write(
+    state: State<'_, AppState>,
+    session_id: String,
+    data: String,
+) -> ToolResult<()> {
+    state.ssh.write_input(&session_id, &data).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_resize(
+    state: State<'_, AppState>,
+    session_id: String,
+    cols: u32,
+    rows: u32,
+) -> ToolResult<()> {
+    state.ssh.resize(&session_id, cols, rows).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_disconnect(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> ToolResult<bool> {
+    Ok(state.ssh.disconnect(&session_id).await)
+}
+
+#[tauri::command]
+pub async fn tool_ssh_sftp_list(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: Option<String>,
+) -> ToolResult<SshListResultDto> {
+    state.ssh.sftp_list(&session_id, path).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_sftp_mkdir(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> ToolResult<()> {
+    state.ssh.sftp_mkdir(&session_id, &path).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_sftp_remove(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    is_dir: bool,
+) -> ToolResult<()> {
+    state.ssh.sftp_remove(&session_id, &path, is_dir).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_sftp_rename(
+    state: State<'_, AppState>,
+    session_id: String,
+    from: String,
+    to: String,
+) -> ToolResult<()> {
+    state.ssh.sftp_rename(&session_id, &from, &to).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_upload(
+    state: State<'_, AppState>,
+    input: SshTransferInput,
+) -> ToolResult<()> {
+    state.ssh.upload(input).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_download(
+    state: State<'_, AppState>,
+    input: SshDownloadInput,
+) -> ToolResult<()> {
+    state.ssh.download(input).await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_set_cwd_tracking(
+    state: State<'_, AppState>,
+    session_id: String,
+    enabled: bool,
+) -> ToolResult<()> {
+    state.ssh.set_cwd_tracking(&session_id, enabled).await
+}
+
+#[tauri::command]
+pub fn tool_ssh_read_output(
+    state: State<'_, AppState>,
+    session_id: String,
+    cursor: Option<u64>,
+) -> ToolResult<SshReadResultDto> {
+    state.ssh.read_output(&session_id, cursor)
+}
+
+#[tauri::command]
+pub fn tool_ssh_mcp_tools() -> Vec<serde_json::Value> {
+    ssh_mcp::tools()
+}
+
+#[tauri::command]
+pub async fn tool_ssh_mcp_call(
+    state: State<'_, AppState>,
+    request: McpCallInput,
+) -> ToolResult<serde_json::Value> {
+    match state.ssh.call_mcp(&request.name, request.arguments).await {
+        Ok(value) => Ok(value),
+        Err(error) => Ok(mcp_error(error)),
+    }
+}
+
+fn mcp_error(error: ToolErrorDto) -> serde_json::Value {
+    serde_json::json!({
+        "content": [{
+            "type": "text",
+            "text": format!("{}: {}", error.code, error.detail)
+        }],
+        "isError": true
+    })
 }

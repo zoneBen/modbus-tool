@@ -11,4 +11,5 @@ pub struct AppState {
     pub tools: Arc<crate::tools::ToolsManager>,
     pub fileserver: Arc<crate::tools::FileServerManager>,
     pub mqtt: Arc<crate::tools::MqttManager>,
+    pub ssh: Arc<crate::tools::SshSessionManager>,
 }

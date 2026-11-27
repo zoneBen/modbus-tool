@@ -676,3 +676,97 @@ export interface PortListResult {
   entries: PortEntry[];
   truncated: boolean;
 }
+
+export type SshSessionStatus = "connecting" | "connected" | "disconnected" | "error";
+
+export interface SshConnectInput {
+  name?: string;
+  host: string;
+  port: number;
+  username: string;
+  auth: "password" | "key";
+  password?: string;
+  keyPath?: string;
+  keyPassphrase?: string;
+  cols: number;
+  rows: number;
+  timeoutMs: number;
+  followCwd?: boolean;
+}
+
+export interface SshSessionState {
+  sessionId: string;
+  name?: string;
+  host: string;
+  port: number;
+  username: string;
+  status: SshSessionStatus;
+  detail?: string;
+  cols: number;
+  rows: number;
+  connectedAtMs: number;
+  cwd?: string;
+}
+
+export interface SshDataEvent {
+  sessionId: string;
+  data: string;
+  timestampMs: number;
+}
+
+export interface SshCwdEvent {
+  sessionId: string;
+  path: string;
+  timestampMs: number;
+}
+
+export interface SshTransferEvent {
+  sessionId: string;
+  direction: "upload" | "download";
+  path: string;
+  transferred: number;
+  total: number;
+  status: "start" | "progress" | "done" | "error";
+  detail?: string;
+  timestampMs: number;
+}
+
+export interface SshFileEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  modifiedMs: number;
+  permissions: string;
+  isSymlink: boolean;
+}
+
+export interface SshListResult {
+  path: string;
+  entries: SshFileEntry[];
+}
+
+export interface SshReadResult {
+  sessionId: string;
+  data: string;
+  cursor: number;
+  truncated: boolean;
+}
+
+export interface McpToolDescriptor {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface SshTransferInput {
+  sessionId: string;
+  localPath: string;
+  remoteDir: string;
+}
+
+export interface SshDownloadInput {
+  sessionId: string;
+  remotePath: string;
+  localPath: string;
+}

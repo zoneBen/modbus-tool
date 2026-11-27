@@ -1,6 +1,7 @@
 mod commands;
 mod event;
 mod frames;
+mod mcp_stdio;
 mod model;
 mod network;
 mod scan;
@@ -70,6 +71,18 @@ fn forward(app: &tauri::AppHandle, event: AppEvent) {
         AppEvent::MqttMessage(payload) => {
             let _ = app.emit("mqtt:message", payload);
         }
+        AppEvent::SshState(payload) => {
+            let _ = app.emit("ssh:state", payload);
+        }
+        AppEvent::SshData(payload) => {
+            let _ = app.emit("ssh:data", payload);
+        }
+        AppEvent::SshCwd(payload) => {
+            let _ = app.emit("ssh:cwd", payload);
+        }
+        AppEvent::SshTransfer(payload) => {
+            let _ = app.emit("ssh:transfer", payload);
+        }
     }
 }
 
@@ -86,6 +99,7 @@ pub fn run() {
     let tools = Arc::new(tools::ToolsManager::new(bus.clone()));
     let fileserver = Arc::new(tools::FileServerManager::new());
     let mqtt = Arc::new(tools::MqttManager::new(bus.clone()));
+    let ssh = Arc::new(tools::SshSessionManager::new(bus.clone()));
     let setup_bus = bus.clone();
     let state_manager = manager.clone();
     let state_scans = scans.clone();
@@ -93,12 +107,14 @@ pub fn run() {
     let state_tools = tools.clone();
     let state_fileserver = fileserver.clone();
     let state_mqtt = mqtt.clone();
+    let state_ssh = ssh.clone();
     let shutdown_manager = manager.clone();
     let shutdown_network = network.clone();
     let shutdown_scans = scans.clone();
     let shutdown_tools = tools.clone();
     let shutdown_fileserver = fileserver.clone();
     let shutdown_mqtt = mqtt.clone();
+    let shutdown_ssh = ssh.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -109,6 +125,7 @@ pub fn run() {
             tools: state_tools,
             fileserver: state_fileserver,
             mqtt: state_mqtt,
+            ssh: state_ssh,
         })
         .on_window_event(move |_window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
@@ -118,12 +135,14 @@ pub fn run() {
                 let tools = shutdown_tools.clone();
                 let fileserver = shutdown_fileserver.clone();
                 let mqtt = shutdown_mqtt.clone();
+                let ssh = shutdown_ssh.clone();
                 tauri::async_runtime::spawn(async move {
                     network.stop_all().await;
                     manager.shutdown_all().await;
                     scans.shutdown_all();
                     tools.shutdown();
                     mqtt.stop_all().await;
+                    ssh.stop_all().await;
                     fileserver.shutdown().await;
                 });
             }
@@ -204,7 +223,27 @@ pub fn run() {
             tools::commands::tool_fs_list,
             tools::commands::tool_fs_rename,
             tools::commands::tool_port_list,
+            tools::commands::tool_ssh_connect,
+            tools::commands::tool_ssh_list,
+            tools::commands::tool_ssh_write,
+            tools::commands::tool_ssh_resize,
+            tools::commands::tool_ssh_disconnect,
+            tools::commands::tool_ssh_sftp_list,
+            tools::commands::tool_ssh_sftp_mkdir,
+            tools::commands::tool_ssh_sftp_remove,
+            tools::commands::tool_ssh_sftp_rename,
+            tools::commands::tool_ssh_upload,
+            tools::commands::tool_ssh_download,
+            tools::commands::tool_ssh_set_cwd_tracking,
+            tools::commands::tool_ssh_read_output,
+            tools::commands::tool_ssh_mcp_tools,
+            tools::commands::tool_ssh_mcp_call,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Run the SSH MCP server over stdio instead of launching the GUI.
+pub fn run_mcp_stdio() -> Result<(), String> {
+    mcp_stdio::run()
 }

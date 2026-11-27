@@ -56,10 +56,20 @@ import type {
   SearchInput,
   SnmpInput,
   SnmpResult,
+  McpToolDescriptor,
   SpeedTestInput,
   SpeedTestResult,
+  SshConnectInput,
+  SshDownloadInput,
   SshInput,
+  SshListResult,
+  SshReadResult,
   SshResult,
+  SshCwdEvent,
+  SshDataEvent,
+  SshSessionState,
+  SshTransferEvent,
+  SshTransferInput,
   SslCertInput,
   SslCertResult,
   TelnetResult,
@@ -86,7 +96,11 @@ export type AppEventName =
   | "scan:done"
   | "tool:event"
   | "mqtt:state"
-  | "mqtt:message";
+  | "mqtt:message"
+  | "ssh:state"
+  | "ssh:data"
+  | "ssh:cwd"
+  | "ssh:transfer";
 
 export interface AppEventMap {
   "session:data": DefinitionSnapshot;
@@ -104,6 +118,10 @@ export interface AppEventMap {
   "tool:event": ToolEvent;
   "mqtt:state": MqttState;
   "mqtt:message": MqttMessage;
+  "ssh:state": SshSessionState;
+  "ssh:data": SshDataEvent;
+  "ssh:cwd": SshCwdEvent;
+  "ssh:transfer": SshTransferEvent;
 }
 
 export interface IpcApi {
@@ -173,6 +191,22 @@ export interface IpcApi {
   toolMqttSubscribe(input: MqttSubscribeInput): Promise<void>;
   toolMqttUnsubscribe(brokerId: string, topic: string): Promise<void>;
   toolPublicIp(): Promise<PublicIpInfo>;
+  toolSshConnect(input: SshConnectInput): Promise<SshSessionState>;
+  toolSshList(): Promise<SshSessionState[]>;
+  toolSshWrite(sessionId: string, data: string): Promise<void>;
+  toolSshResize(sessionId: string, cols: number, rows: number): Promise<void>;
+  toolSshDisconnect(sessionId: string): Promise<boolean>;
+  toolSshSftpList(sessionId: string, path?: string): Promise<SshListResult>;
+  toolSshSftpMkdir(sessionId: string, path: string): Promise<void>;
+  toolSshSftpRemove(sessionId: string, path: string, isDir: boolean): Promise<void>;
+  toolSshSftpRename(sessionId: string, from: string, to: string): Promise<void>;
+  toolSshUpload(input: SshTransferInput): Promise<void>;
+  toolSshDownload(input: SshDownloadInput): Promise<void>;
+  toolSshSetCwdTracking(sessionId: string, enabled: boolean): Promise<void>;
+  toolSshReadOutput(sessionId: string, cursor?: number): Promise<SshReadResult>;
+  toolSshMcpTools(): Promise<McpToolDescriptor[]>;
+  toolSshMcpCall(name: string, args: Record<string, unknown>): Promise<unknown>;
+  pickSavePath(suggestedName: string): Promise<string | null>;
   toolSshExecute(input: SshInput): Promise<SshResult>;
   toolLanDiscovery(input: DiscoveryInput): Promise<DiscoveryResult>;
   toolSpeedtestRun(input: SpeedTestInput): Promise<SpeedTestResult>;

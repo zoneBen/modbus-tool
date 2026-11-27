@@ -1032,3 +1032,135 @@ pub struct PortListResultDto {
     pub entries: Vec<PortEntryDto>,
     pub truncated: bool,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshConnectInput {
+    #[serde(default)]
+    pub name: Option<String>,
+    pub host: String,
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    pub username: String,
+    #[serde(default = "default_ssh_auth")]
+    pub auth: String,
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub key_path: Option<String>,
+    #[serde(default)]
+    pub key_passphrase: Option<String>,
+    #[serde(default = "default_shell_cols")]
+    pub cols: u32,
+    #[serde(default = "default_shell_rows")]
+    pub rows: u32,
+    #[serde(default = "default_ssh_timeout")]
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub follow_cwd: bool,
+}
+
+fn default_shell_cols() -> u32 {
+    120
+}
+
+fn default_shell_rows() -> u32 {
+    32
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshSessionStateDto {
+    pub session_id: String,
+    pub name: Option<String>,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub status: String,
+    pub detail: Option<String>,
+    pub cols: u32,
+    pub rows: u32,
+    pub connected_at_ms: u64,
+    pub cwd: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshDataDto {
+    pub session_id: String,
+    pub data: String,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshCwdDto {
+    pub session_id: String,
+    pub path: String,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshTransferDto {
+    pub session_id: String,
+    pub direction: String,
+    pub path: String,
+    pub transferred: u64,
+    pub total: u64,
+    pub status: String,
+    pub detail: Option<String>,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshFileEntryDto {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified_ms: u64,
+    pub permissions: String,
+    pub is_symlink: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshListResultDto {
+    pub path: String,
+    pub entries: Vec<SshFileEntryDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshReadResultDto {
+    pub session_id: String,
+    pub data: String,
+    pub cursor: u64,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshTransferInput {
+    pub session_id: String,
+    pub local_path: String,
+    pub remote_dir: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshDownloadInput {
+    pub session_id: String,
+    pub remote_path: String,
+    pub local_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpCallInput {
+    pub name: String,
+    #[serde(default)]
+    pub arguments: serde_json::Value,
+}

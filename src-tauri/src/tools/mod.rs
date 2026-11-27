@@ -18,6 +18,8 @@ mod search;
 mod snmp;
 mod speedtest;
 mod ssh;
+mod ssh_mcp;
+mod ssh_session;
 mod ssl_cert;
 mod tasks;
 mod telnet;
@@ -30,6 +32,7 @@ use crate::event::EventBus;
 
 pub use self::fileserver::FileServerManager;
 pub use self::mqtt::MqttManager;
+pub use self::ssh_session::SshSessionManager;
 
 use self::model::{
     ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, ContinuousPingInput, HashInput, PingInput,
@@ -160,4 +163,9 @@ impl ToolsManager {
     pub fn shutdown(&self) {
         self.tasks.cancel_all();
     }
+}
+
+/// MCP-compatible SSH tool descriptors for the stdio server and future transports.
+pub fn mcp_tools() -> Vec<serde_json::Value> {
+    ssh_mcp::tools()
 }

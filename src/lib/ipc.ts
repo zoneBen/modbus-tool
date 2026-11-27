@@ -46,12 +46,19 @@ import type {
   RenameInput,
   RenameResult,
   SearchInput,
+  McpToolDescriptor,
   SnmpInput,
   SnmpResult,
   SpeedTestInput,
   SpeedTestResult,
+  SshConnectInput,
+  SshDownloadInput,
   SshInput,
+  SshListResult,
+  SshReadResult,
   SshResult,
+  SshSessionState,
+  SshTransferInput,
   SslCertInput,
   SslCertResult,
   TelnetResult,
@@ -172,6 +179,35 @@ function createTauriBridge(): IpcApi {
     toolMqttUnsubscribe: (brokerId: string, topic: string) =>
       invoke<void>("tool_mqtt_unsubscribe", { brokerId, topic }),
     toolPublicIp: () => invoke<PublicIpInfo>("tool_public_ip"),
+    toolSshConnect: (input: SshConnectInput) =>
+      invoke<SshSessionState>("tool_ssh_connect", { input }),
+    toolSshList: () => invoke<SshSessionState[]>("tool_ssh_list"),
+    toolSshWrite: (sessionId: string, data: string) =>
+      invoke<void>("tool_ssh_write", { sessionId, data }),
+    toolSshResize: (sessionId: string, cols: number, rows: number) =>
+      invoke<void>("tool_ssh_resize", { sessionId, cols, rows }),
+    toolSshDisconnect: (sessionId: string) => invoke<boolean>("tool_ssh_disconnect", { sessionId }),
+    toolSshSftpList: (sessionId: string, path?: string) =>
+      invoke<SshListResult>("tool_ssh_sftp_list", { sessionId, path: path || null }),
+    toolSshSftpMkdir: (sessionId: string, path: string) =>
+      invoke<void>("tool_ssh_sftp_mkdir", { sessionId, path }),
+    toolSshSftpRemove: (sessionId: string, path: string, isDir: boolean) =>
+      invoke<void>("tool_ssh_sftp_remove", { sessionId, path, isDir }),
+    toolSshSftpRename: (sessionId: string, from: string, to: string) =>
+      invoke<void>("tool_ssh_sftp_rename", { sessionId, from, to }),
+    toolSshUpload: (input: SshTransferInput) => invoke<void>("tool_ssh_upload", { input }),
+    toolSshDownload: (input: SshDownloadInput) => invoke<void>("tool_ssh_download", { input }),
+    toolSshSetCwdTracking: (sessionId: string, enabled: boolean) =>
+      invoke<void>("tool_ssh_set_cwd_tracking", { sessionId, enabled }),
+    toolSshReadOutput: (sessionId: string, cursor?: number) =>
+      invoke<SshReadResult>("tool_ssh_read_output", { sessionId, cursor: cursor ?? null }),
+    toolSshMcpTools: () => invoke<McpToolDescriptor[]>("tool_ssh_mcp_tools"),
+    toolSshMcpCall: (name: string, args: Record<string, unknown>) =>
+      invoke<unknown>("tool_ssh_mcp_call", { request: { name, arguments: args } }),
+    pickSavePath: async (suggestedName: string) => {
+      const path = await save({ defaultPath: suggestedName });
+      return typeof path === "string" ? path : null;
+    },
     toolSshExecute: (input: SshInput) => invoke<SshResult>("tool_ssh_execute", { input }),
     toolLanDiscovery: (input: DiscoveryInput) =>
       invoke<DiscoveryResult>("tool_lan_discovery", { input }),
