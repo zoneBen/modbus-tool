@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Copy, Search } from "@lucide/vue";
+import { Check, Copy, Search } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,17 +58,14 @@ async function query(): Promise<void> {
   }
 }
 
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
 async function copyAnswers(): Promise<void> {
   if (!result.value?.answers.length) return;
   const text = result.value.answers
     .map((answer) => `${answer.name}\t${answer.ttl}\t${answer.recordType}\t${answer.value}`)
     .join("\n");
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback("answers", text);
 }
 </script>
 
@@ -145,8 +142,9 @@ async function copyAnswers(): Promise<void> {
             :disabled="!result.answers.length"
             @click="copyAnswers"
           >
-            <Copy class="size-3" />
-            {{ t("tools.copy") }}
+            <Check v-if="isCopied('answers')" class="size-3 text-signal" />
+            <Copy v-else class="size-3" />
+            {{ isCopied("answers") ? t("common.copiedShort") : t("tools.copy") }}
           </Button>
         </div>
         <div v-if="result.answers.length" class="overflow-x-auto">

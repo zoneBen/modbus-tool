@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Languages, Settings2 } from "@lucide/vue";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,16 +13,47 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
+import { useVaultStore } from "@/stores/vault";
 
 const open = defineModel<boolean>("open", { default: false });
 const settings = useSettingsStore();
 const sessions = useSessionsStore();
+const vault = useVaultStore();
+const currentPassword = ref("");
+const nextPassword = ref("");
+const confirmPassword = ref("");
+const passwordBusy = ref(false);
 const { t } = useI18n();
 const addressBases = [0, 1] as const;
+
+async function saveMasterPassword(): Promise<void> {
+  if (passwordBusy.value) return;
+  if (nextPassword.value !== confirmPassword.value) {
+    toast.error(t("securityTools.password.mismatch"));
+    return;
+  }
+  passwordBusy.value = true;
+  try {
+    await vault.setMasterPassword(
+      nextPassword.value,
+      vault.configured ? currentPassword.value : undefined,
+    );
+    currentPassword.value = "";
+    nextPassword.value = "";
+    confirmPassword.value = "";
+    toast.success(t("securityTools.password.masterSaved"));
+  } catch (error: unknown) {
+    const code = error instanceof Error ? error.message : String(error);
+    toast.error(t(`securityTools.password.${code}`));
+  } finally {
+    passwordBusy.value = false;
+  }
+}
 
 const themeOptions = computed(() => [
   { value: "dark" as const, label: t("dialog.themeDark") },
@@ -77,7 +109,7 @@ const toggles = computed(() => [
         </DialogDescription>
       </DialogHeader>
 
-      <div class="px-5 py-2">
+      <div class="scrollbar-thin max-h-[70vh] overflow-y-auto px-5 py-2">
         <div class="flex items-center justify-between gap-4 py-3">
           <div>
             <p class="text-[12px] font-medium text-foreground">{{ t("dialog.theme") }}</p>
@@ -175,6 +207,88 @@ const toggles = computed(() => [
             >
               {{ base }}
             </button>
+          </div>
+        </div>
+
+        <div class="space-y-2 border-t border-hairline py-3">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-[12px] font-medium text-foreground">
+                {{ t("securityTools.password.masterTitle") }}
+              </p>
+              <p class="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                {{ t("securityTools.password.masterHint") }}
+              </p>
+            </div>
+            <span
+              class="shrink-0 rounded-full border px-1.5 py-0.5 text-[9.5px]"
+              :class="
+                vault.configured
+                  ? vault.unlocked
+                    ? 'border-signal/25 bg-signal/10 text-signal'
+                    : 'border-warn/25 bg-warn/10 text-warn'
+                  : 'border-hairline bg-well text-muted-foreground'
+              "
+            >
+              {{
+                vault.configured
+                  ? vault.unlocked
+                    ? t("securityTools.password.vaultUnlocked")
+                    : t("securityTools.password.vaultLocked")
+                  : t("securityTools.password.vaultNotConfigured")
+              }}
+            </span>
+          </div>
+          <Input
+            v-if="vault.configured"
+            v-model="currentPassword"
+            type="password"
+            class="numeric h-8 rounded-md border-hairline-strong bg-well text-[11px]"
+            :placeholder="t('securityTools.password.currentPassword')"
+            autocomplete="off"
+          />
+          <div class="grid grid-cols-2 gap-2">
+            <Input
+              v-model="nextPassword"
+              type="password"
+              class="numeric h-8 rounded-md border-hairline-strong bg-well text-[11px]"
+              :placeholder="
+                vault.configured
+                  ? t('securityTools.password.newPassword')
+                  : t('securityTools.password.setPassword')
+              "
+              autocomplete="new-password"
+            />
+            <Input
+              v-model="confirmPassword"
+              type="password"
+              class="numeric h-8 rounded-md border-hairline-strong bg-well text-[11px]"
+              :placeholder="t('securityTools.password.confirmPassword')"
+              autocomplete="new-password"
+            />
+          </div>
+          <div class="flex items-center gap-2">
+            <Button
+              size="sm"
+              class="h-8 text-[11px]"
+              :disabled="passwordBusy || !nextPassword"
+              @click="saveMasterPassword"
+            >
+              {{
+                vault.configured
+                  ? t("securityTools.password.changeMaster")
+                  : t("securityTools.password.setMaster")
+              }}
+            </Button>
+            <Button
+              v-if="vault.configured && vault.unlocked"
+              variant="ghost"
+              size="sm"
+              class="h-8 text-[11px] text-muted-foreground"
+              @click="vault.lock()"
+            >
+              {{ t("securityTools.password.lock") }}
+            </Button>
           </div>
         </div>
       </div>

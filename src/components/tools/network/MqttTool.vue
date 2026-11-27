@@ -15,6 +15,7 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -204,14 +205,11 @@ async function publish(): Promise<void> {
   }
 }
 
-async function copy(value: string): Promise<void> {
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
+async function copy(key: string, value: string): Promise<void> {
   if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback(key, value);
 }
 
 function formatTime(timestampMs: number): string {
@@ -596,11 +594,15 @@ function entryPayload(entry: { payloadText: string; payloadHex: string }): strin
                 <span class="ml-auto numeric">{{ formatTime(entry.timestampMs) }}</span>
                 <button
                   type="button"
-                  class="text-muted-foreground transition-colors hover:text-foreground"
+                  class="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
                   :aria-label="t('tools.copy')"
-                  @click="copy(entryPayload(entry))"
+                  @click="copy(entry.id, entryPayload(entry))"
                 >
-                  <Copy class="size-3" />
+                  <Check v-if="isCopied(entry.id)" class="size-3 text-signal" />
+                  <Copy v-else class="size-3" />
+                  <span v-if="isCopied(entry.id)" class="text-[9px] text-signal">{{
+                    t("common.copiedShort")
+                  }}</span>
                 </button>
               </div>
               <pre

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Braces, Copy, Eraser, Play, RefreshCw } from "@lucide/vue";
+import { Braces, Check, Copy, Eraser, Play, RefreshCw } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToolboxStore } from "@/stores/toolbox";
@@ -66,14 +66,11 @@ function clear(): void {
   error.value = null;
 }
 
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
 async function copy(): Promise<void> {
   if (!output.value) return;
-  try {
-    await navigator.clipboard.writeText(output.value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback("output", output.value);
 }
 </script>
 
@@ -164,8 +161,9 @@ async function copy(): Promise<void> {
               :disabled="!output"
               @click="copy"
             >
-              <Copy class="size-3" />
-              {{ t("tools.copy") }}
+              <Check v-if="isCopied('output')" class="size-3 text-signal" />
+              <Copy v-else class="size-3" />
+              {{ isCopied("output") ? t("common.copiedShort") : t("tools.copy") }}
             </Button>
           </div>
           <textarea

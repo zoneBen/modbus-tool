@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Copy, FolderOpen, Search, Square } from "@lucide/vue";
+import { Check, Copy, FolderOpen, Search, Square } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import { useToolEventBuffer } from "@/composables/useToolEventBuffer";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -116,14 +116,11 @@ async function cancel(): Promise<void> {
   if (current) await ipc.toolTaskCancel(current);
 }
 
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
 async function copy(value: string): Promise<void> {
   if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback("hits", value);
 }
 
 function hitLabel(hit: SearchHit): string {
@@ -271,8 +268,9 @@ function hitLabel(hit: SearchHit): string {
             :disabled="!hits.length"
             @click="copy(hits.map(hitLabel).join('\n'))"
           >
-            <Copy class="size-3" />
-            {{ t("tools.copy") }}
+            <Check v-if="isCopied('hits')" class="size-3 text-signal" />
+            <Copy v-else class="size-3" />
+            {{ isCopied("hits") ? t("common.copiedShort") : t("tools.copy") }}
           </Button>
         </div>
         <div v-if="hits.length" class="overflow-x-auto">

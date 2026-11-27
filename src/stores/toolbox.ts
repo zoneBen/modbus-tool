@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import type { WritableComputedRef } from "vue";
-import { isDevToolId, isNetworkToolId } from "@/lib/tool-catalog";
-import type { DevToolId, NetworkToolId } from "@/lib/tool-catalog";
+import { isDevToolId, isNetworkToolId, isSecurityToolId } from "@/lib/tool-catalog";
+import type { DevToolId, NetworkToolId, SecurityToolId } from "@/lib/tool-catalog";
 
 const STORAGE_KEY = "mt.toolbox.v1";
 
@@ -10,6 +10,7 @@ export interface ToolboxConfig {
   version: 1;
   networkTool: NetworkToolId;
   devTool: DevToolId;
+  securityTool: SecurityToolId;
   prefs?: Record<string, unknown>;
 }
 
@@ -17,6 +18,7 @@ const DEFAULT_CONFIG: ToolboxConfig = {
   version: 1,
   networkTool: "ping",
   devTool: "formatter",
+  securityTool: "password",
   prefs: {},
 };
 
@@ -37,6 +39,9 @@ function loadConfig(): ToolboxConfig {
         ? parsed.networkTool
         : DEFAULT_CONFIG.networkTool,
       devTool: isDevToolId(parsed.devTool) ? parsed.devTool : DEFAULT_CONFIG.devTool,
+      securityTool: isSecurityToolId(parsed.securityTool)
+        ? parsed.securityTool
+        : DEFAULT_CONFIG.securityTool,
       prefs: isRecord(parsed.prefs) ? { ...parsed.prefs } : {},
     };
   } catch {
@@ -62,6 +67,10 @@ export const useToolboxStore = defineStore("toolbox", () => {
 
   function setDevTool(tool: DevToolId): void {
     config.value = { ...config.value, devTool: tool };
+  }
+
+  function setSecurityTool(tool: SecurityToolId): void {
+    config.value = { ...config.value, securityTool: tool };
   }
 
   function toolPref<T>(key: string, fallback: T): WritableComputedRef<T> {
@@ -92,6 +101,9 @@ export const useToolboxStore = defineStore("toolbox", () => {
         ? record.networkTool
         : DEFAULT_CONFIG.networkTool,
       devTool: isDevToolId(record.devTool) ? record.devTool : DEFAULT_CONFIG.devTool,
+      securityTool: isSecurityToolId(record.securityTool)
+        ? record.securityTool
+        : DEFAULT_CONFIG.securityTool,
       prefs: isRecord(record.prefs) ? { ...record.prefs } : {},
     };
   }
@@ -100,6 +112,7 @@ export const useToolboxStore = defineStore("toolbox", () => {
     config,
     setNetworkTool,
     setDevTool,
+    setSecurityTool,
     toolPref,
     exportConfig,
     replaceConfig,

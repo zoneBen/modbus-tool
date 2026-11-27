@@ -9,6 +9,7 @@ import {
   Radar,
   ScanLine,
   Settings2,
+  ShieldCheck,
   Sun,
   Upload,
   Wrench,
@@ -21,7 +22,15 @@ import { useScansStore } from "@/stores/scans";
 import { useSettingsStore } from "@/stores/settings";
 
 type RailView =
-  "workspace" | "network" | "scan" | "alerts" | "networkTools" | "devTools" | "settings" | "about";
+  | "workspace"
+  | "network"
+  | "scan"
+  | "alerts"
+  | "networkTools"
+  | "devTools"
+  | "securityTools"
+  | "settings"
+  | "about";
 
 withDefaults(
   defineProps<{
@@ -38,6 +47,7 @@ const emit = defineEmits<{
   (event: "open-alerts"): void;
   (event: "open-network-tools"): void;
   (event: "open-dev-tools"): void;
+  (event: "open-security-tools"): void;
   (event: "open-about"): void;
   (event: "import-config"): void;
   (event: "export-config"): void;
@@ -221,6 +231,29 @@ const { t } = useI18n();
             </button>
           </TooltipTrigger>
           <TooltipContent side="right">{{ t("nav.devTools") }}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="relative flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-overlay-3"
+              :class="
+                activeView === 'securityTools'
+                  ? 'bg-warn/10 text-warn'
+                  : 'text-muted-foreground hover:text-foreground'
+              "
+              :aria-label="t('nav.securityTools')"
+              @click="emit('open-security-tools')"
+            >
+              <span
+                v-if="activeView === 'securityTools'"
+                class="absolute -left-[10px] h-5 w-[2px] rounded-full bg-warn"
+              />
+              <ShieldCheck class="size-[18px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{{ t("nav.securityTools") }}</TooltipContent>
         </Tooltip>
       </nav>
 

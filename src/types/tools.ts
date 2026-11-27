@@ -434,3 +434,339 @@ export interface MqttSubscribeInput {
   topic: string;
   qos: number;
 }
+
+export interface PublicIpInfo {
+  ip: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  countryCode?: string;
+  org?: string;
+  asn?: string;
+  isp?: string;
+  timezone?: string;
+  latitude?: number;
+  longitude?: number;
+  provider: string;
+}
+
+export interface SshInput {
+  host: string;
+  port: number;
+  username: string;
+  auth: "password" | "key";
+  password?: string;
+  keyPath?: string;
+  keyPassphrase?: string;
+  command: string;
+  timeoutMs: number;
+}
+
+export interface SshResult {
+  host: string;
+  port: number;
+  username: string;
+  authenticated: boolean;
+  exitStatus?: number;
+  stdout: string;
+  stderr: string;
+  elapsedMs: number;
+  truncated: boolean;
+}
+
+export interface DiscoveryInput {
+  timeoutMs: number;
+  mdns: boolean;
+  ssdp: boolean;
+}
+
+export interface DiscoveredDevice {
+  name: string;
+  host?: string;
+  address?: string;
+  port?: number;
+  service: string;
+  source: "mdns" | "ssdp" | "upnp";
+  location?: string;
+  server?: string;
+  usn?: string;
+  manufacturer?: string;
+  model?: string;
+  detail?: string;
+}
+
+export interface DiscoveryResult {
+  elapsedMs: number;
+  devices: DiscoveredDevice[];
+}
+
+export interface SpeedTestInput {
+  downloadBytes: number;
+  uploadBytes: number;
+  pingSamples: number;
+}
+
+export interface SpeedTestResult {
+  server: string;
+  downloadMbps: number;
+  uploadMbps: number;
+  latencyMs: number;
+  jitterMs: number;
+  downloadBytes: number;
+  uploadBytes: number;
+  elapsedMs: number;
+}
+
+export interface SslCertInput {
+  host: string;
+  port: number;
+  serverName?: string;
+  timeoutMs: number;
+}
+
+export interface SslCertInfo {
+  subject: string;
+  issuer: string;
+  serial: string;
+  notBefore: string;
+  notAfter: string;
+  daysRemaining: number;
+  expired: boolean;
+  san: string[];
+  signatureAlgorithm: string;
+  publicKeyAlgorithm: string;
+  isCa: boolean;
+  selfSigned: boolean;
+}
+
+export interface SslCertResult {
+  host: string;
+  port: number;
+  serverName: string;
+  tlsVersion?: string;
+  cipherSuite?: string;
+  chain: SslCertInfo[];
+  elapsedMs: number;
+}
+
+export type SnmpVersion = "1" | "2c" | "3";
+export type SnmpOperation = "get" | "walk" | "set";
+export type SnmpValueType =
+  | "string"
+  | "integer"
+  | "oid"
+  | "ipaddress"
+  | "counter32"
+  | "gauge32"
+  | "timeticks"
+  | "counter64"
+  | "hex";
+
+export interface SnmpV3Input {
+  username: string;
+  securityLevel: "noAuthNoPriv" | "authNoPriv";
+  authProtocol: "md5" | "sha1" | "sha256";
+  authPassword?: string;
+  contextName?: string;
+}
+
+export interface SnmpInput {
+  host: string;
+  port: number;
+  version: SnmpVersion;
+  community: string;
+  operation: SnmpOperation;
+  oids: string[];
+  valueType: SnmpValueType;
+  value?: string;
+  timeoutMs: number;
+  retries: number;
+  v3?: SnmpV3Input;
+}
+
+export interface SnmpVar {
+  oid: string;
+  valueType: string;
+  value: string;
+}
+
+export interface SnmpResult {
+  operation: string;
+  version: string;
+  elapsedMs: number;
+  variables: SnmpVar[];
+}
+
+export interface TextConvertInput {
+  text: string;
+  inputMode: "text" | "hex";
+  fromEncoding: string;
+  toEncoding: string;
+}
+
+export interface TextConvertResult {
+  text: string;
+  hex: string;
+  bytes: number;
+  encoding: string;
+  lossy: boolean;
+}
+
+export interface FsListInput {
+  path: string;
+  recursive: boolean;
+  limit: number;
+}
+
+export interface FsEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  modifiedMs: number;
+}
+
+export interface FsListResult {
+  path: string;
+  entries: FsEntry[];
+  truncated: boolean;
+}
+
+export interface RenamePairInput {
+  from: string;
+  to: string;
+}
+
+export interface RenameInput {
+  pairs: RenamePairInput[];
+  dryRun: boolean;
+}
+
+export interface RenameItem {
+  from: string;
+  to: string;
+  status: "ok" | "conflict" | "missing" | "invalid" | "skipped" | "error";
+  detail?: string;
+}
+
+export interface RenameResult {
+  applied: boolean;
+  renamed: number;
+  failed: number;
+  items: RenameItem[];
+}
+
+export interface PortListInput {
+  listeningOnly: boolean;
+  filter?: string;
+}
+
+export interface PortEntry {
+  protocol: string;
+  localAddr: string;
+  localPort: number;
+  remoteAddr?: string;
+  remotePort?: number;
+  state: string;
+  pid: number;
+  process?: string;
+}
+
+export interface PortListResult {
+  entries: PortEntry[];
+  truncated: boolean;
+}
+
+export type SshSessionStatus = "connecting" | "connected" | "disconnected" | "error";
+
+export interface SshConnectInput {
+  name?: string;
+  host: string;
+  port: number;
+  username: string;
+  auth: "password" | "key";
+  password?: string;
+  keyPath?: string;
+  keyPassphrase?: string;
+  cols: number;
+  rows: number;
+  timeoutMs: number;
+  followCwd?: boolean;
+}
+
+export interface SshSessionState {
+  sessionId: string;
+  name?: string;
+  host: string;
+  port: number;
+  username: string;
+  status: SshSessionStatus;
+  detail?: string;
+  cols: number;
+  rows: number;
+  connectedAtMs: number;
+  cwd?: string;
+}
+
+export interface SshDataEvent {
+  sessionId: string;
+  data: string;
+  timestampMs: number;
+}
+
+export interface SshCwdEvent {
+  sessionId: string;
+  path: string;
+  timestampMs: number;
+}
+
+export interface SshTransferEvent {
+  sessionId: string;
+  direction: "upload" | "download";
+  path: string;
+  transferred: number;
+  total: number;
+  status: "start" | "progress" | "done" | "error";
+  detail?: string;
+  timestampMs: number;
+}
+
+export interface SshFileEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  modifiedMs: number;
+  permissions: string;
+  isSymlink: boolean;
+}
+
+export interface SshListResult {
+  path: string;
+  entries: SshFileEntry[];
+}
+
+export interface SshReadResult {
+  sessionId: string;
+  data: string;
+  cursor: number;
+  truncated: boolean;
+}
+
+export interface McpToolDescriptor {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface SshTransferInput {
+  sessionId: string;
+  localPath: string;
+  remoteDir: string;
+}
+
+export interface SshDownloadInput {
+  sessionId: string;
+  remotePath: string;
+  localPath: string;
+}

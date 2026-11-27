@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Copy, Terminal } from "@lucide/vue";
+import { Check, Copy, Terminal } from "@lucide/vue";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,14 +60,11 @@ async function run(): Promise<void> {
   }
 }
 
-async function copy(value: string): Promise<void> {
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
+async function copy(key: string, value: string): Promise<void> {
   if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback(key, value);
 }
 </script>
 
@@ -183,10 +180,11 @@ async function copy(value: string): Promise<void> {
                 size="sm"
                 class="h-7 gap-1 text-[11px] text-muted-foreground"
                 :disabled="!result.text"
-                @click="copy(result.text)"
+                @click="copy('text', result.text)"
               >
-                <Copy class="size-3" />
-                {{ t("tools.copy") }}
+                <Check v-if="isCopied('text')" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                {{ isCopied("text") ? t("common.copiedShort") : t("tools.copy") }}
               </Button>
             </div>
             <pre
@@ -201,10 +199,11 @@ async function copy(value: string): Promise<void> {
                 size="sm"
                 class="h-7 gap-1 text-[11px] text-muted-foreground"
                 :disabled="!result.hex"
-                @click="copy(result.hex)"
+                @click="copy('hex', result.hex)"
               >
-                <Copy class="size-3" />
-                {{ t("tools.copy") }}
+                <Check v-if="isCopied('hex')" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                {{ isCopied("hex") ? t("common.copiedShort") : t("tools.copy") }}
               </Button>
             </div>
             <pre

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Copy, FileUp, FolderOpen, Globe2, Plus, Send, X } from "@lucide/vue";
+import { Check, Copy, FileUp, FolderOpen, Globe2, Plus, Send, X } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -126,14 +126,11 @@ async function send(): Promise<void> {
   }
 }
 
-async function copy(value: string): Promise<void> {
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
+async function copy(key: string, value: string): Promise<void> {
   if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback(key, value);
 }
 </script>
 
@@ -408,10 +405,11 @@ async function copy(value: string): Promise<void> {
                 size="sm"
                 class="h-7 gap-1 text-[11px] text-muted-foreground"
                 :disabled="!displayBody"
-                @click="copy(displayBody)"
+                @click="copy('body', displayBody)"
               >
-                <Copy class="size-3" />
-                {{ t("tools.copy") }}
+                <Check v-if="isCopied('body')" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                {{ isCopied("body") ? t("common.copiedShort") : t("tools.copy") }}
               </Button>
             </div>
             <pre
@@ -429,10 +427,13 @@ async function copy(value: string): Promise<void> {
                 size="sm"
                 class="h-7 gap-1 text-[11px] text-muted-foreground"
                 :disabled="!result.headers.length"
-                @click="copy(result.headers.map((h) => `${h.name}: ${h.value}`).join('\n'))"
+                @click="
+                  copy('headers', result.headers.map((h) => `${h.name}: ${h.value}`).join('\n'))
+                "
               >
-                <Copy class="size-3" />
-                {{ t("tools.copy") }}
+                <Check v-if="isCopied('headers')" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                {{ isCopied("headers") ? t("common.copiedShort") : t("tools.copy") }}
               </Button>
             </div>
             <div class="scrollbar-thin max-h-[430px] overflow-auto px-3 py-2">

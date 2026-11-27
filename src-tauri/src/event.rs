@@ -8,7 +8,9 @@ use crate::model::{
     WorkspaceSnapshotDto,
 };
 use crate::tools::event::ToolEventDto;
-use crate::tools::model::{MqttMessageDto, MqttStateDto};
+use crate::tools::model::{
+    MqttMessageDto, MqttStateDto, SshCwdDto, SshDataDto, SshSessionStateDto, SshTransferDto,
+};
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -30,6 +32,10 @@ pub enum AppEvent {
     Tool(ToolEventDto),
     MqttState(MqttStateDto),
     MqttMessage(MqttMessageDto),
+    SshState(SshSessionStateDto),
+    SshData(SshDataDto),
+    SshCwd(SshCwdDto),
+    SshTransfer(SshTransferDto),
 }
 
 pub type EventBus = broadcast::Sender<AppEvent>;

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Clock, Copy } from "@lucide/vue";
+import { Check, Clock, Copy } from "@lucide/vue";
 import { useNow } from "@vueuse/core";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,14 +59,11 @@ function setEpochFromNow(): void {
   epochUnit.value = "s";
 }
 
-async function copy(value: string): Promise<void> {
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
+async function copy(key: string, value: string): Promise<void> {
   if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback(key, value);
 }
 </script>
 
@@ -106,11 +103,15 @@ async function copy(value: string): Promise<void> {
               <span class="numeric min-w-0 flex-1 truncate text-[11px]">{{ item.value }}</span>
               <button
                 type="button"
-                class="text-muted-foreground hover:text-foreground"
+                class="flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground"
                 :aria-label="t('tools.copy')"
-                @click="copy(item.value)"
+                @click="copy(item.label, item.value)"
               >
-                <Copy class="size-3" />
+                <Check v-if="isCopied(item.label)" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                <span v-if="isCopied(item.label)" class="text-[9px] text-signal">{{
+                  t("common.copiedShort")
+                }}</span>
               </button>
             </div>
           </div>
@@ -154,11 +155,15 @@ async function copy(value: string): Promise<void> {
               <span class="numeric min-w-0 flex-1 truncate text-[11px]">{{ item.value }}</span>
               <button
                 type="button"
-                class="text-muted-foreground hover:text-foreground"
+                class="flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground"
                 :aria-label="t('tools.copy')"
-                @click="copy(item.value)"
+                @click="copy(item.label, item.value)"
               >
-                <Copy class="size-3" />
+                <Check v-if="isCopied(item.label)" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                <span v-if="isCopied(item.label)" class="text-[9px] text-signal">{{
+                  t("common.copiedShort")
+                }}</span>
               </button>
             </div>
           </div>
@@ -193,11 +198,15 @@ async function copy(value: string): Promise<void> {
               <span class="numeric min-w-0 flex-1 truncate text-[11px]">{{ item.value }}</span>
               <button
                 type="button"
-                class="text-muted-foreground hover:text-foreground"
+                class="flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground"
                 :aria-label="t('tools.copy')"
-                @click="copy(item.value)"
+                @click="copy(item.label, item.value)"
               >
-                <Copy class="size-3" />
+                <Check v-if="isCopied(item.label)" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                <span v-if="isCopied(item.label)" class="text-[9px] text-signal">{{
+                  t("common.copiedShort")
+                }}</span>
               </button>
             </div>
           </div>

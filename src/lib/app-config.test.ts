@@ -50,6 +50,7 @@ describe("app config", () => {
         version: 1,
         networkTool: "arp",
         devTool: "hash",
+        securityTool: "password",
         prefs: { "dev.base.radix": 2 },
       },
       {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Copy, Route, Square } from "@lucide/vue";
+import { Check, Copy, Route, Square } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { useToolEventBuffer } from "@/composables/useToolEventBuffer";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
 import { Button } from "@/components/ui/button";
@@ -87,17 +87,14 @@ function rtts(hop: TracerouteHop): string {
     .join("  ");
 }
 
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
 async function copyHops(): Promise<void> {
   if (!hops.value.length) return;
   const text = hops.value
     .map((hop) => `${hop.hop}\t${hop.address ?? "*"}\t${hop.hostname ?? ""}\t${rtts(hop)}`)
     .join("\n");
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback("hops", text);
 }
 </script>
 
@@ -198,8 +195,9 @@ async function copyHops(): Promise<void> {
               :disabled="!hops.length"
               @click="copyHops"
             >
-              <Copy class="size-3" />
-              {{ t("tools.copy") }}
+              <Check v-if="isCopied('hops')" class="size-3 text-signal" />
+              <Copy v-else class="size-3" />
+              {{ isCopied("hops") ? t("common.copiedShort") : t("tools.copy") }}
             </Button>
           </div>
           <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-overlay-2">

@@ -46,7 +46,11 @@ import type {
   ArpScanInput,
   ArpScanResult,
   ContinuousPingInput,
+  DiscoveryInput,
+  DiscoveryResult,
   DnsQueryInput,
+  FsListInput,
+  FsListResult,
   FileServerEntry,
   FileServerStartInput,
   FileServerStatus,
@@ -60,8 +64,31 @@ import type {
   MqttSubscribeInput,
   PingInput,
   PingHostResult,
+  PortListInput,
+  PortListResult,
+  PublicIpInfo,
+  RenameInput,
+  RenameResult,
+  McpToolDescriptor,
+  SnmpInput,
+  SnmpResult,
+  SpeedTestInput,
+  SpeedTestResult,
+  SshConnectInput,
+  SshDownloadInput,
+  SshFileEntry,
+  SshInput,
+  SshListResult,
+  SshReadResult,
+  SshResult,
+  SshSessionState,
+  SshTransferInput,
+  SslCertInput,
+  SslCertResult,
   TelnetResult,
   TelnetTestInput,
+  TextConvertInput,
+  TextConvertResult,
   TracerouteInput,
 } from "@/types/tools";
 import { resolvePoints } from "./definition";
@@ -409,6 +436,16 @@ function generateValue(
 export function createDemoBridge(): IpcApi {
   const sessions = createDemoSessions();
   const listeners = new Map<AppEventName, Set<AnyHandler>>();
+  const demoSshSessions = new Map<
+    string,
+    {
+      state: SshSessionState;
+      cwd: string;
+      pending: string;
+      cursor: number;
+      output: string;
+    }
+  >();
   const latestSnapshots = new Map<string, DefinitionSnapshot>();
   const lastRun = new Map<string, number>();
   const transactions = new Map<string, number>();
@@ -2301,6 +2338,538 @@ export function createDemoBridge(): IpcApi {
     await demoWait(60);
   }
 
+  async function toolPublicIp(): Promise<PublicIpInfo> {
+    await demoWait(380);
+    return {
+      ip: "203.0.113.42",
+      city: "Shanghai",
+      region: "Shanghai",
+      country: "China",
+      countryCode: "CN",
+      org: "Demo ISP",
+      asn: "AS64500",
+      isp: "Demo ISP",
+      timezone: "Asia/Shanghai",
+      latitude: 31.2304,
+      longitude: 121.4737,
+      provider: "demo",
+    };
+  }
+
+  async function toolSshExecute(input: SshInput): Promise<SshResult> {
+    await demoWait(520);
+    if (!input.host.trim() || !input.username.trim()) {
+      throw { code: "invalidHost", detail: "Host and username are required" };
+    }
+    return {
+      host: input.host.trim(),
+      port: input.port,
+      username: input.username.trim(),
+      authenticated: true,
+      exitStatus: 0,
+      stdout: `[demo] ${input.username}@${input.host}
+$ ${input.command}
+connected
+`,
+      stderr: "",
+      elapsedMs: 312,
+      truncated: false,
+    };
+  }
+
+  async function toolLanDiscovery(_input: DiscoveryInput): Promise<DiscoveryResult> {
+    await demoWait(900);
+    return {
+      elapsedMs: 890,
+      devices: [
+        {
+          name: "Living Room TV",
+          host: "living-room.local",
+          address: "192.168.1.21",
+          port: 8009,
+          service: "_googlecast._tcp.local",
+          source: "mdns",
+          manufacturer: "Demo",
+          model: "Cast",
+          detail: "3 TXT",
+        },
+        {
+          name: "Office Printer",
+          host: "192.168.1.40",
+          address: "192.168.1.40",
+          service: "urn:schemas-upnp-org:device:Printer:1",
+          source: "upnp",
+          location: "http://192.168.1.40:49152/description.xml",
+          manufacturer: "Demo",
+          model: "Laser 100",
+        },
+      ],
+    };
+  }
+
+  async function toolSpeedtestRun(input: SpeedTestInput): Promise<SpeedTestResult> {
+    await demoWait(1400);
+    return {
+      server: "demo",
+      downloadMbps: 92.4,
+      uploadMbps: 23.8,
+      latencyMs: 12.6,
+      jitterMs: 1.8,
+      downloadBytes: input.downloadBytes,
+      uploadBytes: input.uploadBytes,
+      elapsedMs: 1380,
+    };
+  }
+
+  async function toolSslCert(input: SslCertInput): Promise<SslCertResult> {
+    await demoWait(420);
+    return {
+      host: input.host,
+      port: input.port,
+      serverName: input.serverName || input.host,
+      tlsVersion: "TLSv1_3",
+      cipherSuite: "TLS13_AES_256_GCM_SHA384",
+      elapsedMs: 380,
+      chain: [
+        {
+          subject: "CN=demo.example.com",
+          issuer: "CN=Demo Intermediate CA",
+          serial: "01:02:03:04",
+          notBefore: "2025-01-01T00:00:00Z",
+          notAfter: "2027-01-01T00:00:00Z",
+          daysRemaining: 400,
+          expired: false,
+          san: ["demo.example.com", "www.demo.example.com"],
+          signatureAlgorithm: "1.2.840.113549.1.1.11",
+          publicKeyAlgorithm: "1.2.840.10045.2.1",
+          isCa: false,
+          selfSigned: false,
+        },
+      ],
+    };
+  }
+
+  async function toolSnmpQuery(input: SnmpInput): Promise<SnmpResult> {
+    await demoWait(360);
+    return {
+      operation: input.operation,
+      version: input.version,
+      elapsedMs: 310,
+      variables: input.oids.map((oid) => ({
+        oid,
+        valueType: "OctetString",
+        value: oid.endsWith(".1.0") ? "Demo SNMP agent" : "demo-value",
+      })),
+    };
+  }
+
+  async function toolTextConvert(input: TextConvertInput): Promise<TextConvertResult> {
+    await demoWait(80);
+    const source =
+      input.inputMode === "hex"
+        ? new TextDecoder("utf-8").decode(
+            Uint8Array.from(
+              input.text
+                .replace(/\s+/g, "")
+                .match(/.{2}/g)
+                ?.map((pair) => Number.parseInt(pair, 16)) ?? [],
+            ),
+          )
+        : input.text;
+    const bytes = new TextEncoder().encode(source);
+    return {
+      text: source,
+      hex: Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+        .join("")
+        .toUpperCase(),
+      bytes: bytes.length,
+      encoding: input.toEncoding,
+      lossy: false,
+    };
+  }
+
+  async function toolFsList(input: FsListInput): Promise<FsListResult> {
+    await demoWait(220);
+    return {
+      path: input.path,
+      truncated: false,
+      entries: ["app.log", "device.log", "notes.txt"].map((name, index) => ({
+        name,
+        path: `${input.path}/${name}`,
+        isDir: false,
+        size: 1024 * (index + 1),
+        modifiedMs: Date.now() - index * 3_600_000,
+      })),
+    };
+  }
+
+  async function toolFsRename(input: RenameInput): Promise<RenameResult> {
+    await demoWait(160);
+    return {
+      applied: !input.dryRun,
+      renamed: input.dryRun ? 0 : input.pairs.length,
+      failed: 0,
+      items: input.pairs.map((pair) => ({
+        from: pair.from,
+        to: pair.to,
+        status: "ok" as const,
+      })),
+    };
+  }
+
+  async function toolPortList(input: PortListInput): Promise<PortListResult> {
+    await demoWait(260);
+    const entries = [
+      {
+        protocol: "TCP",
+        localAddr: "0.0.0.0",
+        localPort: 80,
+        state: "listen",
+        pid: 4,
+        process: "System",
+      },
+      {
+        protocol: "TCP",
+        localAddr: "127.0.0.1",
+        localPort: 5173,
+        state: "listen",
+        pid: 8420,
+        process: "node.exe",
+      },
+      {
+        protocol: "UDP",
+        localAddr: "0.0.0.0",
+        localPort: 5353,
+        state: "bound",
+        pid: 1200,
+        process: "svchost.exe",
+      },
+    ].filter((entry) => {
+      if (input.listeningOnly && entry.state !== "listen" && entry.state !== "bound") return false;
+      if (!input.filter) return true;
+      return `${entry.process} ${entry.localPort}`
+        .toLowerCase()
+        .includes(input.filter.toLowerCase());
+    });
+    return { entries, truncated: false };
+  }
+
+  function demoBase64(text: string): string {
+    const bytes = new TextEncoder().encode(text);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  function demoSshEmitOutput(sessionId: string, text: string): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    session.output += text;
+    session.cursor += new TextEncoder().encode(text).length;
+    emit("ssh:data", { sessionId, data: demoBase64(text), timestampMs: Date.now() });
+  }
+
+  function demoSshPrompt(sessionId: string): string {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return "$ ";
+    return `\x1b[32m${session.state.username}@${session.state.host}\x1b[0m:\x1b[34m${session.cwd}\x1b[0m$ `;
+  }
+
+  function demoSshEmitCwd(sessionId: string): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    emit("ssh:cwd", { sessionId, path: session.cwd, timestampMs: Date.now() });
+  }
+
+  function demoSshState(
+    sessionId: string,
+    status: SshSessionState["status"],
+    detail?: string,
+  ): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    session.state = { ...session.state, status, detail, cwd: session.cwd };
+    emit("ssh:state", session.state);
+  }
+
+  function demoResolvePath(base: string, target: string): string {
+    if (!target) return base;
+    const absolute = target.startsWith("/") ? target : `${base}/${target}`;
+    const stack: string[] = [];
+    for (const part of absolute.split("/")) {
+      if (!part || part === ".") continue;
+      if (part === "..") stack.pop();
+      else stack.push(part);
+    }
+    return `/${stack.join("/")}`;
+  }
+
+  function demoDemoFiles(path: string): SshFileEntry[] {
+    const now = Date.now();
+    const file = (name: string, size: number): SshFileEntry => ({
+      name,
+      path: path === "/" ? `/${name}` : `${path}/${name}`,
+      isDir: false,
+      size,
+      modifiedMs: now - size * 1000,
+      permissions: "-rw-r--r--",
+      isSymlink: false,
+    });
+    const dir = (name: string): SshFileEntry => ({
+      name,
+      path: path === "/" ? `/${name}` : `${path}/${name}`,
+      isDir: true,
+      size: 0,
+      modifiedMs: now - 3_600_000,
+      permissions: "drwxr-xr-x",
+      isSymlink: false,
+    });
+    if (path === "/" || path === "")
+      return [dir("bin"), dir("etc"), dir("home"), dir("tmp"), dir("var")];
+    if (path === "/home") return [dir("user")];
+    if (/^\/home\/[^/]+$/.test(path)) {
+      return [
+        dir("docs"),
+        dir("downloads"),
+        file("notes.txt", 1280),
+        file("deploy.sh", 640),
+        file("server.log", 5240),
+      ];
+    }
+    if (/^\/home\/[^/]+\/docs$/.test(path))
+      return [file("README.md", 2048), file("config.yaml", 512)];
+    if (/^\/home\/[^/]+\/downloads$/.test(path))
+      return [file("firmware.bin", 4096), file("driver.zip", 20480)];
+    return [dir("empty")];
+  }
+
+  function demoSshRunCommand(sessionId: string, command: string): void {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return;
+    const trimmed = command.trim();
+    const [name, ...rest] = trimmed.split(/\s+/);
+    demoSshEmitOutput(sessionId, "\r\n");
+    if (!trimmed) {
+      demoSshEmitOutput(sessionId, demoSshPrompt(sessionId));
+      return;
+    }
+    if (name === "pwd") {
+      demoSshEmitOutput(sessionId, `${session.cwd}\r\n`);
+    } else if (name === "cd") {
+      session.cwd = demoResolvePath(session.cwd, rest[0] ?? `/home/${session.state.username}`);
+      demoSshEmitCwd(sessionId);
+    } else if (name === "ls") {
+      demoSshEmitOutput(
+        sessionId,
+        `${demoDemoFiles(session.cwd)
+          .map((entry) => entry.name)
+          .join("  ")}\r\n`,
+      );
+    } else if (name === "whoami") {
+      demoSshEmitOutput(sessionId, `${session.state.username}\r\n`);
+    } else if (name === "hostname") {
+      demoSshEmitOutput(sessionId, `${session.state.host}\r\n`);
+    } else if (name === "uname") {
+      demoSshEmitOutput(sessionId, "Linux demo 6.8.0 x86_64 GNU/Linux\r\n");
+    } else if (name === "echo") {
+      demoSshEmitOutput(sessionId, `${rest.join(" ")}\r\n`);
+    } else if (name === "help") {
+      demoSshEmitOutput(
+        sessionId,
+        "demo commands: pwd, cd, ls, whoami, hostname, uname, echo, clear, exit\r\n",
+      );
+    } else if (name === "clear") {
+      demoSshEmitOutput(sessionId, "\x1b[2J\x1b[H");
+    } else if (name === "exit") {
+      demoSshEmitOutput(sessionId, "logout\r\n");
+      demoSshState(sessionId, "disconnected", "demo session closed");
+      return;
+    } else {
+      demoSshEmitOutput(sessionId, `bash: ${name}: command not found\r\n`);
+    }
+    demoSshEmitOutput(sessionId, demoSshPrompt(sessionId));
+  }
+
+  async function toolSshConnect(input: SshConnectInput): Promise<SshSessionState> {
+    await demoWait(420);
+    if (!input.host.trim() || !input.username.trim()) {
+      throw { code: "invalidHost", detail: "Host and username are required" };
+    }
+    const sessionId = `ssh-demo-${Date.now().toString(36)}`;
+    const state: SshSessionState = {
+      sessionId,
+      name: input.name,
+      host: input.host.trim(),
+      port: input.port,
+      username: input.username.trim(),
+      status: "connected",
+      cols: input.cols,
+      rows: input.rows,
+      connectedAtMs: Date.now(),
+      cwd: `/home/${input.username.trim()}`,
+    };
+    demoSshSessions.set(sessionId, {
+      state,
+      cwd: `/home/${state.username}`,
+      pending: "",
+      cursor: 0,
+      output: "",
+    });
+    emit("ssh:state", state);
+    emit("ssh:cwd", { sessionId, path: `/home/${state.username}`, timestampMs: Date.now() });
+    demoSshEmitOutput(
+      sessionId,
+      `Welcome to Modbus Tool demo SSH\r\n${state.username}@${state.host}\r\n`,
+    );
+    demoSshEmitOutput(sessionId, demoSshPrompt(sessionId));
+    return state;
+  }
+
+  async function toolSshList(): Promise<SshSessionState[]> {
+    return Array.from(demoSshSessions.values(), (session) => session.state);
+  }
+
+  async function toolSshWrite(sessionId: string, data: string): Promise<void> {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) throw { code: "sshSessionMissing", detail: "SSH session is not connected" };
+    if (data.includes("\r") || data.includes("\n")) {
+      const [before] = data.split(/[\r\n]/, 1);
+      const command = session.pending + before;
+      session.pending = "";
+      demoSshEmitOutput(sessionId, before);
+      demoSshRunCommand(sessionId, command);
+      return;
+    }
+    session.pending += data;
+    demoSshEmitOutput(sessionId, data);
+  }
+
+  async function toolSshResize(sessionId: string, cols: number, rows: number): Promise<void> {
+    const session = demoSshSessions.get(sessionId);
+    if (session) session.state = { ...session.state, cols, rows };
+  }
+
+  async function toolSshDisconnect(sessionId: string): Promise<boolean> {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) return false;
+    demoSshState(sessionId, "disconnected", "disconnected by user");
+    demoSshSessions.delete(sessionId);
+    return true;
+  }
+
+  async function toolSshSftpList(sessionId: string, path?: string): Promise<SshListResult> {
+    await demoWait(120);
+    const session = demoSshSessions.get(sessionId);
+    if (!session) throw { code: "sshSessionMissing", detail: "SSH session is not connected" };
+    const resolved = path && path.trim() ? demoResolvePath(session.cwd, path) : session.cwd;
+    return { path: resolved, entries: demoDemoFiles(resolved) };
+  }
+
+  async function toolSshSftpMkdir(_sessionId: string, _path: string): Promise<void> {
+    await demoWait(100);
+  }
+
+  async function toolSshSftpRemove(
+    _sessionId: string,
+    _path: string,
+    _isDir: boolean,
+  ): Promise<void> {
+    await demoWait(100);
+  }
+
+  async function toolSshSftpRename(_sessionId: string, _from: string, _to: string): Promise<void> {
+    await demoWait(100);
+  }
+
+  async function toolSshTransfer(
+    sessionId: string,
+    direction: "upload" | "download",
+    path: string,
+  ): Promise<void> {
+    const total = 2_400_000;
+    emit("ssh:transfer", {
+      sessionId,
+      direction,
+      path,
+      transferred: 0,
+      total,
+      status: "start",
+      timestampMs: Date.now(),
+    });
+    for (const ratio of [0.25, 0.6, 1]) {
+      await demoWait(320);
+      emit("ssh:transfer", {
+        sessionId,
+        direction,
+        path,
+        transferred: Math.round(total * ratio),
+        total,
+        status: ratio === 1 ? "done" : "progress",
+        timestampMs: Date.now(),
+      });
+    }
+  }
+
+  async function toolSshUpload(input: SshTransferInput): Promise<void> {
+    await toolSshTransfer(input.sessionId, "upload", input.localPath);
+  }
+
+  async function toolSshDownload(input: SshDownloadInput): Promise<void> {
+    await toolSshTransfer(input.sessionId, "download", input.remotePath);
+  }
+
+  async function toolSshSetCwdTracking(sessionId: string, enabled: boolean): Promise<void> {
+    if (enabled) demoSshEmitCwd(sessionId);
+  }
+
+  async function toolSshReadOutput(sessionId: string, cursor?: number): Promise<SshReadResult> {
+    const session = demoSshSessions.get(sessionId);
+    if (!session) throw { code: "sshSessionMissing", detail: "SSH session is not connected" };
+    const start = cursor ?? 0;
+    return {
+      sessionId,
+      data: start === 0 ? session.output : "",
+      cursor: session.cursor,
+      truncated: false,
+    };
+  }
+
+  async function toolSshMcpTools(): Promise<McpToolDescriptor[]> {
+    return [
+      {
+        name: "ssh_list",
+        description: "List live SSH sessions.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "ssh_send",
+        description: "Send input to an SSH session.",
+        inputSchema: {
+          type: "object",
+          properties: { sessionId: { type: "string" }, data: { type: "string" } },
+          required: ["sessionId", "data"],
+        },
+      },
+    ];
+  }
+
+  async function toolSshMcpCall(name: string, args: Record<string, unknown>): Promise<unknown> {
+    let result: unknown;
+    if (name === "ssh_list") result = await toolSshList();
+    else if (name === "ssh_send") {
+      await toolSshWrite(String(args.sessionId ?? ""), String(args.data ?? ""));
+      result = { sent: String(args.data ?? "").length };
+    } else throw { code: "mcpUnknownTool", detail: `Unknown SSH MCP tool: ${name}` };
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }],
+      isError: false,
+    };
+  }
+
+  async function pickSavePath(suggestedName: string): Promise<string | null> {
+    return `demo-${suggestedName}`;
+  }
+
   async function on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,
@@ -2355,6 +2924,32 @@ export function createDemoBridge(): IpcApi {
     toolMqttPublish,
     toolMqttSubscribe,
     toolMqttUnsubscribe,
+    toolPublicIp,
+    toolSshExecute,
+    toolLanDiscovery,
+    toolSpeedtestRun,
+    toolSslCert,
+    toolSnmpQuery,
+    toolTextConvert,
+    toolFsList,
+    toolFsRename,
+    toolPortList,
+    toolSshConnect,
+    toolSshList,
+    toolSshWrite,
+    toolSshResize,
+    toolSshDisconnect,
+    toolSshSftpList,
+    toolSshSftpMkdir,
+    toolSshSftpRemove,
+    toolSshSftpRename,
+    toolSshUpload,
+    toolSshDownload,
+    toolSshSetCwdTracking,
+    toolSshReadOutput,
+    toolSshMcpTools,
+    toolSshMcpCall,
+    pickSavePath,
     pickFile,
     pickDirectory,
     readTextFile,
