@@ -530,18 +530,8 @@ impl SshSessionManager {
     pub async fn upload(&self, input: SshTransferInput) -> ToolResult<()> {
         let session_id = input.session_id.clone();
         let result = self.upload_inner(&input).await;
-        match &result {
-            Ok(()) => emit_transfer(
-                &self.bus,
-                &session_id,
-                "upload",
-                &input.local_path,
-                0,
-                0,
-                "done",
-                None,
-            ),
-            Err(error) => emit_transfer(
+        if let Err(error) = &result {
+            emit_transfer(
                 &self.bus,
                 &session_id,
                 "upload",
@@ -550,7 +540,7 @@ impl SshSessionManager {
                 0,
                 "error",
                 Some(error.detail.clone()),
-            ),
+            );
         }
         result
     }
@@ -619,18 +609,8 @@ impl SshSessionManager {
 
     pub async fn download(&self, input: SshDownloadInput) -> ToolResult<()> {
         let result = self.download_inner(&input).await;
-        match &result {
-            Ok(()) => emit_transfer(
-                &self.bus,
-                &input.session_id,
-                "download",
-                &input.remote_path,
-                0,
-                0,
-                "done",
-                None,
-            ),
-            Err(error) => emit_transfer(
+        if let Err(error) = &result {
+            emit_transfer(
                 &self.bus,
                 &input.session_id,
                 "download",
@@ -639,7 +619,7 @@ impl SshSessionManager {
                 0,
                 "error",
                 Some(error.detail.clone()),
-            ),
+            );
         }
         result
     }

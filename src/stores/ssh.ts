@@ -154,7 +154,15 @@ export const useSshStore = defineStore("ssh", () => {
 
   function applyTransfer(event: SshTransferEvent): void {
     const profile = profileBySession(event.sessionId);
-    if (profile) transfers[profile.id] = event;
+    if (!profile) return;
+    transfers[profile.id] = event;
+    if (event.status === "done" || event.status === "error") {
+      window.setTimeout(() => {
+        if (transfers[profile.id]?.timestampMs === event.timestampMs) {
+          transfers[profile.id] = null;
+        }
+      }, 2400);
+    }
   }
 
   async function syncSessions(): Promise<void> {

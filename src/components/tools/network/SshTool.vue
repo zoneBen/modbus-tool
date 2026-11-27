@@ -256,10 +256,6 @@ onMounted(async () => {
               <span class="min-w-0 flex-1 truncate text-[11.5px] font-medium">{{
                 profile.name
               }}</span>
-              <span
-                v-if="ssh.statuses[profile.id] === 'connected'"
-                class="size-1.5 rounded-full bg-signal"
-              />
             </div>
             <p class="numeric mt-0.5 truncate text-[10px] text-muted-foreground">
               {{ profile.username }}@{{ profile.host || "—" }}:{{ profile.port }}
