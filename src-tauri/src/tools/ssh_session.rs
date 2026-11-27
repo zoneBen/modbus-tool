@@ -338,7 +338,7 @@ impl SshSessionManager {
             .values()
             .map(|runtime| runtime.session.state())
             .collect();
-        states.sort_by(|left, right| left.connected_at_ms.cmp(&right.connected_at_ms));
+        states.sort_by_key(|left| left.connected_at_ms);
         states
     }
 
