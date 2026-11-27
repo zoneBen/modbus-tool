@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ArrowDownLeft, ArrowUpRight, Copy, Radio } from "@lucide/vue";
+import { ArrowDownLeft, ArrowUpRight, Check, Copy, Radio } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import HexBytes from "@/components/monitor/HexBytes.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import {
   formatAsciiBytes,
@@ -21,6 +21,7 @@ const props = defineProps<{
 
 const sessions = useSessionsStore();
 const { t } = useI18n();
+const { copy, isCopied } = useCopyFeedback();
 
 const isTx = computed(() => props.frame?.direction === "tx");
 const sessionName = computed(() =>
@@ -54,12 +55,7 @@ function fieldLabel(label: string): string {
 
 async function copyFrame(): Promise<void> {
   if (!props.frame) return;
-  try {
-    await navigator.clipboard.writeText(formatHexBytes(props.frame.raw));
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("monitor.copyFailed"));
-  }
+  await copy("frame", formatHexBytes(props.frame.raw));
 }
 </script>
 
@@ -71,12 +67,14 @@ async function copyFrame(): Promise<void> {
         <span class="numeric text-[11px] text-muted-foreground">#{{ frame.seq }}</span>
         <Button
           variant="ghost"
-          size="icon-xs"
-          class="ml-auto rounded-md text-muted-foreground hover:text-foreground"
+          size="sm"
+          class="ml-auto h-6 gap-1 rounded-md px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
           :aria-label="t('monitor.copyFrame')"
           @click="copyFrame"
         >
-          <Copy class="size-3" />
+          <Check v-if="isCopied('frame')" class="size-3 text-signal" />
+          <Copy v-else class="size-3" />
+          <span v-if="isCopied('frame')" class="text-signal">{{ t("common.copiedShort") }}</span>
         </Button>
       </div>
 

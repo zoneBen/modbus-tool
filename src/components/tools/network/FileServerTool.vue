@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ArrowUp,
+  Check,
   Copy,
   File,
   Folder,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { copyText } from "@/lib/clipboard";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { ipc } from "@/lib/ipc";
 import { toolErrorText } from "@/lib/tool-error";
 import { useToolboxStore } from "@/stores/toolbox";
@@ -155,12 +157,10 @@ async function stop(): Promise<void> {
   }
 }
 
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
 async function copy(value: string): Promise<void> {
-  if (await copyText(value)) {
-    toast.success(t("common.copied"));
-  } else {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback(`url:${value}`, value);
 }
 
 function encodePath(path: string): string {
@@ -190,7 +190,7 @@ async function copyFileLink(entry: FileServerEntry): Promise<void> {
   copiedTimer = setTimeout(() => {
     copiedPath.value = null;
     copiedTimer = null;
-  }, 1600);
+  }, 5000);
 }
 
 function formatSize(bytes: number): string {
@@ -341,7 +341,11 @@ function formatTime(timestampMs: number): string {
               @click="copy(url)"
             >
               {{ url }}
-              <Copy class="size-3 text-muted-foreground" />
+              <Check v-if="isCopied(`url:${url}`)" class="size-3 text-signal" />
+              <Copy v-else class="size-3 text-muted-foreground" />
+              <span v-if="isCopied(`url:${url}`)" class="text-[9px] text-signal">{{
+                t("common.copiedShort")
+              }}</span>
             </button>
           </div>
         </div>
@@ -436,7 +440,8 @@ function formatTime(timestampMs: number): string {
                         :title="fileLink(entry)"
                         @click="copyFileLink(entry)"
                       >
-                        <Copy class="size-3" />
+                        <Check v-if="copiedPath === entry.path" class="size-3 text-signal" />
+                        <Copy v-else class="size-3" />
                         {{
                           copiedPath === entry.path
                             ? t("networkTools.fileserver.copied")

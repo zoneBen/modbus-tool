@@ -619,3 +619,416 @@ pub struct MqttSubscribeInput {
     #[serde(default)]
     pub qos: u8,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicIpDto {
+    pub ip: String,
+    pub city: Option<String>,
+    pub region: Option<String>,
+    pub country: Option<String>,
+    pub country_code: Option<String>,
+    pub org: Option<String>,
+    pub asn: Option<String>,
+    pub isp: Option<String>,
+    pub timezone: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub provider: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshInput {
+    pub host: String,
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    pub username: String,
+    /// "password" or "key"
+    #[serde(default = "default_ssh_auth")]
+    pub auth: String,
+    #[serde(default)]
+    pub password: Option<String>,
+    #[serde(default)]
+    pub key_path: Option<String>,
+    #[serde(default)]
+    pub key_passphrase: Option<String>,
+    #[serde(default = "default_ssh_command")]
+    pub command: String,
+    #[serde(default = "default_ssh_timeout")]
+    pub timeout_ms: u64,
+}
+
+fn default_ssh_port() -> u16 {
+    22
+}
+
+fn default_ssh_auth() -> String {
+    "password".to_owned()
+}
+
+fn default_ssh_command() -> String {
+    "echo connected".to_owned()
+}
+
+fn default_ssh_timeout() -> u64 {
+    15_000
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshResultDto {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub authenticated: bool,
+    pub exit_status: Option<u32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub elapsed_ms: f64,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryInput {
+    #[serde(default = "default_discovery_timeout")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_true")]
+    pub mdns: bool,
+    #[serde(default = "default_true")]
+    pub ssdp: bool,
+}
+
+fn default_discovery_timeout() -> u64 {
+    4000
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredDeviceDto {
+    pub name: String,
+    pub host: Option<String>,
+    pub address: Option<String>,
+    pub port: Option<u16>,
+    pub service: String,
+    pub source: String,
+    pub location: Option<String>,
+    pub server: Option<String>,
+    pub usn: Option<String>,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryResultDto {
+    pub elapsed_ms: f64,
+    pub devices: Vec<DiscoveredDeviceDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeedTestInput {
+    #[serde(default = "default_download_bytes")]
+    pub download_bytes: u64,
+    #[serde(default = "default_upload_bytes")]
+    pub upload_bytes: u64,
+    #[serde(default = "default_speed_ping")]
+    pub ping_samples: u8,
+}
+
+fn default_download_bytes() -> u64 {
+    25_000_000
+}
+
+fn default_upload_bytes() -> u64 {
+    10_000_000
+}
+
+fn default_speed_ping() -> u8 {
+    8
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeedTestResultDto {
+    pub server: String,
+    pub download_mbps: f64,
+    pub upload_mbps: f64,
+    pub latency_ms: f64,
+    pub jitter_ms: f64,
+    pub download_bytes: u64,
+    pub upload_bytes: u64,
+    pub elapsed_ms: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SslCertInput {
+    pub host: String,
+    #[serde(default = "default_https_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub server_name: Option<String>,
+    #[serde(default = "default_ssh_timeout")]
+    pub timeout_ms: u64,
+}
+
+fn default_https_port() -> u16 {
+    443
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SslCertDto {
+    pub subject: String,
+    pub issuer: String,
+    pub serial: String,
+    pub not_before: String,
+    pub not_after: String,
+    pub days_remaining: i64,
+    pub expired: bool,
+    pub san: Vec<String>,
+    pub signature_algorithm: String,
+    pub public_key_algorithm: String,
+    pub is_ca: bool,
+    pub self_signed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SslCertResultDto {
+    pub host: String,
+    pub port: u16,
+    pub server_name: String,
+    pub tls_version: Option<String>,
+    pub cipher_suite: Option<String>,
+    pub chain: Vec<SslCertDto>,
+    pub elapsed_ms: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnmpInput {
+    pub host: String,
+    #[serde(default = "default_snmp_port")]
+    pub port: u16,
+    /// "1", "2c" or "3"
+    #[serde(default = "default_snmp_version")]
+    pub version: String,
+    #[serde(default = "default_community")]
+    pub community: String,
+    /// "get", "walk" or "set"
+    #[serde(default = "default_snmp_operation")]
+    pub operation: String,
+    #[serde(default = "default_snmp_oids")]
+    pub oids: Vec<String>,
+    #[serde(default = "default_snmp_value_type")]
+    pub value_type: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_snmp_retries")]
+    pub retries: u8,
+    #[serde(default)]
+    pub v3: Option<SnmpV3Input>,
+}
+
+fn default_snmp_port() -> u16 {
+    161
+}
+
+fn default_snmp_version() -> String {
+    "2c".to_owned()
+}
+
+fn default_community() -> String {
+    "public".to_owned()
+}
+
+fn default_snmp_operation() -> String {
+    "get".to_owned()
+}
+
+fn default_snmp_oids() -> Vec<String> {
+    vec!["1.3.6.1.2.1.1.1.0".to_owned()]
+}
+
+fn default_snmp_value_type() -> String {
+    "string".to_owned()
+}
+
+fn default_snmp_retries() -> u8 {
+    1
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnmpV3Input {
+    pub username: String,
+    #[serde(default = "default_v3_security")]
+    pub security_level: String,
+    #[serde(default = "default_v3_auth")]
+    pub auth_protocol: String,
+    #[serde(default)]
+    pub auth_password: Option<String>,
+    #[serde(default)]
+    pub context_name: Option<String>,
+}
+
+fn default_v3_security() -> String {
+    "noAuthNoPriv".to_owned()
+}
+
+fn default_v3_auth() -> String {
+    "sha1".to_owned()
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnmpVarDto {
+    pub oid: String,
+    pub value_type: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnmpResultDto {
+    pub operation: String,
+    pub version: String,
+    pub elapsed_ms: f64,
+    pub variables: Vec<SnmpVarDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextConvertInput {
+    pub text: String,
+    /// "text" or "hex"
+    #[serde(default = "default_text_mode")]
+    pub input_mode: String,
+    #[serde(default = "default_input_encoding")]
+    pub from_encoding: String,
+    #[serde(default = "default_output_encoding")]
+    pub to_encoding: String,
+}
+
+fn default_text_mode() -> String {
+    "text".to_owned()
+}
+
+fn default_input_encoding() -> String {
+    "utf-8".to_owned()
+}
+
+fn default_output_encoding() -> String {
+    "utf-8".to_owned()
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextConvertResultDto {
+    pub text: String,
+    pub hex: String,
+    pub bytes: usize,
+    pub encoding: String,
+    pub lossy: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsListInput {
+    pub path: String,
+    #[serde(default = "default_true")]
+    pub recursive: bool,
+    #[serde(default = "default_fs_limit")]
+    pub limit: usize,
+}
+
+fn default_fs_limit() -> usize {
+    5000
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsEntryDto {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsListResultDto {
+    pub path: String,
+    pub entries: Vec<FsEntryDto>,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamePairInput {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameItemDto {
+    pub from: String,
+    pub to: String,
+    pub status: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameResultDto {
+    pub applied: bool,
+    pub renamed: usize,
+    pub failed: usize,
+    pub items: Vec<RenameItemDto>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameInput {
+    pub pairs: Vec<RenamePairInput>,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortEntryDto {
+    pub protocol: String,
+    pub local_addr: String,
+    pub local_port: u16,
+    pub remote_addr: Option<String>,
+    pub remote_port: Option<u16>,
+    pub state: String,
+    pub pid: u32,
+    pub process: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortListInput {
+    #[serde(default = "default_true")]
+    pub listening_only: bool,
+    #[serde(default)]
+    pub filter: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortListResultDto {
+    pub entries: Vec<PortEntryDto>,
+    pub truncated: bool,
+}

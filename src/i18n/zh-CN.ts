@@ -2,7 +2,7 @@ export default {
   app: {
     name: "Modbus Tool",
     tagline: "工业总线调试台",
-    version: "v0.6.2",
+    version: "v0.7.0",
     preview: "预览",
   },
   about: {

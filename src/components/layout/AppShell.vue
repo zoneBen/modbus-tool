@@ -6,6 +6,7 @@ import AboutOverlay from "@/components/about/AboutOverlay.vue";
 import AlertsWorkspace from "@/components/alerts/AlertsWorkspace.vue";
 import TrendOverlay from "@/components/chart/TrendOverlay.vue";
 import DevToolsWorkspace from "@/components/tools/DevToolsWorkspace.vue";
+import SecurityToolsWorkspace from "@/components/tools/SecurityToolsWorkspace.vue";
 import NetworkToolsWorkspace from "@/components/tools/NetworkToolsWorkspace.vue";
 import {
   AlertDialog,
@@ -58,15 +59,18 @@ const initialParams = new URLSearchParams(window.location.search);
 const initialDialog = initialParams.get("dialog");
 const initialPageParam = initialParams.get("page");
 const initialTool = initialParams.get("tool");
-type PageView = "workspace" | "network" | "scan" | "alerts" | "networkTools" | "devTools";
+type PageView =
+  "workspace" | "network" | "scan" | "alerts" | "networkTools" | "devTools" | "securityTools";
 const initialPage: PageView =
   initialPageParam === "net-tools"
     ? "networkTools"
     : initialPageParam === "dev-tools"
       ? "devTools"
-      : initialDialog === "network" || initialDialog === "scan" || initialDialog === "alerts"
-        ? initialDialog
-        : "workspace";
+      : initialPageParam === "sec-tools"
+        ? "securityTools"
+        : initialDialog === "network" || initialDialog === "scan" || initialDialog === "alerts"
+          ? initialDialog
+          : "workspace";
 const page = ref<PageView>(initialPage);
 const newSessionOpen = ref(initialDialog === "session");
 const settingsOpen = ref(initialDialog === "settings");
@@ -80,7 +84,15 @@ const configImportOpen = ref(false);
 const importingConfig = ref(false);
 const pendingConfig = ref<AppConfigFile | null>(null);
 const railView = computed<
-  "workspace" | "network" | "scan" | "alerts" | "networkTools" | "devTools" | "settings" | "about"
+  | "workspace"
+  | "network"
+  | "scan"
+  | "alerts"
+  | "networkTools"
+  | "devTools"
+  | "securityTools"
+  | "settings"
+  | "about"
 >(() => {
   if (settingsOpen.value) return "settings";
   if (aboutOpen.value) return "about";
@@ -280,6 +292,7 @@ function startResize(event: PointerEvent): void {
         @open-alerts="page = 'alerts'"
         @open-network-tools="page = 'networkTools'"
         @open-dev-tools="page = 'devTools'"
+        @open-security-tools="page = 'securityTools'"
         @open-about="aboutOpen = true"
         @import-config="importConfig"
         @export-config="exportConfig"
@@ -333,6 +346,7 @@ function startResize(event: PointerEvent): void {
       <AlertsWorkspace v-else-if="page === 'alerts'" />
       <NetworkToolsWorkspace v-else-if="page === 'networkTools'" :initial-tool="initialTool" />
       <DevToolsWorkspace v-else-if="page === 'devTools'" :initial-tool="initialTool" />
+      <SecurityToolsWorkspace v-else-if="page === 'securityTools'" :initial-tool="initialTool" />
     </div>
 
     <NewSessionDialog v-model:open="newSessionOpen" />

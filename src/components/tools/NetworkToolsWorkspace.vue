@@ -2,13 +2,18 @@
 import {
   Activity,
   ChartLine,
+  Gauge,
   Globe2,
+  KeyRound,
+  Lock,
+  Network,
   Radar,
   Radio,
   Route,
   Search,
   Server,
   Terminal,
+  Wifi,
 } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
@@ -16,9 +21,15 @@ import ArpTool from "@/components/tools/network/ArpTool.vue";
 import DnsTool from "@/components/tools/network/DnsTool.vue";
 import FileServerTool from "@/components/tools/network/FileServerTool.vue";
 import HttpTool from "@/components/tools/network/HttpTool.vue";
+import LanDiscoveryTool from "@/components/tools/network/LanDiscoveryTool.vue";
 import LatencyTool from "@/components/tools/network/LatencyTool.vue";
 import MqttTool from "@/components/tools/network/MqttTool.vue";
 import PingTool from "@/components/tools/network/PingTool.vue";
+import PublicIpTool from "@/components/tools/network/PublicIpTool.vue";
+import SnmpTool from "@/components/tools/network/SnmpTool.vue";
+import SpeedTestTool from "@/components/tools/network/SpeedTestTool.vue";
+import SshTool from "@/components/tools/network/SshTool.vue";
+import SslCertTool from "@/components/tools/network/SslCertTool.vue";
 import TracerouteTool from "@/components/tools/network/TracerouteTool.vue";
 import TelnetTool from "@/components/tools/network/TelnetTool.vue";
 import ToolPlaceholder from "@/components/tools/ToolPlaceholder.vue";
@@ -47,6 +58,12 @@ const icons = {
   http: Globe2,
   fileserver: Server,
   mqtt: Radio,
+  publicip: Globe2,
+  ssh: KeyRound,
+  discovery: Wifi,
+  speedtest: Gauge,
+  ssl: Lock,
+  snmp: Network,
 } as const;
 
 if (isNetworkToolId(props.initialTool)) {
@@ -91,6 +108,12 @@ const activeItem = computed(() => items.value.find((item) => item.id === active.
     <TracerouteTool v-else-if="active === 'traceroute'" />
     <FileServerTool v-else-if="active === 'fileserver'" />
     <MqttTool v-else-if="active === 'mqtt'" />
+    <PublicIpTool v-else-if="active === 'publicip'" />
+    <SshTool v-else-if="active === 'ssh'" />
+    <LanDiscoveryTool v-else-if="active === 'discovery'" />
+    <SpeedTestTool v-else-if="active === 'speedtest'" />
+    <SslCertTool v-else-if="active === 'ssl'" />
+    <SnmpTool v-else-if="active === 'snmp'" />
     <ToolPlaceholder
       v-else
       :title="activeItem?.title ?? t('networkTools.title')"

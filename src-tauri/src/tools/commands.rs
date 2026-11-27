@@ -3,14 +3,19 @@ use tauri::State;
 use crate::state::AppState;
 
 use super::dns;
+use super::fs_rename;
 use super::http_client;
 use super::model::{
-    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, ContinuousPingInput, DnsQueryInput,
-    DnsResultDto, FileServerStartInput, FileServerStatusDto, HashInput, HttpRequestInput,
-    HttpResponseDto, MqttBrokerInput, MqttPublishInput, MqttSubscribeInput, PingInput, SearchInput,
-    TelnetResultDto, TelnetTestInput, ToolResult, TracerouteInput,
+    ArpCapabilitiesDto, ArpScanInput, ArpScanResultDto, ContinuousPingInput, DiscoveryInput,
+    DiscoveryResultDto, DnsQueryInput, DnsResultDto, FileServerStartInput, FileServerStatusDto,
+    FsListInput, FsListResultDto, HashInput, HttpRequestInput, HttpResponseDto, MqttBrokerInput,
+    MqttPublishInput, MqttSubscribeInput, PingInput, PortListInput, PortListResultDto, PublicIpDto,
+    RenameInput, RenameResultDto, SearchInput, SnmpInput, SnmpResultDto, SpeedTestInput,
+    SpeedTestResultDto, SshInput, SshResultDto, SslCertInput, SslCertResultDto, TelnetResultDto,
+    TelnetTestInput, TextConvertInput, TextConvertResultDto, ToolResult, TracerouteInput,
 };
 use super::telnet;
+use super::{discovery, ports, public_ip, snmp, speedtest, ssh, ssl_cert, text_codec};
 
 #[tauri::command]
 pub async fn tool_dns_query(input: DnsQueryInput) -> ToolResult<DnsResultDto> {
@@ -130,4 +135,54 @@ pub async fn tool_mqtt_unsubscribe(
     topic: String,
 ) -> ToolResult<()> {
     state.mqtt.unsubscribe(&broker_id, &topic).await
+}
+
+#[tauri::command]
+pub async fn tool_public_ip() -> ToolResult<PublicIpDto> {
+    public_ip::lookup().await
+}
+
+#[tauri::command]
+pub async fn tool_ssh_execute(input: SshInput) -> ToolResult<SshResultDto> {
+    ssh::execute(input).await
+}
+
+#[tauri::command]
+pub async fn tool_lan_discovery(input: DiscoveryInput) -> ToolResult<DiscoveryResultDto> {
+    discovery::scan(input).await
+}
+
+#[tauri::command]
+pub async fn tool_speedtest_run(input: SpeedTestInput) -> ToolResult<SpeedTestResultDto> {
+    speedtest::run(input).await
+}
+
+#[tauri::command]
+pub async fn tool_ssl_cert(input: SslCertInput) -> ToolResult<SslCertResultDto> {
+    ssl_cert::inspect(input).await
+}
+
+#[tauri::command]
+pub async fn tool_snmp_query(input: SnmpInput) -> ToolResult<SnmpResultDto> {
+    snmp::query(input).await
+}
+
+#[tauri::command]
+pub fn tool_text_convert(input: TextConvertInput) -> ToolResult<TextConvertResultDto> {
+    text_codec::convert(input)
+}
+
+#[tauri::command]
+pub fn tool_fs_list(input: FsListInput) -> ToolResult<FsListResultDto> {
+    fs_rename::list(input)
+}
+
+#[tauri::command]
+pub fn tool_fs_rename(input: RenameInput) -> ToolResult<RenameResultDto> {
+    fs_rename::rename(input)
+}
+
+#[tauri::command]
+pub fn tool_port_list(input: PortListInput) -> ToolResult<PortListResultDto> {
+    ports::list(input)
 }

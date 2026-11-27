@@ -1,8 +1,10 @@
 mod arp;
 pub mod commands;
+mod discovery;
 mod dns;
 pub mod event;
 mod fileserver;
+mod fs_rename;
 mod hash;
 mod http_client;
 mod icmp;
@@ -10,9 +12,16 @@ mod latency;
 pub mod model;
 mod mqtt;
 mod ping;
+mod ports;
+mod public_ip;
 mod search;
+mod snmp;
+mod speedtest;
+mod ssh;
+mod ssl_cert;
 mod tasks;
 mod telnet;
+mod text_codec;
 mod traceroute;
 
 use uuid::Uuid;

@@ -194,6 +194,16 @@ pub fn run() {
             tools::commands::tool_mqtt_publish,
             tools::commands::tool_mqtt_subscribe,
             tools::commands::tool_mqtt_unsubscribe,
+            tools::commands::tool_public_ip,
+            tools::commands::tool_ssh_execute,
+            tools::commands::tool_lan_discovery,
+            tools::commands::tool_speedtest_run,
+            tools::commands::tool_ssl_cert,
+            tools::commands::tool_snmp_query,
+            tools::commands::tool_text_convert,
+            tools::commands::tool_fs_list,
+            tools::commands::tool_fs_rename,
+            tools::commands::tool_port_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

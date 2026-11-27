@@ -46,7 +46,11 @@ import type {
   ArpScanInput,
   ArpScanResult,
   ContinuousPingInput,
+  DiscoveryInput,
+  DiscoveryResult,
   DnsQueryInput,
+  FsListInput,
+  FsListResult,
   FileServerEntry,
   FileServerStartInput,
   FileServerStatus,
@@ -60,8 +64,23 @@ import type {
   MqttSubscribeInput,
   PingInput,
   PingHostResult,
+  PortListInput,
+  PortListResult,
+  PublicIpInfo,
+  RenameInput,
+  RenameResult,
+  SnmpInput,
+  SnmpResult,
+  SpeedTestInput,
+  SpeedTestResult,
+  SshInput,
+  SshResult,
+  SslCertInput,
+  SslCertResult,
   TelnetResult,
   TelnetTestInput,
+  TextConvertInput,
+  TextConvertResult,
   TracerouteInput,
 } from "@/types/tools";
 import { resolvePoints } from "./definition";
@@ -2301,6 +2320,222 @@ export function createDemoBridge(): IpcApi {
     await demoWait(60);
   }
 
+  async function toolPublicIp(): Promise<PublicIpInfo> {
+    await demoWait(380);
+    return {
+      ip: "203.0.113.42",
+      city: "Shanghai",
+      region: "Shanghai",
+      country: "China",
+      countryCode: "CN",
+      org: "Demo ISP",
+      asn: "AS64500",
+      isp: "Demo ISP",
+      timezone: "Asia/Shanghai",
+      latitude: 31.2304,
+      longitude: 121.4737,
+      provider: "demo",
+    };
+  }
+
+  async function toolSshExecute(input: SshInput): Promise<SshResult> {
+    await demoWait(520);
+    if (!input.host.trim() || !input.username.trim()) {
+      throw { code: "invalidHost", detail: "Host and username are required" };
+    }
+    return {
+      host: input.host.trim(),
+      port: input.port,
+      username: input.username.trim(),
+      authenticated: true,
+      exitStatus: 0,
+      stdout: `[demo] ${input.username}@${input.host}
+$ ${input.command}
+connected
+`,
+      stderr: "",
+      elapsedMs: 312,
+      truncated: false,
+    };
+  }
+
+  async function toolLanDiscovery(_input: DiscoveryInput): Promise<DiscoveryResult> {
+    await demoWait(900);
+    return {
+      elapsedMs: 890,
+      devices: [
+        {
+          name: "Living Room TV",
+          host: "living-room.local",
+          address: "192.168.1.21",
+          port: 8009,
+          service: "_googlecast._tcp.local",
+          source: "mdns",
+          manufacturer: "Demo",
+          model: "Cast",
+          detail: "3 TXT",
+        },
+        {
+          name: "Office Printer",
+          host: "192.168.1.40",
+          address: "192.168.1.40",
+          service: "urn:schemas-upnp-org:device:Printer:1",
+          source: "upnp",
+          location: "http://192.168.1.40:49152/description.xml",
+          manufacturer: "Demo",
+          model: "Laser 100",
+        },
+      ],
+    };
+  }
+
+  async function toolSpeedtestRun(input: SpeedTestInput): Promise<SpeedTestResult> {
+    await demoWait(1400);
+    return {
+      server: "demo",
+      downloadMbps: 92.4,
+      uploadMbps: 23.8,
+      latencyMs: 12.6,
+      jitterMs: 1.8,
+      downloadBytes: input.downloadBytes,
+      uploadBytes: input.uploadBytes,
+      elapsedMs: 1380,
+    };
+  }
+
+  async function toolSslCert(input: SslCertInput): Promise<SslCertResult> {
+    await demoWait(420);
+    return {
+      host: input.host,
+      port: input.port,
+      serverName: input.serverName || input.host,
+      tlsVersion: "TLSv1_3",
+      cipherSuite: "TLS13_AES_256_GCM_SHA384",
+      elapsedMs: 380,
+      chain: [
+        {
+          subject: "CN=demo.example.com",
+          issuer: "CN=Demo Intermediate CA",
+          serial: "01:02:03:04",
+          notBefore: "2025-01-01T00:00:00Z",
+          notAfter: "2027-01-01T00:00:00Z",
+          daysRemaining: 400,
+          expired: false,
+          san: ["demo.example.com", "www.demo.example.com"],
+          signatureAlgorithm: "1.2.840.113549.1.1.11",
+          publicKeyAlgorithm: "1.2.840.10045.2.1",
+          isCa: false,
+          selfSigned: false,
+        },
+      ],
+    };
+  }
+
+  async function toolSnmpQuery(input: SnmpInput): Promise<SnmpResult> {
+    await demoWait(360);
+    return {
+      operation: input.operation,
+      version: input.version,
+      elapsedMs: 310,
+      variables: input.oids.map((oid) => ({
+        oid,
+        valueType: "OctetString",
+        value: oid.endsWith(".1.0") ? "Demo SNMP agent" : "demo-value",
+      })),
+    };
+  }
+
+  async function toolTextConvert(input: TextConvertInput): Promise<TextConvertResult> {
+    await demoWait(80);
+    const source =
+      input.inputMode === "hex"
+        ? new TextDecoder("utf-8").decode(
+            Uint8Array.from(
+              input.text
+                .replace(/\s+/g, "")
+                .match(/.{2}/g)
+                ?.map((pair) => Number.parseInt(pair, 16)) ?? [],
+            ),
+          )
+        : input.text;
+    const bytes = new TextEncoder().encode(source);
+    return {
+      text: source,
+      hex: Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+        .join("")
+        .toUpperCase(),
+      bytes: bytes.length,
+      encoding: input.toEncoding,
+      lossy: false,
+    };
+  }
+
+  async function toolFsList(input: FsListInput): Promise<FsListResult> {
+    await demoWait(220);
+    return {
+      path: input.path,
+      truncated: false,
+      entries: ["app.log", "device.log", "notes.txt"].map((name, index) => ({
+        name,
+        path: `${input.path}/${name}`,
+        isDir: false,
+        size: 1024 * (index + 1),
+        modifiedMs: Date.now() - index * 3_600_000,
+      })),
+    };
+  }
+
+  async function toolFsRename(input: RenameInput): Promise<RenameResult> {
+    await demoWait(160);
+    return {
+      applied: !input.dryRun,
+      renamed: input.dryRun ? 0 : input.pairs.length,
+      failed: 0,
+      items: input.pairs.map((pair) => ({
+        from: pair.from,
+        to: pair.to,
+        status: "ok" as const,
+      })),
+    };
+  }
+
+  async function toolPortList(input: PortListInput): Promise<PortListResult> {
+    await demoWait(260);
+    const entries = [
+      {
+        protocol: "TCP",
+        localAddr: "0.0.0.0",
+        localPort: 80,
+        state: "listen",
+        pid: 4,
+        process: "System",
+      },
+      {
+        protocol: "TCP",
+        localAddr: "127.0.0.1",
+        localPort: 5173,
+        state: "listen",
+        pid: 8420,
+        process: "node.exe",
+      },
+      {
+        protocol: "UDP",
+        localAddr: "0.0.0.0",
+        localPort: 5353,
+        state: "bound",
+        pid: 1200,
+        process: "svchost.exe",
+      },
+    ].filter((entry) => {
+      if (input.listeningOnly && entry.state !== "listen" && entry.state !== "bound") return false;
+      if (!input.filter) return true;
+      return `${entry.process} ${entry.localPort}`
+        .toLowerCase()
+        .includes(input.filter.toLowerCase());
+    });
+    return { entries, truncated: false };
+  }
+
   async function on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,
@@ -2355,6 +2590,16 @@ export function createDemoBridge(): IpcApi {
     toolMqttPublish,
     toolMqttSubscribe,
     toolMqttUnsubscribe,
+    toolPublicIp,
+    toolSshExecute,
+    toolLanDiscovery,
+    toolSpeedtestRun,
+    toolSslCert,
+    toolSnmpQuery,
+    toolTextConvert,
+    toolFsList,
+    toolFsRename,
+    toolPortList,
     pickFile,
     pickDirectory,
     readTextFile,

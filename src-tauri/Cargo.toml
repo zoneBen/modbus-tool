@@ -1,6 +1,6 @@
 [package]
 name = "modbus-tool"
-version = "0.6.2"
+version = "0.7.0"
 description = "Lightweight Modbus master, slave simulator and packet monitor"
 authors = ["zoneBen"]
 edition = "2024"
@@ -23,7 +23,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync",
 serialport = "4"
 ipnet = "2"
 futures = "0.3"
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "charset", "gzip", "brotli", "http2", "system-proxy", "multipart"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json", "charset", "gzip", "brotli", "http2", "system-proxy", "multipart", "stream"] }
 hickory-resolver = "0.24"
 axum = { version = "0.8", features = ["multipart"] }
 tokio-util = { version = "0.7", features = ["io"] }
@@ -39,6 +39,15 @@ regex = "1"
 globset = "0.4"
 encoding_rs = "0.8"
 uuid = { version = "1", features = ["v4"] }
+russh = { version = "0.54", default-features = false, features = ["ring", "rsa", "flate2"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+x509-parser = { version = "0.18", default-features = false }
+time = { version = "0.3", features = ["formatting"] }
+hmac = "0.12"
+netstat2 = "0.11"
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+socket2 = "0.5"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

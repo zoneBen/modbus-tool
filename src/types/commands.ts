@@ -43,9 +43,28 @@ import type {
   MqttPublishInput,
   MqttState,
   MqttSubscribeInput,
+  DiscoveryInput,
+  DiscoveryResult,
+  FsListInput,
+  FsListResult,
   PingInput,
+  PortListInput,
+  PortListResult,
+  PublicIpInfo,
+  RenameInput,
+  RenameResult,
   SearchInput,
+  SnmpInput,
+  SnmpResult,
+  SpeedTestInput,
+  SpeedTestResult,
+  SshInput,
+  SshResult,
+  SslCertInput,
+  SslCertResult,
   TelnetResult,
+  TextConvertInput,
+  TextConvertResult,
   TelnetTestInput,
   ToolEvent,
   ToolFileFilter,
@@ -153,6 +172,16 @@ export interface IpcApi {
   toolMqttPublish(input: MqttPublishInput): Promise<void>;
   toolMqttSubscribe(input: MqttSubscribeInput): Promise<void>;
   toolMqttUnsubscribe(brokerId: string, topic: string): Promise<void>;
+  toolPublicIp(): Promise<PublicIpInfo>;
+  toolSshExecute(input: SshInput): Promise<SshResult>;
+  toolLanDiscovery(input: DiscoveryInput): Promise<DiscoveryResult>;
+  toolSpeedtestRun(input: SpeedTestInput): Promise<SpeedTestResult>;
+  toolSslCert(input: SslCertInput): Promise<SslCertResult>;
+  toolSnmpQuery(input: SnmpInput): Promise<SnmpResult>;
+  toolTextConvert(input: TextConvertInput): Promise<TextConvertResult>;
+  toolFsList(input: FsListInput): Promise<FsListResult>;
+  toolFsRename(input: RenameInput): Promise<RenameResult>;
+  toolPortList(input: PortListInput): Promise<PortListResult>;
   on<K extends AppEventName>(
     event: K,
     handler: (payload: AppEventMap[K]) => void,

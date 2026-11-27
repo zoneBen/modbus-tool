@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Copy, FolderOpen, Hash, Square } from "@lucide/vue";
+import { Check, Copy, FolderOpen, Hash, Square } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import { useToolEventBuffer } from "@/composables/useToolEventBuffer";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,14 +99,11 @@ async function cancel(): Promise<void> {
   if (current) await ipc.toolTaskCancel(current);
 }
 
-async function copy(value: string): Promise<void> {
+const { copy: copyFeedback, isCopied } = useCopyFeedback();
+
+async function copy(key: string, value: string): Promise<void> {
   if (!value) return;
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
+  await copyFeedback(key, value);
 }
 
 function formatSize(bytes: number): string {
@@ -238,10 +235,11 @@ function formatSize(bytes: number): string {
                     variant="ghost"
                     size="sm"
                     class="h-6 gap-1 px-1.5 text-[10.5px] text-muted-foreground"
-                    @click="copy(value.digest)"
+                    @click="copy(value.algorithm, value.digest)"
                   >
-                    <Copy class="size-3" />
-                    {{ t("tools.copy") }}
+                    <Check v-if="isCopied(value.algorithm)" class="size-3 text-signal" />
+                    <Copy v-else class="size-3" />
+                    {{ isCopied(value.algorithm) ? t("common.copiedShort") : t("tools.copy") }}
                   </Button>
                 </td>
               </tr>

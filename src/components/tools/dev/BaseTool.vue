@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Binary, Copy } from "@lucide/vue";
+import { Binary, Check, Copy } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
 import FormSelect from "@/components/common/FormSelect.vue";
 import ToolPanelFrame from "@/components/tools/ToolPanelFrame.vue";
+import { useCopyFeedback } from "@/composables/useCopyFeedback";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToolboxStore } from "@/stores/toolbox";
@@ -56,14 +56,7 @@ const widthRows = computed(() =>
     : [],
 );
 
-async function copy(value: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(t("common.copied"));
-  } catch {
-    toast.error(t("tools.copyFailed"));
-  }
-}
+const { copy, isCopied } = useCopyFeedback();
 </script>
 
 <template>
@@ -111,10 +104,14 @@ async function copy(value: string): Promise<void> {
             }}</span>
             <button
               type="button"
-              class="text-muted-foreground hover:text-foreground"
-              @click="copy(row.value)"
+              class="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+              @click="copy(row.label, row.value)"
             >
-              <Copy class="size-3" />
+              <Check v-if="isCopied(row.label)" class="size-3 text-signal" />
+              <Copy v-else class="size-3" />
+              <span v-if="isCopied(row.label)" class="text-[9px] text-signal">{{
+                t("common.copiedShort")
+              }}</span>
             </button>
           </div>
           <p class="numeric mt-1 break-all text-[13px] text-foreground">{{ row.value }}</p>
@@ -134,10 +131,14 @@ async function copy(value: string): Promise<void> {
               <span class="numeric min-w-0 flex-1 truncate text-[11px]">{{ row.value }}</span>
               <button
                 type="button"
-                class="text-muted-foreground hover:text-foreground"
-                @click="copy(row.value)"
+                class="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                @click="copy(row.label, row.value)"
               >
-                <Copy class="size-3" />
+                <Check v-if="isCopied(row.label)" class="size-3 text-signal" />
+                <Copy v-else class="size-3" />
+                <span v-if="isCopied(row.label)" class="text-[9px] text-signal">{{
+                  t("common.copiedShort")
+                }}</span>
               </button>
             </div>
           </div>
